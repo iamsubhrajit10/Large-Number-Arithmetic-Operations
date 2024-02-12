@@ -87,7 +87,7 @@ void printResultsToFile(FILE *file, int iteration) {
     printBigIntegerToFile(num2, file);
     fprintf(file, ",");
     printBigIntegerToFile(product_result, file);
-    fprintf(file, ",%lu\n", execution_time, end_ticks - start_ticks);
+    fprintf(file, ",%lu\n", end_ticks - start_ticks);
 }
 
 
