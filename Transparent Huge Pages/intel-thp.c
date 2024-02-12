@@ -99,7 +99,7 @@ void printResultsToFile(FILE *file, int iteration) {
     printBigIntegerToFile(num2, file);
     fprintf(file, ",");
     printBigIntegerToFile(final_result, file);
-    fprintf(file, ",%f,%lu\n", execution_time, end_ticks - start_ticks);
+    fprintf(file, ",%lu\n", end_ticks - start_ticks);
 }
 
 
@@ -111,7 +111,7 @@ static inline uint64_t rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 void printHeader(FILE *file) {
-    fprintf(file, "Iteration,Number 1,Number 2,Result,Execution Time (seconds),Ticks\n");
+    fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
 }
 
 void multiply()
