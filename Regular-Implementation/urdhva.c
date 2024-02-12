@@ -101,7 +101,6 @@ void multiply() {
 
     // Record the starting ticks
     start_ticks = rdtsc();
-    clock_gettime(CLOCK_MONOTONIC, &start_time);
     // Multiplying each digit and add to the result
     for (int i = len1 - 1; i >= 0; --i) {
         int carry = 0;
@@ -112,7 +111,6 @@ void multiply() {
         }
         result[i] += carry; // Add the carry to the current digit
     }
-    clock_gettime(CLOCK_MONOTONIC, &end_time);
     
     end_ticks = rdtsc();
     
