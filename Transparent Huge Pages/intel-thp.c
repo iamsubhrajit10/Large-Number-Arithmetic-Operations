@@ -15,12 +15,8 @@
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
-struct timespec start_time, end_time;
-double execution_time;
 uint64_t start_ticks, end_ticks;
 uint64_t min_ticks = UINT64_MAX;
-double min_time = DBL_MAX;
-double total_time = 0;
 uint64_t total_ticks = 0;
 int iteration;
 
@@ -150,7 +146,6 @@ void multiply()
 
 
     start_ticks = rdtsc();
-    clock_gettime(CLOCK_MONOTONIC, &start_time);
     for (int i = 0; i < num1.length; i++)
     {
         carry = 0;
@@ -171,25 +166,11 @@ void multiply()
     {
         final_result.length--;
     }
-    //printf("%d ",is_huge(result.digits));
-    //return result;
-     clock_gettime(CLOCK_MONOTONIC, &end_time);
     end_ticks = rdtsc();
 
-    execution_time = (end_time.tv_sec - start_time.tv_sec) +
-                     (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-
-    // Record the ending ticks
-
-    total_ticks += (end_ticks - start_ticks);
-    total_time += execution_time;
 
     if ((end_ticks - start_ticks) < min_ticks) {
         min_ticks = (end_ticks - start_ticks);
-    }
-
-    if (execution_time < min_time) {
-        min_time = execution_time;
     }
 }
 
@@ -204,7 +185,7 @@ int main() {
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-    for (iteration = 1; iteration <= 30; ++iteration) {
+    for (iteration = 1; iteration <= 100; ++iteration) {
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -232,10 +213,6 @@ int main() {
             min_ticks = (end_ticks - start_ticks);
         }
 
-        if (execution_time < min_time) {
-            min_time = execution_time;
-        }
-
         // Print results to the file
         printResultsToFile(results_file, iteration);
         printf("\nDone: Iter%d\n", iteration);
@@ -245,9 +222,7 @@ int main() {
     }
 
     // Print summary information
-    fprintf(results_file, "\nAverage Execution Time: %f seconds\n", (double)(total_time / 30));
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 30));
-    fprintf(results_file, "Minimum Execution Time: %f seconds\n", min_time);
+    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 100));
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
