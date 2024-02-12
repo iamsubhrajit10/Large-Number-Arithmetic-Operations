@@ -99,7 +99,7 @@ static inline uint64_t rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 void printHeader(FILE *file) {
-    fprintf(file, "Iteration,Number 1,Number 2,Result,Execution Time (seconds),Ticks\n");
+    fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
 }
 
 struct BigInteger multiply(const struct BigInteger *num1, const struct BigInteger *num2)
