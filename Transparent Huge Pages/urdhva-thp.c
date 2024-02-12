@@ -188,7 +188,7 @@ int main() {
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-    for (iteration = 1; iteration <= 30; ++iteration) {
+    for (iteration = 1; iteration <= 100; ++iteration) {
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
