@@ -110,7 +110,6 @@ struct BigInteger multiply(const struct BigInteger *num1, const struct BigIntege
 
 
     start_ticks = rdtsc();
-    clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     for (int i = 0; i < num1->length; i++)
     {
@@ -132,7 +131,6 @@ struct BigInteger multiply(const struct BigInteger *num1, const struct BigIntege
     {
         result.length--;
     }
-    clock_gettime(CLOCK_MONOTONIC, &end_time);
     end_ticks = rdtsc();
     // Record the ending ticks
 
