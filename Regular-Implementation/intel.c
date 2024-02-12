@@ -10,18 +10,15 @@
 #include <float.h>
 
 
-#define NUMBER_OF_BITS 2048
-#define CSV_FILENAME "intel_multiplication_results_2048.csv"
+#define NUMBER_OF_BITS 8192
+#define CSV_FILENAME "intel_multiplication_results_8192.csv"
 
 struct BigInteger product_result;
 struct BigInteger num1;
 struct BigInteger num2;
-struct timespec start_time, end_time;
-double execution_time;
+
 uint64_t start_ticks, end_ticks;
 uint64_t min_ticks = UINT64_MAX;
-double min_time = DBL_MAX;
-double total_time = 0;
 uint64_t total_ticks = 0;
 int iteration;
 
@@ -90,7 +87,7 @@ void printResultsToFile(FILE *file, int iteration) {
     printBigIntegerToFile(num2, file);
     fprintf(file, ",");
     printBigIntegerToFile(product_result, file);
-    fprintf(file, ",%f,%lu\n", execution_time, end_ticks - start_ticks);
+    fprintf(file, ",%lu\n", execution_time, end_ticks - start_ticks);
 }
 
 
@@ -137,21 +134,12 @@ struct BigInteger multiply(const struct BigInteger *num1, const struct BigIntege
     }
     clock_gettime(CLOCK_MONOTONIC, &end_time);
     end_ticks = rdtsc();
-
-    execution_time = (end_time.tv_sec - start_time.tv_sec) +
-                     (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-
     // Record the ending ticks
 
     total_ticks += (end_ticks - start_ticks);
-    total_time += execution_time;
 
     if ((end_ticks - start_ticks) < min_ticks) {
         min_ticks = (end_ticks - start_ticks);
-    }
-
-    if (execution_time < min_time) {
-        min_time = execution_time;
     }
     return result;
 }
@@ -168,7 +156,7 @@ int main()
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-    for (iteration = 1; iteration <= 30; ++iteration) {
+    for (iteration = 1; iteration <= 100; ++iteration) {
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -184,10 +172,6 @@ int main()
             min_ticks = (end_ticks - start_ticks);
         }
 
-        if (execution_time < min_time) {
-            min_time = execution_time;
-        }
-
         // Print results to the file
         printResultsToFile(results_file, iteration);
         printf("\nDone: Iter%d\n", iteration);
@@ -197,9 +181,7 @@ int main()
     }
 
     // Print summary information
-    fprintf(results_file, "\nAverage Execution Time: %f seconds\n", (double)(total_time / 30));
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 30));
-    fprintf(results_file, "Minimum Execution Time: %f seconds\n", min_time);
+    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 100));
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
