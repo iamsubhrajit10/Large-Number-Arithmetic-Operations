@@ -167,6 +167,7 @@ void multiply()
         final_result.length--;
     }
     end_ticks = rdtsc();
+    total_ticks += (end_ticks - start_ticks);
 
 
     if ((end_ticks - start_ticks) < min_ticks) {
