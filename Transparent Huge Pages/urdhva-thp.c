@@ -10,8 +10,8 @@
 #include <float.h>
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
-#define NUMBER_OF_BITS 32768
-#define CSV_FILENAME "experiment_urdhva_multiplication_results_32768.csv"
+#define NUMBER_OF_BITS 8192
+#define CSV_FILENAME "experiment_urdhva_multiplication_results_8192.csv"
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
@@ -115,7 +115,7 @@ static inline uint64_t rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 void printHeader(FILE *file) {
-    fprintf(file, "Iteration,Number 1,Number 2,Result,Execution Time (seconds),Ticks\n");
+    fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
 }
 
 
