@@ -10,8 +10,8 @@
 #include <float.h>
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
-#define NUMBER_OF_BITS 2048
-#define CSV_FILENAME "experiment_intel_multiplication_results_2048.csv"
+#define NUMBER_OF_BITS 8192
+#define CSV_FILENAME "experiment_intel_multiplication_results_8192.csv"
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
