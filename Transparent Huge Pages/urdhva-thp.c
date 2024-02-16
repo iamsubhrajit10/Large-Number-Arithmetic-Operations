@@ -123,29 +123,6 @@ void printHeader(FILE *file) {
 void multiply() {
     int len1 = num1.length;
     int len2 = num2.length;
-    char* num1_digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-    int err = madvise(num1_digits, HPAGE_SIZE, MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise");
-        exit(EXIT_FAILURE);
-    } 
-    num1_digits[0] = '0';
-    char* num2_digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-    err = madvise(num2_digits, HPAGE_SIZE, MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise");
-        exit(EXIT_FAILURE);
-    } 
-    num2_digits[0] = '0';
-
-    // Copy digits
-    for(int i = 0; i < num1.length; ++i) {
-        num1_digits[i] = num1.digits[i];
-    }
-
-    for(int i = 0; i < num2.length; ++i) {
-        num2_digits[i] = num2.digits[i];
-    }
 
     // Record the starting ticks
     start_ticks = rdtsc();
@@ -154,7 +131,7 @@ void multiply() {
     for (int i = len1 - 1; i >= 0; --i) {
         int carry = 0;
         for (int j = len2 - 1; j >= 0; --j) {
-            int temp = (num1_digits[i] - '0') * (num2_digits[j] - '0') + (final_result.digits[i + j + 1] - '0') + carry;
+            int temp = (num1.digits[i] - '0') * (num2.digits[j] - '0') + (final_result.digits[i + j + 1] - '0') + carry;
             final_result.digits[i + j + 1] = temp % 10 + '0';
             carry = temp / 10;
         }
