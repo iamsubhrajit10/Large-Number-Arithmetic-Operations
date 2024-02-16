@@ -163,7 +163,7 @@ int main() {
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-    for (iteration = 1; iteration <= 30; ++iteration) {
+    for (iteration = 1; iteration <= 100; ++iteration) {
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -200,7 +200,7 @@ int main() {
     }
 
     // Print summary information
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 30));
+    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 100));
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
