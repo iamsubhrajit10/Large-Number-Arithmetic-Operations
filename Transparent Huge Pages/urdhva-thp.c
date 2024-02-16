@@ -142,7 +142,7 @@ void multiply() {
 
 
     // Removing leading zeros from the result
-    removeLeadingZero();
+    //removeLeadingZero();
 
     // Record the ending ticks
 
