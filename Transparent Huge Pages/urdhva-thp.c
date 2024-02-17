@@ -44,7 +44,31 @@ char* generateRandomNumber(int seed) {
 
     return resultString;
 }
+int verify_thp_allocation(void *addr) {
+    char maps_path[100];
+    sprintf(maps_path, "/proc/%d/smaps", getpid());
 
+    FILE *maps_file = fopen(maps_path, "r");
+    if (maps_file == NULL) {
+        perror("fopen");
+        return 0;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), maps_file) != NULL) {
+        // Check for a line representing the allocated region
+        if (strstr(line, (char *)addr) != NULL) {
+            // Look for the "AnonHugePages" flag. 
+            if (strstr(line, "AnonHugePages:") != NULL) {
+                fclose(maps_file);
+                return 1; // THP allocated
+            }
+        }
+    }
+
+    fclose(maps_file);
+    return 0; // THP not found
+}
 
 
 struct BigInteger {
