@@ -89,6 +89,12 @@ struct BigInteger initBigInteger(char *num_str) {
         perror("madvise");
         exit(EXIT_FAILURE);
     }
+    result.digits[0]='0';
+    if (verify_thp_allocation(result.digits)) {
+        printf("Transparent Huge Page successfully allocated!\n");
+    } else {
+        printf("THP allocation might not have been successful.\n");
+    }
 
     // Copy digits in reverse order
     for (int i = 0; i < len; i++) {
