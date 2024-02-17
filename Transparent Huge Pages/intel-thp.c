@@ -89,7 +89,7 @@ struct BigInteger initBigInteger(char *num_str)
     result.length = len;
  
     //int size = 4*HPAGE_SIZE;
-    result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
+    result.digits = aligned_alloc(HPAGE_SIZE,len*sizeof(long int) );
 
     int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
     if (err != 0) {
