@@ -8,6 +8,7 @@
 #include <string.h>
 #include <gmp.h>
 #include <float.h>
+#include <fcntl.h>  // For file opening
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
 #define NUMBER_OF_BITS 8192
@@ -44,7 +45,31 @@ char* generateRandomNumber(int seed) {
 
     return resultString;
 }
+int verify_thp_allocation(void *addr) {
+    char maps_path[100];
+    sprintf(maps_path, "/proc/%d/smaps", getpid());
 
+    FILE *maps_file = fopen(maps_path, "r");
+    if (maps_file == NULL) {
+        perror("fopen");
+        return 0;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), maps_file) != NULL) {
+        // Check for a line representing the allocated region
+        if (strstr(line, (char *)addr) != NULL) {
+            // Look for the "AnonHugePages" flag. 
+            if (strstr(line, "AnonHugePages:") != NULL) {
+                fclose(maps_file);
+                return 1; // THP allocated
+            }
+        }
+    }
+
+    fclose(maps_file);
+    return 0; // THP not found
+}
 
 
 struct BigInteger
@@ -72,6 +97,12 @@ struct BigInteger initBigInteger(char *num_str)
         exit(EXIT_FAILURE);
     }
     result.digits[0]=0;
+    if (verify_thp_allocation(result.digits)) {
+        printf("Transparent Huge Page successfully allocated!\n");
+    } else {
+        printf("THP allocation might not have been successful.\n");
+    }
+
     for (int i = 0; i < len; i++)
     {
         result.digits[i] = num_str[len - i - 1] - '0';
