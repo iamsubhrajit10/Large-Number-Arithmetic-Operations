@@ -11,8 +11,8 @@
 #include <fcntl.h>  // For file opening
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
-#define NUMBER_OF_BITS 8192
-#define CSV_FILENAME "experiment_intel_multiplication_results_8192.csv"
+#define NUMBER_OF_BITS 16384
+#define CSV_FILENAME "experiment_intel_multiplication_results_16384.csv"
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
