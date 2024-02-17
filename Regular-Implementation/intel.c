@@ -10,8 +10,8 @@
 #include <float.h>
 
 
-#define NUMBER_OF_BITS 16384
-#define CSV_FILENAME "intel_multiplication_results_16384.csv"
+#define NUMBER_OF_BITS 4096
+#define CSV_FILENAME "intel_multiplication_results_4096.csv"
 
 struct BigInteger product_result;
 struct BigInteger num1;
