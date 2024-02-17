@@ -12,6 +12,7 @@
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
 #define NUMBER_OF_BITS 2097152
+#define NUMBER_OF_EPOCHS 10
 #define CSV_FILENAME "experiment_urdhva_multiplication_results_2097152.csv"
 struct BigInteger final_result;
 struct BigInteger num1;
@@ -196,7 +197,7 @@ int main() {
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-    for (iteration = 1; iteration <= 100; ++iteration) {
+    for (iteration = 1; iteration <= NUMBER_OF_EPOCHS; ++iteration) {
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -237,7 +238,7 @@ int main() {
     }
 
     // Print summary information
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / 100));
+    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / NUMBER_OF_EPOCHS));
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
