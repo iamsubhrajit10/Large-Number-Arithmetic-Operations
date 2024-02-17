@@ -8,6 +8,7 @@
 #include <string.h>
 #include <gmp.h>
 #include <float.h>
+#include <fcntl.h>  // For file opening
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
 #define NUMBER_OF_BITS 8192
