@@ -101,7 +101,7 @@ struct BigInteger initBigInteger(char *num_str)
 
     // Optional verification (can be commented out)
     if (verify_thp_allocation(result.digits)) {
-        printf("Transparent Huge Page successfully allocated!\n");
+        //printf("Transparent Huge Page successfully allocated!\n");
     } else {
         printf("THP allocation may not have been successful.\n");
     }
@@ -218,7 +218,7 @@ int main() {
     
         // Optional verification (can be commented out)
         if (verify_thp_allocation(final_result.digits)) {
-            printf("Transparent Huge Page successfully allocated!\n");
+           // printf("Transparent Huge Page successfully allocated!\n");
         } else {
             printf("THP allocation may not have been successful.\n");
         }
