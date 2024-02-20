@@ -13,6 +13,7 @@
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
+int NUMBER_OF_BITS;
 
 uint64_t start_ticks, end_ticks;
 uint64_t min_ticks = UINT64_MAX;
