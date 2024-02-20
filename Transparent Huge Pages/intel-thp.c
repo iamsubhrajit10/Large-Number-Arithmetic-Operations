@@ -91,8 +91,8 @@ struct BigInteger initBigInteger(char *num_str)
  
     //int size = 4*HPAGE_SIZE;
     result.digits = NULL;
-    posix_memalign((void **)&result.digits, HPAGE_SIZE, len);
-    int err = madvise(result.digits, len, MADV_HUGEPAGE);
+    posix_memalign((void **)&result.digits, HPAGE_SIZE, len * sizeof (int));
+    int err = madvise(result.digits, len * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
@@ -231,9 +231,6 @@ int main() {
         madvise(final_result.digits, HPAGE_SIZE, MADV_DONTNEED);
         madvise(num1.digits, HPAGE_SIZE, MADV_DONTNEED);
         madvise(num2.digits, HPAGE_SIZE, MADV_DONTNEED);
-        // freeBigInteger(&num1);
-        // freeBigInteger(&num2);
-        // freeBigInteger(&final_result);
     }
 
     // Print summary information
