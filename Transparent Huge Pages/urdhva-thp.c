@@ -156,15 +156,16 @@ void printHeader(FILE *file) {
 void multiply() {
     int len1 = num1.length;
     int len2 = num2.length;
+    int carry, temp;
 
     // Record the starting ticks
     start_ticks = rdtsc();
 
     // Multiplying each digit and add to the result
     for (int i = len1 - 1; i >= 0; --i) {
-        int carry = 0;
+        carry = 0;
         for (int j = len2 - 1; j >= 0; --j) {
-            int temp = (num1.digits[i] - '0') * (num2.digits[j] - '0') + (final_result.digits[i + j + 1] - '0') + carry;
+            temp = (num1.digits[i] - '0') * (num2.digits[j] - '0') + (final_result.digits[i + j + 1] - '0') + carry;
             final_result.digits[i + j + 1] = temp % 10 + '0';
             carry = temp / 10;
         }
@@ -177,14 +178,11 @@ void multiply() {
     // Removing leading zeros from the result
     //removeLeadingZero();
 
-    // Record the ending ticks
-
     total_ticks += (end_ticks - start_ticks);
 
     if ((end_ticks - start_ticks) < min_ticks) {
         min_ticks = (end_ticks - start_ticks);
     }
-
 }
 
 int main() {
