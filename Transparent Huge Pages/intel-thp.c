@@ -90,14 +90,9 @@ struct BigInteger initBigInteger(char *num_str)
     result.length = len;
  
     //int size = 4*HPAGE_SIZE;
-    result.digits = mmap(NULL, HPAGE_SIZE, PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
-                        -1, 0);
-
-    if (result.digits == MAP_FAILED) {
-        perror("mmap");
-        exit(EXIT_FAILURE);
-    }
+    result.digits = nullptr;
+    posix_memalign(&result.digits, HPAGE_SIZE, len);
+    madvise(result.digits, len, MADV_HUGEPAGE);
 
     // Optional verification (can be commented out)
     if (verify_thp_allocation(result.digits)) {
@@ -116,9 +111,7 @@ struct BigInteger initBigInteger(char *num_str)
 
 void freeBigInteger(struct BigInteger *num)
 {
-    if (munmap(num->digits, HPAGE_SIZE) != 0) {
-        perror("munmap");
-    }
+    free(num->digits);
 }
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
