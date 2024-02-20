@@ -14,7 +14,7 @@
 #define NUMBER_OF_EPOCHS 100
 #define CSV_FILENAME "intel_multiplication_results_4096.csv"
 
-struct BigInteger product_result;
+struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
 
@@ -103,45 +103,43 @@ void printHeader(FILE *file) {
     fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
 }
 
-struct BigInteger multiply(const struct BigInteger *num1, const struct BigInteger *num2)
+void multiply()
 {
-    struct BigInteger result;
-    result.length = num1->length + num2->length;
-    result.digits = (int *)calloc(result.length, sizeof(int));
-
+    int len1 = num1.length;
+    int len2 = num2.length;    
+    long int product,carry;
 
     start_ticks = rdtsc();
-
-    for (int i = 0; i < num1->length; i++)
+    for (int i = 0; i < len1; i++)
     {
-        int carry = 0;
-        for (int j = 0; j < num2->length; j++)
+        carry = 0;
+        for (int  j = 0; j < len2; j++)
         {
-            int product = num1->digits[i] * num2->digits[j] + result.digits[i + j] + carry;
+            product = num1.digits[i] * num2.digits[j] + final_result.digits[i + j] + carry;
             carry = product / 10;
-            result.digits[i + j] = product % 10;
+            final_result.digits[i + j] = product % 10;
         }
 
         if (carry)
         {
-            result.digits[i + num2->length] += carry;
+            final_result.digits[i + len2] += carry;
         }
     }
 
-    while (result.length > 1 && result.digits[result.length - 1] == 0)
+    while (final_result.length > 1 && final_result.digits[final_result.length - 1] == 0)
     {
-        result.length--;
+        final_result.length--;
     }
     end_ticks = rdtsc();
-    // Record the ending ticks
 
+    // Record the ending ticks
     total_ticks += (end_ticks - start_ticks);
 
     if ((end_ticks - start_ticks) < min_ticks) {
         min_ticks = (end_ticks - start_ticks);
     }
-    return result;
 }
+
 
 int main()
 {
@@ -164,7 +162,7 @@ int main()
         randomNumber = (rand() % 100) + 1;
         num2 = initBigInteger(generateRandomNumber(randomNumber));
 
-        product_result = multiply(&num1, &num2);
+        multiply();
 
    // Update minimum values
         if ((end_ticks - start_ticks) < min_ticks) {
