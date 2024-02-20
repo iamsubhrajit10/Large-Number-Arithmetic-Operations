@@ -167,7 +167,7 @@ void multiply()
 
         if (carry)
         {
-            final_result.digits[i + num2.length] += carry;
+            final_result.digits[i + len2] += carry;
         }
     }
 
