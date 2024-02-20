@@ -228,6 +228,8 @@ int main() {
         // Print results to the file
         printResultsToFile(results_file, iteration);
         printf("\nDone: Iter%d\n", iteration);
+        printf("Average Ticks: %f\n", (double)total_ticks / iteration);
+        printf("Minimum Ticks: %lu\n", min_ticks);
         madvise(final_result.digits, HPAGE_SIZE, MADV_DONTNEED);
         madvise(num1.digits, HPAGE_SIZE, MADV_DONTNEED);
         madvise(num2.digits, HPAGE_SIZE, MADV_DONTNEED);
