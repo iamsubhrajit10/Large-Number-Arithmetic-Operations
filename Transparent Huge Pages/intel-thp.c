@@ -11,9 +11,9 @@
 #include <fcntl.h>  // For file opening
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
-#define NUMBER_OF_BITS 65536
+#define NUMBER_OF_BITS 4096
 #define NUMBER_OF_EPOCHS 100
-#define CSV_FILENAME "experiment_intel_multiplication_results_65536.csv"
+#define CSV_FILENAME "experiment_intel_multiplication_results_4096.csv"
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
@@ -197,6 +197,7 @@ int main() {
     int randomNumber;
     // Multiplication
     for (iteration = 1; iteration <= NUMBER_OF_EPOCHS; ++iteration) {
+        printf("\nStarting Iteration %d...\n", iteration);
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -234,7 +235,7 @@ int main() {
 
         // Print results to the file
         printResultsToFile(results_file, iteration);
-        printf("\nDone: Iter%d\n", iteration);
+        printf("\nDone: Iteration %d!\n", iteration);
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
         freeBigInteger(&final_result);
