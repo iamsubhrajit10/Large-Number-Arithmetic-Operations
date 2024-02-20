@@ -155,10 +155,10 @@ void multiply()
     long int product,carry;
 
     start_ticks = rdtsc();
-    for (int i = 0; i < num1.length; i++)
+    for (int i = 0; i < len1; i++)
     {
         carry = 0;
-        for (int  j = 0; j < num2.length; j++)
+        for (int  j = 0; j < len2; j++)
         {
             product = num1.digits[i] * num2.digits[j] + final_result.digits[i + j] + carry;
             carry = product / 10;
@@ -178,7 +178,6 @@ void multiply()
     end_ticks = rdtsc();
 
     // Record the ending ticks
-
     total_ticks += (end_ticks - start_ticks);
 
     if ((end_ticks - start_ticks) < min_ticks) {
