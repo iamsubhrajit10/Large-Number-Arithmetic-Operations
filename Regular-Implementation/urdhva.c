@@ -49,9 +49,8 @@ char* generateRandomNumber(int seed) {
     return resultString;
 }
 
-struct BigInteger
-{
-    int *digits;
+struct BigInteger {
+    char *digits;
     int length;
 };
 
