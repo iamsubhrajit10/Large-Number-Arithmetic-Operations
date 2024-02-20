@@ -228,11 +228,11 @@ int main() {
         // Print results to the file
         printResultsToFile(results_file, iteration);
         printf("\nDone: Iter%d\n", iteration);
-        madvise(final_result.digits, HPAGE_SIZE, MADV_DONTNEED);
-        madvise(num1.digits, HPAGE_SIZE, MADV_DONTNEED);
-        madvise(num2.digits, HPAGE_SIZE, MADV_DONTNEED);
-        freeBigInteger(num1);
-        freeBigInteger(num2);
+        // madvise(final_result.digits, HPAGE_SIZE, MADV_DONTNEED);
+        // madvise(num1.digits, HPAGE_SIZE, MADV_DONTNEED);
+        // madvise(num2.digits, HPAGE_SIZE, MADV_DONTNEED);
+        freeBigInteger(&num1);
+        freeBigInteger(&num2);
         freeBigInteger(&final_result);
     }
 
