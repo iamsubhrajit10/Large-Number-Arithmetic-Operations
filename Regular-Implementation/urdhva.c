@@ -89,34 +89,31 @@ static inline uint64_t rdtsc(void)
 
 // Function to multiply two large numbers represented as strings
 void multiply() {
-    int len1 = strlen(num1);
-    int len2 = strlen(num2);
-
-    // Initializing the result array with zeros
-    for (int i = 0; i < len1 + len2; ++i) {
-        result[i] = '0';
-    }
-    result[len1 + len2] = '\0';
-
-    
+    int len1 = num1.length;
+    int len2 = num2.length;
 
     // Record the starting ticks
     start_ticks = rdtsc();
+
     // Multiplying each digit and add to the result
     for (int i = len1 - 1; i >= 0; --i) {
         int carry = 0;
         for (int j = len2 - 1; j >= 0; --j) {
-            int temp = (num1[i] - '0') * (num2[j] - '0') + (result[i + j + 1] - '0') + carry;
-            result[i + j + 1] = temp % 10 + '0';
+            int temp = (num1.digits[i] - '0') * (num2.digits[j] - '0') + (final_result.digits[i + j + 1] - '0') + carry;
+            final_result.digits[i + j + 1] = temp % 10 + '0';
             carry = temp / 10;
         }
-        result[i] += carry; // Add the carry to the current digit
+        final_result.digits[i] += carry; // Add the carry to the current digit
     }
-    
+
     end_ticks = rdtsc();
-    
+
+
     // Removing leading zeros from the result
-    removeLeadingZero(result);
+    //removeLeadingZero();
+
+    // Record the ending ticks
+
     total_ticks += (end_ticks - start_ticks);
 
     if ((end_ticks - start_ticks) < min_ticks) {
