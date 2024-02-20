@@ -123,7 +123,7 @@ void removeLeadingZero() {
 }
 
 void freeBigInteger(struct BigInteger *num) {
-    free(num->digits);
+    madvise(num->digits, num->length*sizeof(int), MADV_DONTNEED);
 }
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
     fprintf(file, "%s", num.digits);
@@ -199,6 +199,7 @@ int main() {
     int randomNumber;
     // Multiplication
     for (iteration = 1; iteration <= NUMBER_OF_EPOCHS; ++iteration) {
+        printf("\nStarting Iteration %d...\n", iteration);
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -208,13 +209,21 @@ int main() {
         num2 = initBigInteger(generateRandomNumber(randomNumber));
         final_result.length = num1.length + num2.length + 1;
 
-        final_result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-
-        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        final_result.digits = NULL;
+        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length * sizeof (int));
+        int err = madvise(final_result.digits, final_result.length * sizeof(int), MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
-        } 
+        }
+        final_result.digits[0]='0';
+    
+        // Optional verification (can be commented out)
+        if (verify_thp_allocation(final_result.digits)) {
+           // printf("Transparent Huge Page successfully allocated!\n");
+        } else {
+            printf("THP allocation may not have been successful.\n");
+        }
         for (int i = 0; i < num1.length + num2.length; ++i) {
             final_result.digits[i] = '0';
         }
@@ -229,17 +238,16 @@ int main() {
 
         // Print results to the file
         printResultsToFile(results_file, iteration);
-        printf("\nDone: Iter%d\n", iteration);
-        madvise(final_result.digits, HPAGE_SIZE, MADV_DONTNEED);
-        madvise(num1.digits, HPAGE_SIZE, MADV_DONTNEED);
-        madvise(num2.digits, HPAGE_SIZE, MADV_DONTNEED);
+        printf("\nDone: Iteration %d!\n", iteration);
+        printf("Average Ticks: %f\n", (double)total_ticks / iteration);
+        printf("Minimum Ticks: %lu\n", min_ticks);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
         freeBigInteger(&final_result);
     }
 
     // Print summary information
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / NUMBER_OF_EPOCHS));
+    fprintf(results_file, "Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
