@@ -123,7 +123,7 @@ void removeLeadingZero() {
 }
 
 void freeBigInteger(struct BigInteger *num) {
-    madvise(num->digits, num->length*sizeof(int), MADV_DONTNEED);
+    madvise(num->digits, num->length*sizeof(char), MADV_DONTNEED);
 }
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
     fprintf(file, "%s", num.digits);
