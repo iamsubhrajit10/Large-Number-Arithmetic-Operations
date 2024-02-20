@@ -9,9 +9,9 @@
 #include <gmp.h>
 #include <float.h>
 
-#define NUMBER_OF_BITS 65536
+#define NUMBER_OF_BITS 4096
 #define NUMBER_OF_EPOCHS 100
-#define CSV_FILENAME "urdhva_multiplication_results_65536.csv"
+#define CSV_FILENAME "urdhva_multiplication_results_4096.csv"
 
 uint64_t start_ticks, end_ticks;
 uint64_t min_ticks = UINT64_MAX;
