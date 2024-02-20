@@ -90,7 +90,7 @@ struct BigInteger initBigInteger(char *num_str)
     result.length = len;
  
     //int size = 4*HPAGE_SIZE;
-    result.digits = nullptr;
+    result.digits = NULL;
     posix_memalign((void **)&result.digits, HPAGE_SIZE, len);
     madvise(result.digits, len, MADV_HUGEPAGE);
 
