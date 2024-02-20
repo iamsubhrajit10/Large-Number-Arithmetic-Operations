@@ -231,9 +231,9 @@ int main() {
         printf("\nDone: Iter%d\n", iteration);
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
-        freeBigInteger(&final_result.digits);
-        freeBigInteger(&num1.digits);
-        freeBigInteger(&num2.digits);
+        freeBigInteger(&final_result);
+        freeBigInteger(&num1);
+        freeBigInteger(&num2);
     }
 
     // Print summary information
