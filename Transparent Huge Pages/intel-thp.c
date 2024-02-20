@@ -231,8 +231,8 @@ int main() {
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
         madvise(final_result.digits, final_result.length*sizeof(int), MADV_DONTNEED);
-        madvise(num1.digits, num1.length*sizeof(int), HPAGE_SIZE, MADV_DONTNEED);
-        madvise(num2.digits, num2.length*sizeof(int), HPAGE_SIZE, MADV_DONTNEED);
+        madvise(num1.digits, num1.length*sizeof(int), MADV_DONTNEED);
+        madvise(num2.digits, num2.length*sizeof(int), MADV_DONTNEED);
     }
 
     // Print summary information
