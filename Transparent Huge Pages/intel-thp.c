@@ -116,7 +116,8 @@ struct BigInteger initBigInteger(char *num_str)
 
 void freeBigInteger(struct BigInteger *num)
 {
-    free(num->digits);
+    madvise(num->digits, num->length*sizeof(int), MADV_DONTNEED);
+    free(num);
 }
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
@@ -230,9 +231,9 @@ int main() {
         printf("\nDone: Iter%d\n", iteration);
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
-        madvise(final_result.digits, final_result.length*sizeof(int), MADV_DONTNEED);
-        madvise(num1.digits, num1.length*sizeof(int), MADV_DONTNEED);
-        madvise(num2.digits, num2.length*sizeof(int), MADV_DONTNEED);
+        freeBigInteger(&final_result.digits);
+        freeBigInteger(&num1.digits);
+        freeBigInteger(&num2.digits);
     }
 
     // Print summary information
