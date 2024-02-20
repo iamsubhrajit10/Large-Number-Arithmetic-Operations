@@ -151,9 +151,7 @@ void multiply() {
     }
 }
 
-int main()
-{
-    int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     if (argc != 3) {
         printf("Usage: %s <No of bits> <No of epochs>\n", argv[0]);
         return 1;
