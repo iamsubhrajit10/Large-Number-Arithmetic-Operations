@@ -62,7 +62,7 @@ struct BigInteger initBigInteger(char *num_str)
     {
         len++;
     }
-    result.digits = (int *)malloc(len * sizeof(int));
+    result.digits = (char *)malloc(len * sizeof(char));
     result.length = len;
     // Copy digits in reverse order
     for (int i = 0; i < len; i++) {
