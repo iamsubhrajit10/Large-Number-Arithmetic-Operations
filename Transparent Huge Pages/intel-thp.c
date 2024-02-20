@@ -92,7 +92,12 @@ struct BigInteger initBigInteger(char *num_str)
     //int size = 4*HPAGE_SIZE;
     result.digits = NULL;
     posix_memalign((void **)&result.digits, HPAGE_SIZE, len);
-    madvise(result.digits, len, MADV_HUGEPAGE);
+    int err = madvise(result.digits, len, MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise");
+        exit(EXIT_FAILURE);
+    }
+    result.digits[0]='0';
 
     // Optional verification (can be commented out)
     if (verify_thp_allocation(result.digits)) {
