@@ -97,7 +97,7 @@ struct BigInteger initBigInteger(char *num_str)
         perror("madvise");
         exit(EXIT_FAILURE);
     }
-    result.digits[0]='0';
+    result.digits[0]=0;
 
     // Optional verification (can be commented out)
     if (verify_thp_allocation(result.digits)) {
