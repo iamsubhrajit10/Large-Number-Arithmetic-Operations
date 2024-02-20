@@ -90,21 +90,21 @@ struct BigInteger initBigInteger(char *num_str)
     result.length = len;
  
     //int size = 4*HPAGE_SIZE;
-   result.digits = mmap(NULL, HPAGE_SIZE, PROT_READ | PROT_WRITE,
+    result.digits = mmap(NULL, HPAGE_SIZE, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
                         -1, 0);
 
-   if (result.digits == MAP_FAILED) {
-       perror("mmap");
-       exit(EXIT_FAILURE);
-   }
+    if (result.digits == MAP_FAILED) {
+        perror("mmap");
+        exit(EXIT_FAILURE);
+    }
 
-   // Verify allocation (optional)
-   if (verify_thp_allocation(result.digits)) {
-       printf("Transparent Huge Page successfully allocated!\n");
-   } else {
-       printf("THP allocation may not have been successful.\n");
-   }
+    // Optional verification (can be commented out)
+    if (verify_thp_allocation(result.digits)) {
+        printf("Transparent Huge Page successfully allocated!\n");
+    } else {
+        printf("THP allocation may not have been successful.\n");
+    }
 
     for (int i = 0; i < len; i++)
     {
