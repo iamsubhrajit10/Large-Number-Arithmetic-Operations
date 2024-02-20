@@ -207,13 +207,21 @@ int main() {
         num2 = initBigInteger(generateRandomNumber(randomNumber));
         final_result.length = num1.length + num2.length;
 
-        final_result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-
-        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        result.digits = NULL;
+        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length * sizeof (int));
+        int err = madvise(final_result.digits, final_result.length * sizeof(int), MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
-        } 
+        }
+        final_result.digits[0]='0';
+    
+        // Optional verification (can be commented out)
+        if (verify_thp_allocation(final_result.digits)) {
+            printf("Transparent Huge Page successfully allocated!\n");
+        } else {
+            printf("THP allocation may not have been successful.\n");
+        }
         for (int i = 0; i < num1.length + num2.length; ++i) {
             final_result.digits[i] = 0;
         }
