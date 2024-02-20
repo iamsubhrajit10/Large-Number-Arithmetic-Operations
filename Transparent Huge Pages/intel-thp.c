@@ -116,7 +116,9 @@ struct BigInteger initBigInteger(char *num_str)
 
 void freeBigInteger(struct BigInteger *num)
 {
-    free(num->digits);
+    if (munmap(num->digits, HPAGE_SIZE) != 0) {
+        perror("munmap");
+    }
 }
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
