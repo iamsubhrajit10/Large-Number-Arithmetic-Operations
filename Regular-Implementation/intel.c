@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
         // Print results to the file
         printResultsToFile(results_file, iteration);
         printf("\nDone: Iteration %d!\n", iteration);
-        printf("Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
+        printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
