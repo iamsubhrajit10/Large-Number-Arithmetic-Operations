@@ -202,12 +202,6 @@ int main(int argc, char *argv[]) {
         printf("Error opening CSV file for writing!\n");
         return 1;
     }
-    FILE *results_file;
-    results_file = fopen(CSV_FILENAME, "w");
-    if (results_file == NULL) {
-        printf("Error opening CSV file for writing!\n");
-        return 1;
-    }
 
     printHeader(results_file);
     int randomNumber;
