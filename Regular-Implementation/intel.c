@@ -87,7 +87,7 @@ void printResultsToFile(FILE *file, int iteration) {
     fprintf(file, ",");
     printBigIntegerToFile(num2, file);
     fprintf(file, ",");
-    printBigIntegerToFile(product_result, file);
+    printBigIntegerToFile(final_result, file);
     fprintf(file, ",%lu\n", end_ticks - start_ticks);
 }
 
@@ -177,7 +177,7 @@ int main()
         printf("Minimum Ticks: %lu\n", min_ticks);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
-        freeBigInteger(&product_result);
+        freeBigInteger(&final_result);
     }
 
     // Print summary information
