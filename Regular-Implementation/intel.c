@@ -10,9 +10,6 @@
 #include <float.h>
 
 
-#define NUMBER_OF_BITS 4096
-#define NUMBER_OF_EPOCHS 100
-#define CSV_FILENAME "intel_multiplication_results_4096.csv"
 
 struct BigInteger final_result;
 struct BigInteger num1;
@@ -141,8 +138,18 @@ void multiply()
 }
 
 
-int main()
-{
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        printf("Usage: %s <No of bits> <No of epochs>\n", argv[0]);
+        return 1;
+    }
+
+    int NUMBER_OF_BITS = atoi(argv[1]);
+    int NUMBER_OF_EPOCHS = atoi(argv[2]);
+
+    char CSV_FILENAME[100];
+    snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_intel_multiplication_results_%d.csv", NUMBER_OF_BITS);
+
     FILE *results_file;
     results_file = fopen(CSV_FILENAME, "w");
     if (results_file == NULL) {
