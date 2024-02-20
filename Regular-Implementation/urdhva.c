@@ -202,7 +202,5 @@ int main()
     fclose(results_file);
 
     return 0;
-
-    return 0;
 }
 
