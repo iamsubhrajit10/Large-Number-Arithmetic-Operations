@@ -83,8 +83,8 @@ struct BigInteger initBigInteger(char *num_str) {
     int len = strlen(num_str);
  
     // Allocate memory with huge pages
-    posix_memalign((void **)&result.digits, HPAGE_SIZE, len * sizeof (int));
-    int err = madvise(result.digits, len * sizeof(int), MADV_HUGEPAGE);
+    posix_memalign((void **)&result.digits, HPAGE_SIZE, len * sizeof (char));
+    int err = madvise(result.digits, len * sizeof(char), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
@@ -210,8 +210,8 @@ int main() {
         final_result.length = num1.length + num2.length + 1;
 
         final_result.digits = NULL;
-        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length * sizeof (int));
-        int err = madvise(final_result.digits, final_result.length * sizeof(int), MADV_HUGEPAGE);
+        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length * sizeof (char));
+        int err = madvise(final_result.digits, final_result.length * sizeof(char), MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
