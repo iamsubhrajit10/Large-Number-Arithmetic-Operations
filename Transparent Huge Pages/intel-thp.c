@@ -121,7 +121,7 @@ void freeBigInteger(struct BigInteger *num)
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
     for (int i = num.length-1; i>=0; i--) {
-        fprintf(file, "%d", num.digits[i]);
+        fprintf(file, "%ld", num.digits[i]);
     }
 }
 
