@@ -21,7 +21,7 @@ uint64_t min_ticks = UINT64_MAX;
 
 uint64_t total_ticks = 0;
 int iteration;
-char *num1,*num2,*result;
+
 
 
 char* generateRandomNumber(int seed) {
