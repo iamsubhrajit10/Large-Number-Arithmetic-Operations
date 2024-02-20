@@ -145,7 +145,7 @@ int main() {
         // Generate a random number between 1 and 100
         randomNumber = (rand() % 100) + 1;
         num2 = generateRandomNumber(randomNumber);
-        result= (char *) malloc ((strlen(num1)+strlen(num2)+1)*sizeof(char));
+        result = (char *) malloc ((strlen(num1)+strlen(num2)+1)*sizeof(char));
 
         multiply(num1,num2,result);
 
@@ -156,8 +156,12 @@ int main() {
 
         // Print results to the file
         printResultsToFile(results_file, iteration);
-        printf("\nDone: Iter%d\n", iteration);
-        free(result);
+        printf("\nDone: Iteration %d!\n", iteration);
+        printf("Average Ticks: %f\n", (double)total_ticks / iteration);
+        printf("Minimum Ticks: %lu\n", min_ticks);
+        free(num1.digits);
+        free(num2.digits);
+        free(result.digits);
     }
 
     // Print summary information
