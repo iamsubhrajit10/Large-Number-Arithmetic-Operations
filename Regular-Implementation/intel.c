@@ -162,6 +162,8 @@ int main()
         num1 = initBigInteger(generateRandomNumber(randomNumber));
         randomNumber = (rand() % 100) + 1;
         num2 = initBigInteger(generateRandomNumber(randomNumber));
+        final_result.length = num1.length+num2.length;
+        final_result.digits = (int *)malloc(final_result.length * sizeof(int));
 
         multiply();
 
