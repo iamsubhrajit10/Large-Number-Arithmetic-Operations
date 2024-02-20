@@ -234,7 +234,12 @@ int main() {
     }
 
     // Print summary information
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / NUMBER_OF_EPOCHS));
+    if (results_file == NULL) {
+        printf("Error opening CSV file for writing!\n");
+        return 1;
+    }
+
+    fprintf(results_file, "Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
