@@ -83,18 +83,19 @@ struct BigInteger initBigInteger(char *num_str) {
     int len = strlen(num_str);
  
     // Allocate memory with huge pages
-    result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-
-    int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+    posix_memalign((void **)&result.digits, HPAGE_SIZE, len * sizeof (int));
+    int err = madvise(result.digits, len * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
     }
     result.digits[0]='0';
+
+    // Optional verification (can be commented out)
     if (verify_thp_allocation(result.digits)) {
-        printf("Transparent Huge Page successfully allocated!\n");
+        //printf("Transparent Huge Page successfully allocated!\n");
     } else {
-        printf("THP allocation might not have been successful.\n");
+        printf("THP allocation may not have been successful.\n");
     }
 
     // Copy digits in reverse order
