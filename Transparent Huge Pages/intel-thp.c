@@ -75,7 +75,7 @@ int verify_thp_allocation(void *addr) {
 
 struct BigInteger
 {
-    long int *digits;
+    int *digits;
     int length;
 };
 
@@ -121,7 +121,7 @@ void freeBigInteger(struct BigInteger *num)
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
     for (int i = num.length-1; i>=0; i--) {
-        fprintf(file, "%ld", num.digits[i]);
+        fprintf(file, "%d", num.digits[i]);
     }
 }
 
