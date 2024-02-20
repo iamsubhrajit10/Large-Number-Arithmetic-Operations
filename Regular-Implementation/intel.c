@@ -154,6 +154,7 @@ int main()
     int randomNumber;
     // Multiplication
     for (iteration = 1; iteration <= NUMBER_OF_EPOCHS; ++iteration) {
+        printf("\nStarting Iteration %d...\n", iteration);
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -171,14 +172,16 @@ int main()
 
         // Print results to the file
         printResultsToFile(results_file, iteration);
-        printf("\nDone: Iter%d\n", iteration);
+        printf("\nDone: Iteration %d!\n", iteration);
+        printf("Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
+        printf("Minimum Ticks: %lu\n", min_ticks);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
         freeBigInteger(&product_result);
     }
 
     // Print summary information
-    fprintf(results_file, "Average Ticks: %f\n", (double)(total_ticks / NUMBER_OF_EPOCHS));
+    fprintf(results_file, "Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
     fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
