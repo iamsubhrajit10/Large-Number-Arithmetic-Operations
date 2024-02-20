@@ -11,9 +11,9 @@
 #include <fcntl.h>  // For file opening
 
 #define HPAGE_SIZE (2 * 1024 * 1024)
-#define NUMBER_OF_BITS 65536
+#define NUMBER_OF_BITS 4096
 #define NUMBER_OF_EPOCHS 100
-#define CSV_FILENAME "experiment_intel_multiplication_results_65536.csv"
+#define CSV_FILENAME "experiment_intel_multiplication_results_4096.csv"
 struct BigInteger final_result;
 struct BigInteger num1;
 struct BigInteger num2;
