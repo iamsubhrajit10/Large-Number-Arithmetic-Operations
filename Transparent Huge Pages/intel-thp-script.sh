@@ -7,7 +7,7 @@ n=10
 declare -a ticks
 
 # Compile the C program
-gcc -o multiply_program multiply_program.c -lgmp
+gcc -o intel-thp intel-thp.c -lgmp
 
 # Run the program 'n' times and record tick values
 for ((i=0; i<$n; i++))
