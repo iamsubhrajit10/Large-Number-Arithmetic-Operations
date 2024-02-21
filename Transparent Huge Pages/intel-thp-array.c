@@ -101,9 +101,8 @@ int initBigInteger(char *num_str, int** num) {
     return len;
 }
 
-void freeBigInteger(int *num, int len) {
-    madvise(num, len * sizeof(int), MADV_DONTNEED);
-    free(num);
+void freeBigInteger(int **num, int len) {
+    madvise(*num, len * sizeof(int), MADV_DONTNEED);
 }
 
 void printBigIntegerToFile(int* num, FILE *file, int len) {
@@ -227,9 +226,9 @@ int main(int argc, char *argv[]) {
         printf("\nDone: Iteration %d!\n", iteration);
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
-        freeBigInteger(final_result, final_result_length);
-        freeBigInteger(num1, num1_length);
-        freeBigInteger(num2, num2_length);
+        freeBigInteger(&final_result, final_result_lengt);
+        freeBigInteger(&num1, num1_length);
+        freeBigInteger(&num2, num2_length);
     }
 
     // Print summary information
