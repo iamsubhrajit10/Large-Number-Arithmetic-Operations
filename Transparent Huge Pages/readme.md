@@ -28,4 +28,8 @@ $ pgrep <executable filename>
 ```
 $ grep AnonHugePages /proc/<PID>/smaps
 ```
-
+## To check the perf stats:
+```bash
+$ sudo perf record -e cpu-cycles,instructions,branch-misses,faults,dTLB-loads,dTLB-load-misses,cache-misses,cache-references ./<file name> <bit size> <no of iterations>
+$ sudo perf report --symbols=multiply -f
+```
