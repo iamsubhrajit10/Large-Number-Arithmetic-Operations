@@ -207,10 +207,12 @@ int main(int argc, char *argv[]) {
         randomNumber = (rand() % 100) + 1;
         num1 = initBigInteger(generateRandomNumber(randomNumber));
         num1_length = ARRAY_SIZE(num1);
+        printf("num1-len: %d\n",num1_length);
 
         randomNumber = (rand() % 100) + 1;
         num2 = initBigInteger(generateRandomNumber(randomNumber));
         num2_length = ARRAY_SIZE(num2);
+        printf("num1-len: %d\n",num2_length);
         final_result_length = num1_length + num2_length;
 
         final_result = NULL;
