@@ -82,7 +82,7 @@ int* initBigInteger(char *num_str)
     {
         len++;
     }
- 
+    printf("len: %d",len);
     //int size = 4*HPAGE_SIZE;
     result = NULL;
     posix_memalign((void **)&result, HPAGE_SIZE, len * sizeof (int));
