@@ -48,32 +48,6 @@ char* generateRandomNumber(int seed) {
     return resultString;
 }
 
-int verify_thp_allocation(void *addr) {
-    char maps_path[100];
-    sprintf(maps_path, "/proc/%d/smaps", getpid());
-
-    FILE *maps_file = fopen(maps_path, "r");
-    if (maps_file == NULL) {
-        perror("fopen");
-        return 0;
-    }
-
-    char line[256];
-    while (fgets(line, sizeof(line), maps_file) != NULL) {
-        // Check for a line representing the allocated region
-        if (strstr(line, (char *)addr) != NULL) {
-            // Look for the "AnonHugePages" flag.
-            if (strstr(line, "AnonHugePages:") != NULL) {
-                fclose(maps_file);
-                return 1; // THP allocated
-            }
-        }
-    }
-
-    fclose(maps_file);
-    return 0; // THP not found
-}
-
 
 int initBigInteger(char *num_str, int** num) {
     int len = strlen(num_str);
@@ -88,10 +62,6 @@ int initBigInteger(char *num_str, int** num) {
         exit(EXIT_FAILURE);
     }
     (*num)[0]=0;
-
-    if (!verify_thp_allocation(*num)) {
-        printf("THP allocation may not have been successful.\n");
-    }
 
     for (int i = 0; i < len; i++) {
         (*num)[i] = num_str[len - i - 1] - '0';
@@ -196,7 +166,7 @@ int main(int argc, char *argv[]) {
         num2_length = initBigInteger(generateRandomNumber(randomNumber), &num2);
 
         final_result_length = num1_length + num2_length;
-        final_result =aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
+        final_result = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
         int err = madvise(final_result, HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
