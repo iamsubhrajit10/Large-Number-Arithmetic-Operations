@@ -78,8 +78,7 @@ int verify_thp_allocation(void *addr) {
 int initBigInteger(char *num_str, int** num) {
     int len = strlen(num_str);
 
-    *num = NULL;
-    posix_memalign((void **)num, HPAGE_SIZE, HPAGE_SIZE);
+    *num = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
     if (*num == NULL) {  // Check for allocation failure
         perror("posix_memalign");
         exit(EXIT_FAILURE);
@@ -199,8 +198,7 @@ int main(int argc, char *argv[]) {
 
         final_result_length = num1_length + num2_length;
 
-        final_result = NULL;
-        posix_memalign((void **)&final_result, HPAGE_SIZE, HPAGE_SIZE);
+        final_result = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
         int err = madvise(final_result, final_result_length * sizeof(int), MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
