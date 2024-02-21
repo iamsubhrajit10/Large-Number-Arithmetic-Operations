@@ -206,6 +206,7 @@ int main(int argc, char *argv[]) {
         // Generate a random number between 1 and 100
         randomNumber = (rand() % 100) + 1;
         num1 = initBigInteger(generateRandomNumber(randomNumber));
+        printf("%s\n",num1);
         num1_length = ARRAY_SIZE(num1);
         printf("num1-len: %d\n",num1_length);
 
