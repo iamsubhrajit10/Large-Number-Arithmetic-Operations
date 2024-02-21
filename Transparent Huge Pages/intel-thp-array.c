@@ -89,6 +89,7 @@ int initBigInteger(char *num_str, int** num) {
         perror("madvise");
         exit(EXIT_FAILURE);
     }
+    (*num)[0]=0;
 
     if (!verify_thp_allocation(*num)) {
         printf("THP allocation may not have been successful.\n");
