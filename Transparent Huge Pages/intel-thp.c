@@ -90,7 +90,11 @@ struct BigInteger initBigInteger(char *num_str)
  
     //int size = 4*HPAGE_SIZE;
     result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-    int err = madvise(result.digits, len * sizeof(int), MADV_HUGEPAGE);
+    if (!result.digits){
+        perror("aligned_alloc failed");
+        exit(EXIT_FAILURE);
+    }
+    int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
@@ -217,7 +221,15 @@ int main(int argc, char *argv[]) {
         final_result.length = num1.length + num2.length;
 
         final_result.digits =aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-        int err = madvise(final_result.digits, final_result.length * sizeof(int), MADV_HUGEPAGE);
+        if (!final_result.digits){
+            perror("aligned_alloc failed!");
+            exit(EXIT_FAILURE);
+        }
+        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        if (!result.digits){
+            perror("aligned_alloc failed");
+            exit(EXIT_FAILURE);
+        }
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
