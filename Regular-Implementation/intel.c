@@ -79,8 +79,7 @@ void printBigIntegerToFile(struct BigInteger num, FILE *file) {
     }
 }
 
-void printResultsToFile(FILE *file, int iteration) {
-    fprintf(file, "%d,", iteration);
+void printResultsToFile(FILE *file) {
     printBigIntegerToFile(num1, file);
     fprintf(file, ",");
     printBigIntegerToFile(num2, file);
@@ -98,7 +97,7 @@ static inline uint64_t rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 void printHeader(FILE *file) {
-    fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
+    fprintf(file, "Number 1,Number 2,Result,Ticks\n");
 }
 
 void multiply()
@@ -160,9 +159,6 @@ int main(int argc, char *argv[]) {
 
     printHeader(results_file);
     int randomNumber;
-    // Multiplication
-    for (iteration = 1; iteration <= NUMBER_OF_EPOCHS; ++iteration) {
-        printf("\nStarting Iteration %d...\n", iteration);
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -174,25 +170,13 @@ int main(int argc, char *argv[]) {
         final_result.digits = (int *)malloc(final_result.length * sizeof(int));
 
         multiply();
-
-   // Update minimum values
-        if ((end_ticks - start_ticks) < min_ticks) {
-            min_ticks = (end_ticks - start_ticks);
-        }
-
+        
         // Print results to the file
-        printResultsToFile(results_file, iteration);
-        printf("\nDone: Iteration %d!\n", iteration);
-        printf("Average Ticks: %f\n", (double)total_ticks / iteration);
-        printf("Minimum Ticks: %lu\n", min_ticks);
+        printResultsToFile(results_file);
+        printf("Ticks: %ld\n",end_ticks-start_ticks);
+        freeBigInteger(&final_result);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
-        freeBigInteger(&final_result);
-    }
-
-    // Print summary information
-    fprintf(results_file, "Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
-    fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
 
