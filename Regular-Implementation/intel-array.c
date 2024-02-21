@@ -93,7 +93,6 @@ int initBigInteger(char *num_str, int** num) {
 
 void freeBigInteger(int **num, int len) {
     madvise(*num, len * sizeof(int), MADV_DONTNEED);
-    free(*num);
 }
 
 void printBigIntegerToFile(int* num, FILE *file, int len) {
