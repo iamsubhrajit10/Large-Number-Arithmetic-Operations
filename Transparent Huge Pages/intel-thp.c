@@ -17,8 +17,6 @@ struct BigInteger num1;
 struct BigInteger num2;
 int NUMBER_OF_BITS;
 uint64_t start_ticks, end_ticks;
-uint64_t min_ticks = UINT64_MAX;
-uint64_t total_ticks = 0;
 int iteration;
 
 char* generateRandomNumber(int seed) {
@@ -128,8 +126,7 @@ void printBigIntegerToFile(struct BigInteger num, FILE *file) {
 }
 
 
-void printResultsToFile(FILE *file, int iteration) {
-    fprintf(file, "%d,", iteration);
+void printResultsToFile(FILE *file) {
     printBigIntegerToFile(num1, file);
     fprintf(file, ",");
     printBigIntegerToFile(num2, file);
@@ -147,7 +144,7 @@ static inline uint64_t rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 void printHeader(FILE *file) {
-    fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
+    fprintf(file, "Number 1,Number 2,Result,Ticks\n");
 }
 
 void multiply()
@@ -178,23 +175,15 @@ void multiply()
         final_result.length--;
     }
     end_ticks = rdtsc();
-
-    // Record the ending ticks
-    total_ticks += (end_ticks - start_ticks);
-
-    if ((end_ticks - start_ticks) < min_ticks) {
-        min_ticks = (end_ticks - start_ticks);
-    }
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s <No of bits> <No of epochs>\n", argv[0]);
+    if (argc != 2) {
+        printf("Usage: %s <No of bits>\n", argv[0]);
         return 1;
     }
 
     NUMBER_OF_BITS = atoi(argv[1]);
-    int NUMBER_OF_EPOCHS = atoi(argv[2]);
 
     char CSV_FILENAME[100];
     snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_intel_multiplication_results_%d.csv", NUMBER_OF_BITS);
@@ -209,8 +198,6 @@ int main(int argc, char *argv[]) {
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-    for (iteration = 1; iteration <= NUMBER_OF_EPOCHS; ++iteration) {
-        printf("\nStarting Iteration %d...\n", iteration);
         srand(time(NULL));
 
         // Generate a random number between 1 and 100
@@ -244,29 +231,19 @@ int main(int argc, char *argv[]) {
 
         multiply();
 
-        // Update minimum values
-        if ((end_ticks - start_ticks) < min_ticks) {
-            min_ticks = (end_ticks - start_ticks);
-        }
-
         // Print results to the file
-        printResultsToFile(results_file, iteration);
-        printf("\nDone: Iteration %d!\n", iteration);
-        printf("Average Ticks: %f\n", (double)total_ticks / iteration);
-        printf("Minimum Ticks: %lu\n", min_ticks);
+        printResultsToFile(results_file);
+        printf("\nDone: Iteration %d!\n");
+        printf("\nTicks: %d\n",end_ticks-start_ticks);
         freeBigInteger(&final_result);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
-    }
 
     // Print summary information
     if (results_file == NULL) {
         printf("Error opening CSV file for writing!\n");
         return 1;
     }
-
-    fprintf(results_file, "Average Ticks: %f\n", (double)total_ticks / NUMBER_OF_EPOCHS);
-    fprintf(results_file, "Minimum Ticks: %lu\n", min_ticks);
 
     fclose(results_file);
 
