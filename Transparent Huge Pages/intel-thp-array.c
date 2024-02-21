@@ -205,16 +205,6 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         final_result[0] = 0;
-        int err = madvise(final_result, final_result_length * sizeof(int), MADV_HUGEPAGE);
-        if (err != 0) {
-            perror("madvise");
-            exit(EXIT_FAILURE);
-        }
-        final_result[0] = 0;
-
-        if (!verify_thp_allocation(final_result)) {
-            printf("THP allocation may not have been successful.\n");
-        }
 
         for (int i = 0; i < num1_length + num2_length; ++i) {
             final_result[i] = 0;
