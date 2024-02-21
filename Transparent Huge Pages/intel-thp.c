@@ -233,8 +233,7 @@ int main(int argc, char *argv[]) {
 
         // Print results to the file
         printResultsToFile(results_file);
-        printf("\nDone: Iteration %d!\n");
-        printf("\nTicks: %d\n",end_ticks-start_ticks);
+        printf("Ticks: %d\n",end_ticks-start_ticks);
         freeBigInteger(&final_result);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
