@@ -129,23 +129,16 @@ void multiply()
     }
     end_ticks = rdtsc();
 
-    // Record the ending ticks
-    total_ticks += (end_ticks - start_ticks);
-
-    if ((end_ticks - start_ticks) < min_ticks) {
-        min_ticks = (end_ticks - start_ticks);
-    }
 }
 
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s <No of bits> <No of epochs>\n", argv[0]);
+    if (argc != 2) {
+        printf("Usage: %s <No of bits>\n", argv[0]);
         return 1;
     }
 
     NUMBER_OF_BITS = atoi(argv[1]);
-    int NUMBER_OF_EPOCHS = atoi(argv[2]);
 
     char CSV_FILENAME[100];
     snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_intel_multiplication_results_%d.csv", NUMBER_OF_BITS);
