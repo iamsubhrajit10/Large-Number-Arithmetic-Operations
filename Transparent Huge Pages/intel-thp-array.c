@@ -226,7 +226,7 @@ int main(int argc, char *argv[]) {
         printf("\nDone: Iteration %d!\n", iteration);
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
-        freeBigInteger(&final_result, final_result_lengtH);
+        freeBigInteger(&final_result, final_result_length);
         freeBigInteger(&num1, num1_length);
         freeBigInteger(&num2, num2_length);
     }
