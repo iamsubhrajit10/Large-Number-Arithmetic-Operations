@@ -29,7 +29,7 @@ char* generateRandomNumber(int seed) {
 
     // Initialize random number state
     gmp_randinit_default(state);
-    gmp_randseed_ui(state, time(NULL) + iteration+seed);
+    gmp_randseed_ui(state, time(NULL) + iteration + seed);
 
 
     // Initialize big number
@@ -47,6 +47,7 @@ char* generateRandomNumber(int seed) {
 
     return resultString;
 }
+
 int verify_thp_allocation(void *addr) {
     char maps_path[100];
     sprintf(maps_path, "/proc/%d/smaps", getpid());
@@ -61,7 +62,7 @@ int verify_thp_allocation(void *addr) {
     while (fgets(line, sizeof(line), maps_file) != NULL) {
         // Check for a line representing the allocated region
         if (strstr(line, (char *)addr) != NULL) {
-            // Look for the "AnonHugePages" flag. 
+            // Look for the "AnonHugePages" flag.
             if (strstr(line, "AnonHugePages:") != NULL) {
                 fclose(maps_file);
                 return 1; // THP allocated
@@ -74,62 +75,52 @@ int verify_thp_allocation(void *addr) {
 }
 
 
-int* initBigInteger(char *num_str)
-{
-    int* result;
-    int len = 0;
-    while (num_str[len] != '\0')
-    {
-        len++;
+int initBigInteger(char *num_str, int** num) {
+    int len = strlen(num_str);
+
+    *num = NULL;
+    posix_memalign((void **)num, HPAGE_SIZE, len * sizeof(int));
+    if (*num == NULL) {  // Check for allocation failure
+        perror("posix_memalign");
+        exit(EXIT_FAILURE);
     }
-    printf("len: %d",len);
-    //int size = 4*HPAGE_SIZE;
-    result = NULL;
-    posix_memalign((void **)&result, HPAGE_SIZE, len * sizeof (int));
-    int err = madvise(result, len * sizeof(int), MADV_HUGEPAGE);
+    int err = madvise(*num, len * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
     }
-    result[0]=0;
 
-    // Optional verification (can be commented out)
-    if (verify_thp_allocation(result)) {
-        //printf("Transparent Huge Page successfully allocated!\n");
-    } else {
+    if (!verify_thp_allocation(*num)) {
         printf("THP allocation may not have been successful.\n");
     }
 
-    for (int i = 0; i < len; i++)
-    {
-        result[i] = num_str[len - i - 1] - '0';
+    for (int i = 0; i < len; i++) {
+        (*num)[i] = num_str[len - i - 1] - '0';
     }
-    return result;
+
+    return len;
 }
 
-void freeBigInteger(int *num)
-{
-    madvise(num, ARRAY_SIZE(num)*sizeof(int), MADV_DONTNEED);
+void freeBigInteger(int *num, int len) {
+    madvise(num, len * sizeof(int), MADV_DONTNEED);
+    free(num);
 }
 
-void printBigIntegerToFile(int* num, FILE *file) {
-    for (int i = ARRAY_SIZE(num)-1; i>=0; i--) {
+void printBigIntegerToFile(int* num, FILE *file, int len) {
+    for (int i = len - 1; i >= 0; i--) {
         fprintf(file, "%d", num[i]);
     }
 }
 
-
 void printResultsToFile(FILE *file, int iteration) {
     fprintf(file, "%d,", iteration);
-    printBigIntegerToFile(num1, file);
+    printBigIntegerToFile(num1, file, num1_length);
     fprintf(file, ",");
-    printBigIntegerToFile(num2, file);
+    printBigIntegerToFile(num2, file, num2_length);
     fprintf(file, ",");
-    printBigIntegerToFile(final_result, file);
+    printBigIntegerToFile(final_result, file, final_result_length);
     fprintf(file, ",%lu\n", end_ticks - start_ticks);
 }
-
-
 
 // Function to get the current value of the Time Stamp Counter
 static inline uint64_t rdtsc(void) {
@@ -137,33 +128,29 @@ static inline uint64_t rdtsc(void) {
     asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
     return ((uint64_t)hi << 32) | lo;
 }
+
 void printHeader(FILE *file) {
     fprintf(file, "Iteration,Number 1,Number 2,Result,Ticks\n");
 }
 
-void multiply()
-{   
-    long int product,carry;
+void multiply() {
+    long int product, carry;
 
     start_ticks = rdtsc();
-    for (int i = 0; i < num1_length; i++)
-    {
+    for (int i = 0; i < num1_length; i++) {
         carry = 0;
-        for (int  j = 0; j < num2_length; j++)
-        {
+        for (int j = 0; j < num2_length; j++) {
             product = num1[i] * num2[j] + final_result[i + j] + carry;
             carry = product / 10;
             final_result[i + j] = product % 10;
         }
 
-        if (carry)
-        {
+        if (carry) {
             final_result[i + num2_length] += carry;
         }
     }
 
-    while (final_result_length > 1 && final_result[final_result_length - 1] == 0)
-    {
+    while (final_result_length > 1 && final_result[final_result_length - 1] == 0) {
         final_result_length--;
     }
     end_ticks = rdtsc();
@@ -204,34 +191,26 @@ int main(int argc, char *argv[]) {
 
         // Generate a random number between 1 and 100
         randomNumber = (rand() % 100) + 1;
-        num1 = initBigInteger(generateRandomNumber(randomNumber));
-        for (int i=0; i< 2466;i++)
-            printf("%d",num1[i]);
-        printf("\n");
-        num1_length = ARRAY_SIZE(num1);
-        printf("num1-len: %d\n",num1_length);
+        num1_length = initBigInteger(generateRandomNumber(randomNumber), &num1);
 
         randomNumber = (rand() % 100) + 1;
-        num2 = initBigInteger(generateRandomNumber(randomNumber));
-        num2_length = ARRAY_SIZE(num2);
-        printf("num1-len: %d\n",num2_length);
+        num2_length = initBigInteger(generateRandomNumber(randomNumber), &num2);
+
         final_result_length = num1_length + num2_length;
 
         final_result = NULL;
-        posix_memalign((void **)&final_result, HPAGE_SIZE, final_result_length * sizeof (int));
+        posix_memalign((void **)&final_result, HPAGE_SIZE, final_result_length * sizeof(int));
         int err = madvise(final_result, final_result_length * sizeof(int), MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
         }
-        final_result[0]=0;
-    
-        // Optional verification (can be commented out)
-        if (verify_thp_allocation(final_result)) {
-           // printf("Transparent Huge Page successfully allocated!\n");
-        } else {
+        final_result[0] = 0;
+
+        if (!verify_thp_allocation(final_result)) {
             printf("THP allocation may not have been successful.\n");
         }
+
         for (int i = 0; i < num1_length + num2_length; ++i) {
             final_result[i] = 0;
         }
@@ -248,9 +227,9 @@ int main(int argc, char *argv[]) {
         printf("\nDone: Iteration %d!\n", iteration);
         printf("Average Ticks: %f\n", (double)total_ticks / iteration);
         printf("Minimum Ticks: %lu\n", min_ticks);
-        freeBigInteger(final_result);
-        freeBigInteger(num1);
-        freeBigInteger(num2);
+        freeBigInteger(final_result, final_result_length);
+        freeBigInteger(num1, num1_length);
+        freeBigInteger(num2, num2_length);
     }
 
     // Print summary information
