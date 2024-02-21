@@ -226,10 +226,6 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
         int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
-        if (!result.digits){
-            perror("aligned_alloc failed");
-            exit(EXIT_FAILURE);
-        }
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
