@@ -104,7 +104,6 @@ int* initBigInteger(char *num_str)
     {
         result[i] = num_str[len - i - 1] - '0';
     }
-    //printf("%d ",is_huge(result.digits));
     return result;
 }
 
@@ -206,7 +205,9 @@ int main(int argc, char *argv[]) {
         // Generate a random number between 1 and 100
         randomNumber = (rand() % 100) + 1;
         num1 = initBigInteger(generateRandomNumber(randomNumber));
-        printf("%s\n",num1);
+        for (int i=0; i< 2466;i++)
+            printf("%d",num1[i]);
+        printf("\n");
         num1_length = ARRAY_SIZE(num1);
         printf("num1-len: %d\n",num1_length);
 
