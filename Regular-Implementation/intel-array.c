@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
 
         final_result_length = num1_length + num2_length;
 
-        final_result = (int *)malloc(final_result.length * sizeof(int));
+        final_result = (int *)malloc(final_result_length * sizeof(int));
         if (!final_result){
             perror("final_result: malloc failed!");
             exit(-1);
