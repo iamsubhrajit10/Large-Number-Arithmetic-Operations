@@ -64,8 +64,8 @@ struct BigInteger initBigInteger(char *num_str)
  
     //int size = 4*HPAGE_SIZE;
     result.digits = NULL;
-    posix_memalign((void **)&result.digits, HPAGE_SIZE, HPAGE_SIZE);
-    int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+    posix_memalign((void **)&result.digits, HPAGE_SIZE, len * sizeof (int));
+    int err = madvise(result.digits, len * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
@@ -82,9 +82,9 @@ struct BigInteger initBigInteger(char *num_str)
 
 void freeBigInteger(struct BigInteger *num)
 {
-    madvise(num->digits, HPAGE_SIZE, MADV_DONTNEED);
-    free(num->digits);
+    madvise(num->digits, num->length*sizeof(int), MADV_DONTNEED);
 }
+
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
     for (int i = num.length-1; i>=0; i--) {
@@ -175,9 +175,13 @@ int main(int argc, char *argv[]) {
         final_result.length = num1.length + num2.length;
 
         final_result.digits = NULL;
-        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, HPAGE_SIZE);
-        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
-        final_result.digits[0]='0';
+        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length * sizeof (int));
+        int err = madvise(final_result.digits, final_result.length * sizeof(int), MADV_HUGEPAGE);
+        if (err != 0) {
+            perror("madvise");
+            exit(EXIT_FAILURE);
+        }
+        final_result.digits[0]=0;
     
         for (int i = 0; i < num1.length + num2.length; ++i) {
             final_result.digits[i] = 0;
