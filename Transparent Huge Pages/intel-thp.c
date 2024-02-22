@@ -230,9 +230,6 @@ int main(int argc, char *argv[]) {
         freeBigInteger(&final_result);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
-        freeBigInteger(&final_result);
-        freeBigInteger(&num1);
-        freeBigInteger(&num2);
     // Print summary information
     if (results_file == NULL) {
         printf("Error opening CSV file for writing!\n");
