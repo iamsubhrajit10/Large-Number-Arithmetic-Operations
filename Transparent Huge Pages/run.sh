@@ -19,7 +19,7 @@ declare -a ticks
 gcc -o "$executable_name" "$input_source_file" -lgmp
 
 # Run the program 'number_of_iterations' times and record tick values
-for ((i=1; i<=$number_of_iterations; i++))
+for ((i=0; i<$number_of_iterations; i++))
 do
     echo "Starting iteration $i..."
     # Run the compiled program and extract the tick value
