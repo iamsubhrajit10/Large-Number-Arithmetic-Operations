@@ -117,6 +117,7 @@ struct BigInteger initBigInteger(char *num_str)
 void freeBigInteger(struct BigInteger *num)
 {
     madvise(num->digits, num->length*sizeof(int), MADV_DONTNEED);
+    free(num->digits);
 }
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
