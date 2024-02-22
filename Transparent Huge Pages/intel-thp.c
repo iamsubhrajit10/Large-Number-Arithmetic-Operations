@@ -10,7 +10,7 @@
 #include <float.h>
 #include <fcntl.h>  // For file opening
 
-#define HPAGE_SIZE (2 * 1024 * 1024)
+#define HPAGE_SIZE (2<<21)
 
 struct BigInteger final_result;
 struct BigInteger num1;
