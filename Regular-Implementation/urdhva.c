@@ -152,7 +152,6 @@ int main(int argc, char *argv[]) {
     }
 
     NUMBER_OF_BITS = atoi(argv[1]);
-    int NUMBER_OF_EPOCHS = atoi(argv[2]);
 
     char CSV_FILENAME[100];
     snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_intel_multiplication_results_%d.csv", NUMBER_OF_BITS);
