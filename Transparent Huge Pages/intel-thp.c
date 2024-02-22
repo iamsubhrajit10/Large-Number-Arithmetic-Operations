@@ -166,35 +166,35 @@ int main(int argc, char *argv[]) {
     printHeader(results_file);
     int randomNumber;
     // Multiplication
-        srand(time(NULL));
+    srand(time(NULL));
 
-        // Generate a random number between 1 and 100
-        randomNumber = (rand() % 100) + 1;
-        num1 = initBigInteger(generateRandomNumber(randomNumber));
-        randomNumber = (rand() % 100) + 1;
-        num2 = initBigInteger(generateRandomNumber(randomNumber));
-        final_result.length = num1.length + num2.length + 1;
-        final_result.digits = NULL;
-        posix_memalign((void **)&result.digits, HPAGE_SIZE, result.length*sizeof(int));
-        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
-        if (err != 0) {
-            perror("madvise");
-            exit(EXIT_FAILURE);
-        }
-        final_result.digits[0]=0;
-    
-        for (int i = 0; i < num1.length + num2.length; ++i) {
-            final_result.digits[i] = 0;
-        }
+    // Generate a random number between 1 and 100
+    randomNumber = (rand() % 100) + 1;
+    num1 = initBigInteger(generateRandomNumber(randomNumber));
+    randomNumber = (rand() % 100) + 1;
+    num2 = initBigInteger(generateRandomNumber(randomNumber));
+    final_result.length = num1.length + num2.length + 1;
+    final_result.digits = NULL;
+    posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
+    int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise");
+        exit(EXIT_FAILURE);
+    }
+    final_result.digits[0]=0;
 
-        multiply();
+    for (int i = 0; i < num1.length + num2.length; ++i) {
+        final_result.digits[i] = 0;
+    }
 
-        // Print results to the file
-        printResultsToFile(results_file);
-        printf("Ticks: %ld\n",end_ticks-start_ticks);
-        freeBigInteger(&final_result);
-        freeBigInteger(&num1);
-        freeBigInteger(&num2);
+    multiply();
+
+    // Print results to the file
+    printResultsToFile(results_file);
+    printf("Ticks: %ld\n",end_ticks-start_ticks);
+    freeBigInteger(&final_result);
+    freeBigInteger(&num1);
+    freeBigInteger(&num2);
     // Print summary information
     if (results_file == NULL) {
         printf("Error opening CSV file for writing!\n");
