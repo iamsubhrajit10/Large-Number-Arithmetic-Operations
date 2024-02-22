@@ -83,7 +83,6 @@ struct BigInteger initBigInteger(char *num_str)
 void freeBigInteger(struct BigInteger *num)
 {
     madvise(num->digits, HPAGE_SIZE, MADV_DONTNEED);
-    free(num->digits);
 }
 
 
