@@ -170,9 +170,44 @@ int main(int argc, char *argv[]) {
 
         // Generate a random number between 1 and 100
         randomNumber = (rand() % 100) + 1;
-        num1 = initBigInteger(generateRandomNumber(randomNumber));
+        // num1 = initBigInteger(generateRandomNumber(randomNumber));
+        char *num_str1 = generateRandomNumber(randomNumber);
+        num1.length = strlen(num_str1);
+        
+        num1.digits = NULL;
+        posix_memalign((void **)&num1.digits, HPAGE_SIZE, num1.length*sizeof(int));
+        int err = madvise(num1.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        if (err != 0) {
+            perror("madvise");
+            exit(EXIT_FAILURE);
+        }
+        num1.digits[0]=0;
+
+        for (int i = 0; i < num1.length; i++)
+        {
+            num1.digits[i] = num_str1[num1.length - i - 1] - '0';
+        }
+    
+        
         randomNumber = (rand() % 100) + 1;
-        num2 = initBigInteger(generateRandomNumber(randomNumber));
+        // num2 = initBigInteger(generateRandomNumber(randomNumber));
+        char *num_str2 = generateRandomNumber(randomNumber);
+        num2.length = strlen(num_str2);
+        
+        num2.digits = NULL;
+        posix_memalign((void **)&num2.digits, HPAGE_SIZE, num2.length*sizeof(int));
+        int err = madvise(num2.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        if (err != 0) {
+            perror("madvise");
+            exit(EXIT_FAILURE);
+        }
+        num2.digits[0]=0;
+
+        for (int i = 0; i < num2.length; i++)
+        {
+            num2.digits[i] = num_str2[num2.length - i - 1] - '0';
+        }
+    
         final_result.length = num1.length + num2.length;
 
         final_result.digits = NULL;
