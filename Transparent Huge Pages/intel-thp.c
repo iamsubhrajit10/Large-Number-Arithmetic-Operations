@@ -170,53 +170,21 @@ int main(int argc, char *argv[]) {
 
         // Generate a random number between 1 and 100
         randomNumber = (rand() % 100) + 1;
-        // num1 = initBigInteger(generateRandomNumber(randomNumber));
-        char *num_str1 = generateRandomNumber(randomNumber);
-        num1.length = strlen(num_str1);
-        
-        num1.digits = NULL;
-        posix_memalign((void **)&num1.digits, HPAGE_SIZE, HPAGE_SIZE);
-        int err = madvise(num1.digits, HPAGE_SIZE, MADV_HUGEPAGE);
-        if (err != 0) {
-            perror("madvise");
-            exit(EXIT_FAILURE);
-        }
-        num1.digits[0]=0;
-
-        for (int i = 0; i < num1.length; i++)
-        {
-            num1.digits[i] = num_str1[num1.length - i - 1] - '0';
-        }
-    
-        
+        num1 = initBigInteger(generateRandomNumber(randomNumber));
         randomNumber = (rand() % 100) + 1;
-        // num2 = initBigInteger(generateRandomNumber(randomNumber));
-        char *num_str2 = generateRandomNumber(randomNumber);
-        num2.length = strlen(num_str2);
-        
-        num2.digits = NULL;
-        posix_memalign((void **)&num2.digits, HPAGE_SIZE, HPAGE_SIZE);
-        err = madvise(num2.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        num2 = initBigInteger(generateRandomNumber(randomNumber));
+        final_result.length = num1.length + num2.length + 1;
+
+        final_result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
+        if (!final_result.digits){
+            perror("aligned_alloc failed!");
+            exit(EXIT_FAILURE);
+        }
+        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
-        }
-        num2.digits[0]=0;
-
-        for (int i = 0; i < num2.length; i++)
-        {
-            num2.digits[i] = num_str2[num2.length - i - 1] - '0';
-        }
-    
-        final_result.length = num1.length + num2.length;
-
-        final_result.digits = NULL;
-        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, HPAGE_SIZE);
-        err = madvise(final_result.digits,HPAGE_SIZE, MADV_HUGEPAGE);
-        if (err != 0) {
-            perror("madvise");
-            exit(EXIT_FAILURE);
-        }
+        } 
         final_result.digits[0]=0;
     
         for (int i = 0; i < num1.length + num2.length; ++i) {
