@@ -63,12 +63,9 @@ struct BigInteger initBigInteger(char *num_str)
     result.length = len;
  
     //int size = 4*HPAGE_SIZE;
-    result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-    if (!result.digits){
-        perror("aligned_alloc failed");
-        exit(EXIT_FAILURE);
-    }
-    int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+    result.digits = NULL;
+    posix_memalign(&result.digits, HPAGE_SIZE, len*sizeof(int));
+    int err = madvise(result.digits, len*sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
@@ -179,16 +176,9 @@ int main(int argc, char *argv[]) {
         num2 = initBigInteger(generateRandomNumber(randomNumber));
         final_result.length = num1.length + num2.length;
 
-        final_result.digits =aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-        if (!final_result.digits){
-            perror("aligned_alloc failed!");
-            exit(EXIT_FAILURE);
-        }
-        int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
-        if (err != 0) {
-            perror("madvise");
-            exit(EXIT_FAILURE);
-        }
+        final_result.digits = NULL;
+        posix_memalign(&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
+        int err = madvise(final_result.digits, final_result.length*sizeof(int), MADV_HUGEPAGE);
         final_result.digits[0]='0';
     
         for (int i = 0; i < num1.length + num2.length; ++i) {
