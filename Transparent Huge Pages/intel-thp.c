@@ -174,17 +174,13 @@ int main(int argc, char *argv[]) {
         randomNumber = (rand() % 100) + 1;
         num2 = initBigInteger(generateRandomNumber(randomNumber));
         final_result.length = num1.length + num2.length + 1;
-
-        final_result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-        if (!final_result.digits){
-            perror("aligned_alloc failed!");
-            exit(EXIT_FAILURE);
-        }
+        final_result.digits = NULL;
+        posix_memalign((void **)&result.digits, HPAGE_SIZE, result.length*sizeof(int));
         int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
-        } 
+        }
         final_result.digits[0]=0;
     
         for (int i = 0; i < num1.length + num2.length; ++i) {
