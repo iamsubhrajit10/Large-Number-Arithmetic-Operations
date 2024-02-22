@@ -174,8 +174,8 @@ int main(int argc, char *argv[]) {
         num1.length = strlen(num_str1);
         
         num1.digits = NULL;
-        posix_memalign((void **)&num1.digits, HPAGE_SIZE, num1.length*sizeof(int));
-        int err = madvise(num1.digits, num1.length*sizeof(int), MADV_HUGEPAGE);
+        posix_memalign((void **)&num1.digits, HPAGE_SIZE, HPAGE_SIZE);
+        int err = madvise(num1.digits, HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
@@ -194,8 +194,8 @@ int main(int argc, char *argv[]) {
         num2.length = strlen(num_str2);
         
         num2.digits = NULL;
-        posix_memalign((void **)&num2.digits, HPAGE_SIZE, num2.length*sizeof(int));
-        err = madvise(num2.digits, num2.length*sizeof(int), MADV_HUGEPAGE);
+        posix_memalign((void **)&num2.digits, HPAGE_SIZE, HPAGE_SIZE);
+        err = madvise(num2.digits, HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
@@ -210,8 +210,8 @@ int main(int argc, char *argv[]) {
         final_result.length = num1.length + num2.length;
 
         final_result.digits = NULL;
-        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
-        err = madvise(final_result.digits,final_result.length*sizeof(int), MADV_HUGEPAGE);
+        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, HPAGE_SIZE);
+        err = madvise(final_result.digits,HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
