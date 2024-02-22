@@ -43,31 +43,7 @@ char* generateRandomNumber(int seed) {
 
     return resultString;
 }
-int verify_thp_allocation(void *addr) {
-    char maps_path[100];
-    sprintf(maps_path, "/proc/%d/smaps", getpid());
 
-    FILE *maps_file = fopen(maps_path, "r");
-    if (maps_file == NULL) {
-        perror("fopen");
-        return 0;
-    }
-
-    char line[256];
-    while (fgets(line, sizeof(line), maps_file) != NULL) {
-        // Check for a line representing the allocated region
-        if (strstr(line, (char *)addr) != NULL) {
-            // Look for the "AnonHugePages" flag. 
-            if (strstr(line, "AnonHugePages:") != NULL) {
-                fclose(maps_file);
-                return 1; // THP allocated
-            }
-        }
-    }
-
-    fclose(maps_file);
-    return 0; // THP not found
-}
 
 
 struct BigInteger
@@ -88,10 +64,10 @@ struct BigInteger initBigInteger(char *num_str)
  
     //int size = 4*HPAGE_SIZE;
     result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-    // if (!result.digits){
-    //     perror("aligned_alloc failed");
-    //     exit(EXIT_FAILURE);
-    // }
+    if (!result.digits){
+        perror("aligned_alloc failed");
+        exit(EXIT_FAILURE);
+    }
     int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
@@ -99,12 +75,7 @@ struct BigInteger initBigInteger(char *num_str)
     }
     result.digits[0]=0;
 
-    // Optional verification (can be commented out)
-    if (verify_thp_allocation(result.digits)) {
-        //printf("Transparent Huge Page successfully allocated!\n");
-    } else {
-        printf("THP allocation may not have been successful.\n");
-    }
+   
 
     for (int i = 0; i < len; i++)
     {
@@ -220,12 +191,6 @@ int main(int argc, char *argv[]) {
         }
         final_result.digits[0]='0';
     
-        // Optional verification (can be commented out)
-        if (verify_thp_allocation(final_result.digits)) {
-           // printf("Transparent Huge Page successfully allocated!\n");
-        } else {
-            printf("THP allocation may not have been successful.\n");
-        }
         for (int i = 0; i < num1.length + num2.length; ++i) {
             final_result.digits[i] = 0;
         }
