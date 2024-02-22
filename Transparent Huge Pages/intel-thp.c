@@ -64,7 +64,7 @@ struct BigInteger initBigInteger(char *num_str)
  
     //int size = 4*HPAGE_SIZE;
     result.digits = NULL;
-    posix_memalign(&result.digits, HPAGE_SIZE, len*sizeof(int));
+    posix_memalign((void **)&result.digits, HPAGE_SIZE, len*sizeof(int));
     int err = madvise(result.digits, len*sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
@@ -177,7 +177,7 @@ int main(int argc, char *argv[]) {
         final_result.length = num1.length + num2.length;
 
         final_result.digits = NULL;
-        posix_memalign(&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
+        posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
         int err = madvise(final_result.digits, final_result.length*sizeof(int), MADV_HUGEPAGE);
         final_result.digits[0]='0';
     
