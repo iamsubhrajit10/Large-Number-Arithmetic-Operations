@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
         
         num2.digits = NULL;
         posix_memalign((void **)&num2.digits, HPAGE_SIZE, num2.length*sizeof(int));
-        int err = madvise(num2.digits, HPAGE_SIZE, MADV_HUGEPAGE);
+        err = madvise(num2.digits, HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
 
         final_result.digits = NULL;
         posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
-        int err = madvise(final_result.digits,HPAGE_SIZE, MADV_HUGEPAGE);
+        err = madvise(final_result.digits,HPAGE_SIZE, MADV_HUGEPAGE);
         if (err != 0) {
             perror("madvise");
             exit(EXIT_FAILURE);
