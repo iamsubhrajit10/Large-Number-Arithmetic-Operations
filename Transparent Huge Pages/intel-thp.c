@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
     num1 = initBigInteger(generateRandomNumber(randomNumber));
     randomNumber = (rand() % 100) + 1;
     num2 = initBigInteger(generateRandomNumber(randomNumber));
-    final_result.length = num1.length + num2.length + 1;
+    final_result.length = num1.length + num2.length+1;
     final_result.digits = NULL;
     posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length*sizeof(int));
     int err = madvise(final_result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
