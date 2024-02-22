@@ -88,10 +88,10 @@ struct BigInteger initBigInteger(char *num_str)
  
     //int size = 4*HPAGE_SIZE;
     result.digits = aligned_alloc(HPAGE_SIZE, HPAGE_SIZE);
-    if (!result.digits){
-        perror("aligned_alloc failed");
-        exit(EXIT_FAILURE);
-    }
+    // if (!result.digits){
+    //     perror("aligned_alloc failed");
+    //     exit(EXIT_FAILURE);
+    // }
     int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
