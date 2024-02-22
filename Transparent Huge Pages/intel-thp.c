@@ -189,8 +189,8 @@ int main(int argc, char *argv[]) {
         printResultsToFile(results_file);
         printf("Ticks: %ld\n",end_ticks-start_ticks);
         madvise(num1->digits, HPAGE_SIZE, MADV_DONTNEED);
-        madvise(num2->digits, HPAGE_SIZE, MADV_DONTNEED)
-        madvise(final_result->digits, HPAGE_SIZE, MADV_DONTNEED)
+        madvise(num2->digits, HPAGE_SIZE, MADV_DONTNEED);
+        madvise(final_result->digits, HPAGE_SIZE, MADV_DONTNEED);
         freeBigInteger(&final_result);
         freeBigInteger(&num1);
         freeBigInteger(&num2);
