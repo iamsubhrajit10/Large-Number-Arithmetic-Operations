@@ -65,7 +65,7 @@ struct BigInteger initBigInteger(char *num_str)
     //int size = 4*HPAGE_SIZE;
     result.digits = NULL;
     posix_memalign((void **)&result.digits, HPAGE_SIZE, result.length*sizeof(int));
-    int err = madvise(result.digits, result.length*sizeof(int), MADV_HUGEPAGE);
+    int err = madvise(result.digits, HPAGE_SIZE, MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
