@@ -19,16 +19,30 @@ declare -a ticks
 gcc -o "$executable_name" "$input_source_file" -lgmp
 
 # Run the program 'number_of_iterations' times and record tick values
-for ((i=0; i<$number_of_iterations; i++))
+for ((i=1; i<=$number_of_iterations; i++))
 do
+    echo "Starting iteration $i..."
     # Run the compiled program and extract the tick value
-    tick=$(./"$executable_name" "$number_of_bits" | grep "Ticks" | awk '{print $2}')
+    output=$(./"$executable_name" "$number_of_bits" 2>&1)
+    tick=$(echo "$output" | grep "Ticks" | awk '{print $2}')
+    
+    # Check if there was an error in the output
+    if [ -z "$tick" ]; then
+        echo "Error in iteration $i: $output"
+        continue
+    fi
     
     # Store the tick value in the array
     ticks[$i]=$tick
+    echo "Done iteration $i."
 done
 
 # Calculate average and minimum ticks
+if [ ${#ticks[@]} -eq 0 ]; then
+    echo "No valid tick values recorded."
+    exit 1
+fi
+
 total_ticks=0
 min_ticks=${ticks[0]}
 for tick in "${ticks[@]}"
