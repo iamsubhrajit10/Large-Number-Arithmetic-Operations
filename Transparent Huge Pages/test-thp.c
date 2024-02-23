@@ -120,7 +120,7 @@ void multiply()
     int len1 = num1.length;
     int len2 = num2.length;    
     for(int i=0;i<len1;i++){
-      final_digits[i]=num1.digits[i]+num2.digits[i];
+      final_result.digits[i]=num1.digits[i]+num2.digits[i];
     }
 }
 
