@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
     final_result.length = num1.length + num2.length+1;
     final_result.digits = NULL;
     posix_memalign((void **)&final_result.digits, HPAGE_SIZE, final_result.length*(sizeof(int)));
-    int err = madvise(final_result.digits, final_result.length*(sizeof(int), MADV_HUGEPAGE));
+    int err = madvise(final_result.digits, final_result.length*(sizeof(int)), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise");
         exit(EXIT_FAILURE);
