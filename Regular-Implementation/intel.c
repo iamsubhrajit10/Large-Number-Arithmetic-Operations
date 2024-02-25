@@ -16,7 +16,7 @@ struct BigInteger num1;
 struct BigInteger num2;
 int NUMBER_OF_BITS;
 
-uint64_t start_ticks, end_ticks;
+uint64_t start_ticks, end_ticks,min_ticks,total_ticks;
 uint64_t min_ticks = UINT64_MAX;
 uint64_t total_ticks = 0;
 int iteration;
@@ -162,7 +162,18 @@ int main(int argc, char *argv[]) {
         final_result.length = num1.length+num2.length;
         final_result.digits = (int *)malloc(final_result.length * sizeof(int));
 
-        multiply();
+        for (int i =0;i<1000;i++){
+            printf("Iteration %d starting...\n",i);
+            multiply();
+            printf("Iteration %d done...\n",i);
+                // Record the ending ticks
+            total_ticks += (end_ticks - start_ticks);
+        
+            if ((end_ticks - start_ticks) < min_ticks) {
+                min_ticks = (end_ticks - start_ticks);
+            }
+            printf("Average ticks: %f, Min Ticks: %d\n",total_ticks/(i+1),min_ticks);
+        }
         
         // Print results to the file
         printResultsToFile(results_file);
