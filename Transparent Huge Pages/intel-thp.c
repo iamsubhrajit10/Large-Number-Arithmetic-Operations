@@ -222,7 +222,18 @@ void monitor_performance() {
     }
 
     // Your computation code goes here...
-
+     for (int i =0;i<1000;i++){
+        // printf("Iteration %d starting...\n",i);
+        multiply();
+        // printf("Iteration %d done...\n",i);
+            // Record the ending ticks
+        total_ticks += (end_ticks - start_ticks);
+    
+        if ((end_ticks - start_ticks) < min_ticks) {
+            min_ticks = (end_ticks - start_ticks);
+        } 
+            
+    }
     // Stop monitoring
     for (int i = 0; i < MAX_EVENTS; i++) {
         if (ioctl(fd[i], PERF_EVENT_IOC_DISABLE, 0) == -1) {
