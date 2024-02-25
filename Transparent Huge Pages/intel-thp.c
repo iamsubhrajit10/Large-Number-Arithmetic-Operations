@@ -12,6 +12,8 @@
 #include <sys/ioctl.h>
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
+#include <sys/syscall.h> // For syscall()
+#include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define HPAGE_SIZE (2<<21)
 #define MAX_EVENTS 2048 // Maximum number of events to retrieve
