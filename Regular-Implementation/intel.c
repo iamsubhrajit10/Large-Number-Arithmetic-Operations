@@ -16,7 +16,7 @@ struct BigInteger num1;
 struct BigInteger num2;
 int NUMBER_OF_BITS;
 
-uint64_t start_ticks, end_ticks,min_ticks,total_ticks;
+uint64_t start_ticks, end_ticks;
 uint64_t min_ticks = UINT64_MAX;
 uint64_t total_ticks = 0;
 int iteration;
@@ -27,7 +27,7 @@ char* generateRandomNumber(int seed) {
 
     // Initialize random number state
     gmp_randinit_default(state);
-    gmp_randseed_ui(state, time(NULL) + iteration+seed);
+    gmp_randseed_ui(state, time(NULL) + seed);
 
 
     // Initialize big number
