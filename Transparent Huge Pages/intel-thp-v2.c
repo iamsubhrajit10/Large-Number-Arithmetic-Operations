@@ -82,7 +82,7 @@ struct BigInteger initBigInteger(char *num_str[], int num_count) {
 }
 
 void freeBigInteger(struct BigInteger *num) {
-    madvise(num->digits, num->length * sizeof(int), MADV_DONTNEED);
+    madvise(num->digits, num->length, MADV_DONTNEED);
 }
 
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
