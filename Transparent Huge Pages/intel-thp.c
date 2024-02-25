@@ -173,7 +173,7 @@ void monitor_performance() {
     pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
 
     pe[3].type = PERF_TYPE_HW_CACHE;
-    pe[3].config = (PERF_COUNT_HW_CACHE_L3 | 
+    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
@@ -183,21 +183,25 @@ void monitor_performance() {
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
     pe[5].type = PERF_TYPE_HW_CACHE;
-    pe[5].config = (PERF_COUNT_HW_CACHE_LL | 
+    pe[5].config = (PERF_COUNT_HW_CACHE_DTLB | 
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
+    // Software Page Faults
     pe[6].type = PERF_TYPE_SOFTWARE;
-    pe[6].config = PERF_COUNT_SW_PAGE_ALLOC_THP;
+    pe[6].config = PERF_COUNT_SW_PAGE_FAULTS;
 
+    // THP Allocation Rate
     pe[7].type = PERF_TYPE_SOFTWARE;
-    pe[7].config = PERF_COUNT_SW_PAGE_SPLIT_THP;
+    pe[7].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
 
+    // THP Defragmentation
     pe[8].type = PERF_TYPE_SOFTWARE;
-    pe[8].config = PERF_COUNT_SW_PAGE_MIGRATION_THP;
+    pe[8].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
 
+    // THP Promotion
     pe[9].type = PERF_TYPE_SOFTWARE;
-    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_THP;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MAJFLT;
 
     int fd[MAX_EVENTS];
 
@@ -218,18 +222,7 @@ void monitor_performance() {
     }
 
     // Your computation code goes here...
-    for (int i =0;i<1000;i++){
-        // printf("Iteration %d starting...\n",i);
-        multiply();
-        // printf("Iteration %d done...\n",i);
-            // Record the ending ticks
-        total_ticks += (end_ticks - start_ticks);
-    
-        if ((end_ticks - start_ticks) < min_ticks) {
-            min_ticks = (end_ticks - start_ticks);
-        } 
-            
-    }
+
     // Stop monitoring
     for (int i = 0; i < MAX_EVENTS; i++) {
         if (ioctl(fd[i], PERF_EVENT_IOC_DISABLE, 0) == -1) {
@@ -250,19 +243,19 @@ void monitor_performance() {
     printf("CPU Cycles: %lu\n", values[0]);
     printf("Instructions: %lu\n", values[1]);
     printf("Software Page Faults: %lu\n", values[2]);
-    printf("L3 Cache Misses: %lu\n", values[3]);
-    printf("L1 Data Cache Misses: %lu\n", values[4]);
-    printf("L2 TLB Misses: %lu\n", values[5]);
-    printf("THP Allocation Rate: %lu\n", values[6]);
-    printf("THP Defragmentation: %lu\n", values[7]);
-    printf("THP Promotion: %lu\n", values[8]);
-    printf("THP Faults: %lu\n", values[9]);
+    printf("L1 Data Cache Misses: %lu\n", values[3]);
+    printf("L2 TLB Misses: %lu\n", values[4]);
+    printf("Major Page Allocation Rate: %lu\n", values[5]);
+    printf("Major Page Defragmentation: %lu\n", values[6]);
+    printf("Major Page Promotion: %lu\n", values[7]);
+    printf("Major Page Faults: %lu\n", values[8]);
 
     // Close the file descriptors
     for (int i = 0; i < MAX_EVENTS; i++) {
         close(fd[i]);
     }
 }
+
 
 
 int main(int argc, char *argv[]) {
