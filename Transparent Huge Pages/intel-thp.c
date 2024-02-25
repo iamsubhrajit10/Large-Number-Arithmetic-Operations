@@ -187,21 +187,21 @@ int main(int argc, char *argv[]) {
         final_result.digits[i] = 0;
     }
     for (int i =0;i<1000;i++){
-        printf("Iteration %d starting...\n",i);
+        // printf("Iteration %d starting...\n",i);
         multiply();
-        printf("Iteration %d done...\n",i);
+        // printf("Iteration %d done...\n",i);
             // Record the ending ticks
         total_ticks += (end_ticks - start_ticks);
     
         if ((end_ticks - start_ticks) < min_ticks) {
             min_ticks = (end_ticks - start_ticks);
         } 
-            printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(i+1),min_ticks);
+            
         }
 
     // Print results to the file
     printResultsToFile(results_file);
-    printf("Ticks: %ld\n",end_ticks-start_ticks);
+    printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(1000),min_ticks);
     freeBigInteger(&final_result);
     freeBigInteger(&num1);
     freeBigInteger(&num2);
