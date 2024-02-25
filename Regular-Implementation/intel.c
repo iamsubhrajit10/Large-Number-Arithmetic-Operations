@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
             if ((end_ticks - start_ticks) < min_ticks) {
                 min_ticks = (end_ticks - start_ticks);
             }
-            printf("Average ticks: %f, Min Ticks: %d\n",total_ticks/(i+1),min_ticks);
+            printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(i+1),min_ticks);
         }
         
         // Print results to the file
