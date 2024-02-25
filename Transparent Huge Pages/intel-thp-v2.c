@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
 
     // Perform multiplication
     for (int i = 0; i < NUM_BIG_NUMBERS; i += 2) {
-        multiply(&(nums[i]), &(nums[i + 1]), &final_results[i]);
+        multiply(&(nums)[i], &(nums)[i + 1], &final_results[i]);
         total_ticks += (end_ticks - start_ticks);
   
         if ((end_ticks - start_ticks) < min_ticks) {
