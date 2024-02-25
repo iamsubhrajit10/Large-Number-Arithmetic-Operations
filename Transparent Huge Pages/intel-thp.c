@@ -9,52 +9,18 @@
 #include <gmp.h>
 #include <float.h>
 #include <fcntl.h>  // For file opening
-#include <linux/perf_event.h>
 #include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
 
 #define HPAGE_SIZE (2<<21)
 #define MAX_EVENTS 2048 // Maximum number of events to retrieve
 
-// Function to open a file descriptor for a performance counter
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
-    return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
-}
+    int ret;
 
-// Function to retrieve and print all possible events
-void print_all_possible_events() {
-    struct perf_event_attr pe;
-    memset(&pe, 0, sizeof(struct perf_event_attr));
-    pe.type = PERF_TYPE_RAW; // Type of events to query
-    pe.size = sizeof(struct perf_event_attr);
-
-    int fd = perf_event_open(&pe, 0, -1, -1, 0); // Open the file descriptor
-    if (fd == -1) {
-        perror("Error opening performance counter");
-        exit(EXIT_FAILURE);
-    }
-
-    // Retrieve list of events
-    struct perf_event_query_query q;
-    memset(&q, 0, sizeof(q));
-    q.attr = pe;
-    q.flags = 0;
-
-    struct perf_event_query_bpf_event_desc desc[MAX_EVENTS];
-    memset(desc, 0, sizeof(desc));
-
-    if (ioctl(fd, PERF_EVENT_IOC_QUERY_BPF, &q) < 0) {
-        perror("Error querying BPF events");
-        close(fd);
-        exit(EXIT_FAILURE);
-    }
-
-    // Print the list of events
-    for (int i = 0; i < MAX_EVENTS; i++) {
-        if (desc[i].name[0] == '\0') break; // Stop if no more events
-        printf("Event name: %s\n", desc[i].name);
-    }
-
-    close(fd); // Close the file descriptor
+    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+    return ret;
 }
 
 struct BigInteger final_result;
@@ -196,7 +162,24 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s <No of bits>\n", argv[0]);
         return 1;
     }
-    print_all_possible_events();
+    struct perf_event_attr pe;
+    int fd;
+
+    memset(&pe, 0, sizeof(struct perf_event_attr));
+    pe.type = PERF_TYPE_HARDWARE;
+    pe.size = sizeof(struct perf_event_attr);
+    pe.config = PERF_COUNT_HW_CPU_CYCLES; // Example: measure CPU cycles
+    pe.disabled = 1;
+    pe.exclude_kernel = 1;
+    pe.exclude_hv = 1;
+
+    fd = perf_event_open(&pe, 0, -1, -1, 0);
+    if (fd == -1) {
+        fprintf(stderr, "Error opening perf event\n");
+        exit(EXIT_FAILURE);
+    }
+
+    
     NUMBER_OF_BITS = atoi(argv[1]);
 
     char CSV_FILENAME[100];
@@ -233,6 +216,9 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num1.length + num2.length; ++i) {
         final_result.digits[i] = 0;
     }
+    // Enable the counter
+    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+    
     for (int i =0;i<1000;i++){
         // printf("Iteration %d starting...\n",i);
         multiply();
@@ -244,7 +230,14 @@ int main(int argc, char *argv[]) {
             min_ticks = (end_ticks - start_ticks);
         } 
             
-        }
+    }
+    // Read the counter value
+    uint64_t count;
+    read(fd, &count, sizeof(uint64_t));
+    printf("Number of CPU cycles: %lu\n", count);
+
+    close(fd);
+    
 
     // Print results to the file
     printResultsToFile(results_file);
@@ -257,6 +250,7 @@ int main(int argc, char *argv[]) {
         printf("Error opening CSV file for writing!\n");
         return 1;
     }
+    
 
     fclose(results_file);
 
