@@ -201,7 +201,7 @@ void monitor_performance() {
 
     // THP Promotion
     pe[9].type = PERF_TYPE_SOFTWARE;
-    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MAJFLT;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
 
     int fd[MAX_EVENTS];
 
