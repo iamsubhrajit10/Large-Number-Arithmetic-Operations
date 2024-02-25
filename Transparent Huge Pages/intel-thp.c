@@ -16,7 +16,7 @@
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define HPAGE_SIZE (2<<21)
-#define MAX_EVENTS 2048 // Maximum number of events to retrieve
+#define MAX_EVENTS 6 // Adjust as needed
 
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
     int ret;
@@ -158,30 +158,97 @@ void multiply()
     }
     end_ticks = rdtsc();
 }
+void monitor_performance() {
+    struct perf_event_attr pe[MAX_EVENTS];
+    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+
+    // Define the events to monitor
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+
+    pe[2].type = PERF_TYPE_HARDWARE;
+    pe[2].config = PERF_COUNT_HW_PAGE_FAULTS;
+
+    pe[3].type = PERF_TYPE_HW_CACHE;
+    pe[3].config = (PERF_COUNT_HW_CACHE_LL | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = (PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[5].type = PERF_TYPE_HW_CACHE;
+    pe[5].config = (PERF_COUNT_HW_CACHE_ITLB | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    int fd[MAX_EVENTS];
+
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1) {
+            perror("Error opening performance counter");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Start monitoring
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        if (ioctl(fd[i], PERF_EVENT_IOC_ENABLE, 0) == -1) {
+            perror("Error enabling counter");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Your computation code goes here...
+    for (int i =0;i<1000;i++){
+        // printf("Iteration %d starting...\n",i);
+        multiply();
+        // printf("Iteration %d done...\n",i);
+            // Record the ending ticks
+        total_ticks += (end_ticks - start_ticks);
+    
+        if ((end_ticks - start_ticks) < min_ticks) {
+            min_ticks = (end_ticks - start_ticks);
+        } 
+            
+    }
+
+    // Stop monitoring
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        if (ioctl(fd[i], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+            perror("Error disabling counter");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Read and print the counter values
+    uint64_t values[MAX_EVENTS];
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        if (read(fd[i], &values[i], sizeof(uint64_t)) == -1) {
+            perror("Error reading counter value");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    printf("CPU Cycles: %lu\n", values[0]);
+    printf("Instructions: %lu\n", values[1]);
+    printf("Page Faults: %lu\n", values[2]);
+    printf("L3 Cache Misses: %lu\n", values[3]);
+    printf("L1 Data Cache Misses: %lu\n", values[4]);
+    printf("L2 TLB Misses: %lu\n", values[5]);
+
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
+}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         printf("Usage: %s <No of bits>\n", argv[0]);
         return 1;
     }
-    struct perf_event_attr pe;
-    int fd;
 
-    memset(&pe, 0, sizeof(struct perf_event_attr));
-    pe.type = PERF_TYPE_HARDWARE;
-    pe.size = sizeof(struct perf_event_attr);
-    pe.config = PERF_COUNT_HW_CPU_CYCLES; // Example: measure CPU cycles
-    pe.disabled = 1;
-    pe.exclude_kernel = 1;
-    pe.exclude_hv = 1;
-
-    fd = perf_event_open(&pe, 0, -1, -1, 0);
-    if (fd == -1) {
-        fprintf(stderr, "Error opening perf event\n");
-        exit(EXIT_FAILURE);
-    }
-
-    
     NUMBER_OF_BITS = atoi(argv[1]);
 
     char CSV_FILENAME[100];
@@ -218,27 +285,9 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num1.length + num2.length; ++i) {
         final_result.digits[i] = 0;
     }
-    // Enable the counter
-    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
     
-    for (int i =0;i<1000;i++){
-        // printf("Iteration %d starting...\n",i);
-        multiply();
-        // printf("Iteration %d done...\n",i);
-            // Record the ending ticks
-        total_ticks += (end_ticks - start_ticks);
-    
-        if ((end_ticks - start_ticks) < min_ticks) {
-            min_ticks = (end_ticks - start_ticks);
-        } 
-            
-    }
-    // Read the counter value
-    uint64_t count;
-    read(fd, &count, sizeof(uint64_t));
-    printf("Number of CPU cycles: %lu\n", count);
 
-    close(fd);
+
     
 
     // Print results to the file
