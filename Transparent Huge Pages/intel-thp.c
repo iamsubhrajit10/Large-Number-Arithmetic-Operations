@@ -286,7 +286,7 @@ int main(int argc, char *argv[]) {
         final_result.digits[i] = 0;
     }
     
-
+    monitor_performance();
 
     
 
