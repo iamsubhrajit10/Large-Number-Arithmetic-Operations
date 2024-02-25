@@ -109,27 +109,32 @@ static inline uint64_t rdtsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 
-void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigInteger *final_result) {
-    int len1 = num1->length;
-    int len2 = num2->length;    
-    long int product, carry;
+void multiply(struct BigInteger *n1, struct BigInteger *n2, struct BigInteger *result)
+{
+    int len1 = n1->length;
+    int len2 = n2->length;    
+    long int product,carry;
 
     start_ticks = rdtsc();
-    for (int i = 0; i < len1; i++) {
+    for (int i = 0; i < len1; i++)
+    {
         carry = 0;
-        for (int j = 0; j < len2; j++) {
-            product = num1->digits[i] * num2->digits[j] + final_result->digits[i + j] + carry;
+        for (int  j = 0; j < len2; j++)
+        {
+            product = n1->digits[i] * n2->digits[j] + result->digits[i + j] + carry;
             carry = product / 10;
-            final_result->digits[i + j] = product % 10;
+            result->digits[i + j] = product % 10;
         }
 
-        if (carry) {
-            final_result->digits[i + len2] += carry;
+        if (carry)
+        {
+            result->digits[i + len2] += carry;
         }
     }
 
-    while (final_result->length > 1 && final_result->digits[final_result->length - 1] == 0) {
-        final_result->length--;
+    while (result->length > 1 && result->digits[result->length - 1] == 0)
+    {
+        result->length--;
     }
     end_ticks = rdtsc();
 }
@@ -166,6 +171,19 @@ int main(int argc, char *argv[]) {
     // Initialize all 1000 big numbers at once
     struct BigInteger nums = initBigInteger(num_strs, NUM_BIG_NUMBERS * 2);
   
+    // Allocate memory for final results
+    for (int i = 0; i < NUM_BIG_NUMBERS; i++) {
+        final_results[i].length = nums.length * 2 + 1; // Length of the final result
+        final_results[i].digits = NULL;
+        posix_memalign((void **)&final_results[i].digits, HPAGE_SIZE, final_results[i].length * sizeof(int));
+        int err = madvise(final_results[i].digits, final_results[i].length * sizeof(int), MADV_HUGEPAGE);
+        if (err != 0) {
+            perror("madvise");
+            exit(EXIT_FAILURE);
+        }
+        final_results[i].digits[0] = 0;
+    }
+
     // Perform multiplication
     for (int i = 0; i < NUM_BIG_NUMBERS; i += 2) {
         multiply(&nums[i], &nums[i + 1], &final_results[i]);
