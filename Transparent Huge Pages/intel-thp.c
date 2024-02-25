@@ -169,8 +169,8 @@ void monitor_performance() {
     pe[1].type = PERF_TYPE_HARDWARE;
     pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
 
-    pe[2].type = PERF_TYPE_HARDWARE;
-    pe[2].config = PERF_COUNT_HW_PAGE_FAULTS;
+    pe[2].type = PERF_TYPE_SOFTWARE;
+    pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
 
     pe[3].type = PERF_TYPE_HW_CACHE;
     pe[3].config = (PERF_COUNT_HW_CACHE_LL | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
