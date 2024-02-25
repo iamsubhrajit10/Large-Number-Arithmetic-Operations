@@ -25,7 +25,7 @@ char* generateRandomNumber(int seed) {
 
     // Initialize random number state
     gmp_randinit_default(state);
-    gmp_randseed_ui(state, time(NULL) + iteration+seed);
+    gmp_randseed_ui(state, time(NULL) +seed);
 
 
     // Initialize big number
