@@ -294,6 +294,7 @@ void monitor_performance() {
     // Close the file descriptors
     for (int i = 0; i < MAX_EVENTS; i++) {
         close(fd[i]);
+    }
 }
 
 
