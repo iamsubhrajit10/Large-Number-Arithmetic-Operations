@@ -16,7 +16,7 @@
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define HPAGE_SIZE (2<<21)
-#define MAX_EVENTS 10 // Maximum number of events to monitor
+#define MAX_EVENTS 11 // Maximum number of events to monitor
 
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
     int ret;
@@ -158,8 +158,14 @@ void multiply()
     }
     end_ticks = rdtsc();
 }
+#define MAX_EVENTS 11
+
 void monitor_performance() {
     struct perf_event_attr pe[MAX_EVENTS];
+    int fd[MAX_EVENTS];
+    long long count[MAX_EVENTS];
+    int i;
+
     memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
 
     // Define the events to monitor
@@ -178,49 +184,56 @@ void monitor_performance() {
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
     pe[4].type = PERF_TYPE_HW_CACHE;
-    pe[4].config = (PERF_COUNT_HW_CACHE_L1D | 
+    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
-    pe[5].type = PERF_TYPE_HW_CACHE;
-    pe[5].config = (PERF_COUNT_HW_CACHE_DTLB | 
+    // Cache Misses
+    pe[5].type = PERF_TYPE_HARDWARE;
+    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
+
+    // TLB Misses
+    pe[6].type = PERF_TYPE_HW_CACHE;
+    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
-    // Software Page Faults
-    pe[6].type = PERF_TYPE_SOFTWARE;
-    pe[6].config = PERF_COUNT_SW_PAGE_FAULTS;
+    // Page Walks
+    pe[7].type = PERF_TYPE_HW_CACHE;
+    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
 
-    // THP Allocation Rate
-    pe[7].type = PERF_TYPE_SOFTWARE;
-    pe[7].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
-
-    // THP Defragmentation
+    // CPU Migrations
     pe[8].type = PERF_TYPE_SOFTWARE;
-    pe[8].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
 
-    // THP Promotion
+    // Minor page faults
     pe[9].type = PERF_TYPE_SOFTWARE;
-    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
 
-    int fd[MAX_EVENTS];
+    // Major page faults
+    pe[10].type = PERF_TYPE_SOFTWARE;
+    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
 
-    for (int i = 0; i < MAX_EVENTS; i++) {
+    // Open the events
+    for (i = 0; i < MAX_EVENTS; i++) {
         fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
         if (fd[i] == -1) {
-            perror("Error opening performance counter");
+            fprintf(stderr, "Error opening event %d\n", i);
             exit(EXIT_FAILURE);
         }
     }
 
-    // Start monitoring
-    for (int i = 0; i < MAX_EVENTS; i++) {
-        if (ioctl(fd[i], PERF_EVENT_IOC_ENABLE, 0) == -1) {
-            perror("Error enabling counter");
-            exit(EXIT_FAILURE);
-        }
+    // Start the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        ioctl(fd[i], PERF_EVENT_IOC_RESET, 0);
+        ioctl(fd[i], PERF_EVENT_IOC_ENABLE, 0);
     }
 
+    // Run your code here...
+
+    
     // Your computation code goes here...
      for (int i =0;i<1000;i++){
         // printf("Iteration %d starting...\n",i);
@@ -251,15 +264,18 @@ void monitor_performance() {
         }
     }
 
-    printf("CPU Cycles: %lu\n", values[0]);
-    printf("Instructions: %lu\n", values[1]);
-    printf("Software Page Faults: %lu\n", values[2]);
-    printf("L1 Data Cache Misses: %lu\n", values[3]);
-    printf("L2 TLB Misses: %lu\n", values[4]);
-    printf("Major Page Allocation Rate: %lu\n", values[5]);
-    printf("Major Page Defragmentation: %lu\n", values[6]);
-    printf("Major Page Promotion: %lu\n", values[7]);
-    printf("Major Page Faults: %lu\n", values[8]);
+    printf("PERF_COUNT_HW_CPU_CYCLES: %lu\n", values[0]);
+    printf("PERF_COUNT_HW_INSTRUCTIONS: %lu\n", values[1]);
+    printf("PERF_COUNT_SW_PAGE_FAULTS: %lu\n", values[2]);
+    printf("PERF_COUNT_HW_CACHE_L1D_MISS: %lu\n", values[3]);
+    printf("PERF_COUNT_HW_CACHE_DTLB_MISS: %lu\n", values[4]);
+    printf("PERF_COUNT_HW_CACHE_MISS: %lu\n", values[5]);
+    printf("PERF_COUNT_HW_CACHE_DTLB_MISS: %lu\n", values[6]);
+    printf("PERF_COUNT_HW_CACHE_DTLB_ACCESSES: %lu\n", values[7]);
+    printf("PERF_COUNT_SW_CPU_MIGRATIONS: %lu\n", values[8]);
+    printf("PERF_COUNT_SW_PAGE_FAULTS_MIN: %lu\n", values[9]);
+    printf("PERF_COUNT_SW_PAGE_FAULTS_MAJ: %lu\n", values[10]);
+    
 
     // Close the file descriptors
     for (int i = 0; i < MAX_EVENTS; i++) {
