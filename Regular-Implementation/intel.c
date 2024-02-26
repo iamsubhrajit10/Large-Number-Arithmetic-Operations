@@ -8,6 +8,12 @@
 #include <string.h>
 #include <gmp.h>
 #include <float.h>
+#include <fcntl.h>  // For file opening
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
+#include <sys/syscall.h> // For syscall()
+#include <asm/unistd.h>  // For __NR_perf_event_open
 
 
 
@@ -20,6 +26,137 @@ uint64_t start_ticks, end_ticks;
 uint64_t min_ticks = UINT64_MAX;
 uint64_t total_ticks = 0;
 int iteration;
+#define MAX_EVENTS 11 // Maximum number of events to monitor
+
+long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
+    int ret;
+
+    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+    return ret;
+}
+void monitor_performance() {
+    struct perf_event_attr pe[MAX_EVENTS];
+    int fd[MAX_EVENTS];
+    long long count[MAX_EVENTS];
+    int i;
+
+    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+
+    // Define the events to monitor
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+
+    pe[2].type = PERF_TYPE_SOFTWARE;
+    pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
+
+    pe[3].type = PERF_TYPE_HW_CACHE;
+    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Cache Misses
+    pe[5].type = PERF_TYPE_HARDWARE;
+    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
+
+    // TLB Misses
+    pe[6].type = PERF_TYPE_HW_CACHE;
+    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Page Walks
+    pe[7].type = PERF_TYPE_HW_CACHE;
+    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+
+    // CPU Migrations
+    pe[8].type = PERF_TYPE_SOFTWARE;
+    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
+
+    // Minor page faults
+    pe[9].type = PERF_TYPE_SOFTWARE;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+
+    // Major page faults
+    pe[10].type = PERF_TYPE_SOFTWARE;
+    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+
+    // Open the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1) {
+            fprintf(stderr, "Error opening event %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Start the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        ioctl(fd[i], PERF_EVENT_IOC_RESET, 0);
+        ioctl(fd[i], PERF_EVENT_IOC_ENABLE, 0);
+    }
+
+    // Run your code here...
+
+    
+    // Your computation code goes here...
+     for (int i =0;i<1000;i++){
+        // printf("Iteration %d starting...\n",i);
+        multiply();
+        // printf("Iteration %d done...\n",i);
+            // Record the ending ticks
+        total_ticks += (end_ticks - start_ticks);
+    
+        if ((end_ticks - start_ticks) < min_ticks) {
+            min_ticks = (end_ticks - start_ticks);
+        } 
+            
+    }
+    // Stop monitoring
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        if (ioctl(fd[i], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+            perror("Error disabling counter");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Read and print the counter values
+    uint64_t values[MAX_EVENTS];
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        if (read(fd[i], &values[i], sizeof(uint64_t)) == -1) {
+            perror("Error reading counter value");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    printf("PERF_COUNT_HW_CPU_CYCLES: %lu\n", values[0]);
+    printf("PERF_COUNT_HW_INSTRUCTIONS: %lu\n", values[1]);
+    printf("PERF_COUNT_SW_PAGE_FAULTS: %lu\n", values[2]);
+    printf("PERF_COUNT_HW_CACHE_L1D_MISS: %lu\n", values[3]);
+    printf("PERF_COUNT_HW_CACHE_DTLB_MISS: %lu\n", values[4]);
+    printf("PERF_COUNT_HW_CACHE_MISS: %lu\n", values[5]);
+    printf("PERF_COUNT_HW_CACHE_DTLB_MISS: %lu\n", values[6]);
+    printf("PERF_COUNT_HW_CACHE_DTLB_ACCESSES: %lu\n", values[7]);
+    printf("PERF_COUNT_SW_CPU_MIGRATIONS: %lu\n", values[8]);
+    printf("PERF_COUNT_SW_PAGE_FAULTS_MIN: %lu\n", values[9]);
+    printf("PERF_COUNT_SW_PAGE_FAULTS_MAJ: %lu\n", values[10]);
+    
+
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
+}
+
 
 char* generateRandomNumber(int seed) {
     gmp_randstate_t state;
@@ -162,29 +299,21 @@ int main(int argc, char *argv[]) {
         final_result.length = num1.length+num2.length;
         final_result.digits = (int *)malloc(final_result.length * sizeof(int));
 
-        for (int i =0;i<1000;i++){
-            // printf("Iteration %d starting...\n",i);
-            multiply();
-            // printf("Iteration %d done...\n",i);
-                // Record the ending ticks
-            total_ticks += (end_ticks - start_ticks);
-        
-            if ((end_ticks - start_ticks) < min_ticks) {
-                min_ticks = (end_ticks - start_ticks);
-            }
-            
-        }
-        
-        // Print results to the file
-        printResultsToFile(results_file);
-        printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(1000),min_ticks);
-        freeBigInteger(&final_result);
-        freeBigInteger(&num1);
-        freeBigInteger(&num2);
+       monitor_performance();
 
-    fclose(results_file);
+    
 
-    return 0;
+    // Print results to the file
+    printResultsToFile(results_file);
+    printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(1000),min_ticks);
+    freeBigInteger(&final_result);
+    freeBigInteger(&num1);
+    freeBigInteger(&num2);
+    // Print summary information
+    if (results_file == NULL) {
+        printf("Error opening CSV file for writing!\n");
+        return 1;
+    }
 
     return 0;
 }
