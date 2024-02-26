@@ -263,6 +263,10 @@ void monitor_performance() {
 
         // Your computation code goes here...
         multiply();
+        if(end_ticks - start_ticks < min_ticks){
+            min_ticks = end_ticks - start_ticks;
+        }
+        total_ticks += end_ticks - start_ticks;
 
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++) {
