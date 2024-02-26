@@ -241,11 +241,17 @@ void monitor_performance() {
     };
 
     // Open a file for writing
-    FILE *file = fopen("performance_data.txt", "w");
+    FILE *file = fopen("performance_data.csv", "w");
     if (file == NULL) {
         perror("Error opening file");
         exit(EXIT_FAILURE);
     }
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++) {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
 
     // Run your code here...
     for (int i = 0; i < 1000; i++) {
@@ -275,9 +281,9 @@ void monitor_performance() {
             }
         }
 
-        // Write the event type and counter values to the file
+        // Write the counter values to the CSV file
         for (int j = 0; j < MAX_EVENTS; j++) {
-            fprintf(file, "%s: %lu ", event_names[j], values[j]);
+            fprintf(file, "%lu,", values[j]);
         }
         fprintf(file, "\n");
     }
@@ -288,7 +294,6 @@ void monitor_performance() {
     // Close the file descriptors
     for (int i = 0; i < MAX_EVENTS; i++) {
         close(fd[i]);
-    }
 }
 
 
