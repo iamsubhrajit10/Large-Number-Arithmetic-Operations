@@ -293,25 +293,7 @@ void monitor_performance() {
         close(fd[i]);
     }
 }
-    printf("PERF_COUNT_HW_CPU_CYCLES: %lu\n", values[0]);
-    printf("PERF_COUNT_HW_INSTRUCTIONS: %lu\n", values[1]);
-    printf("PERF_COUNT_SW_PAGE_FAULTS: %lu\n", values[2]);
-    printf("PERF_COUNT_HW_CACHE_L1D_MISS: %lu\n", values[3]);
-    printf("PERF_COUNT_HW_CACHE_DTLB_MISS: %lu\n", values[4]);
-    printf("PERF_COUNT_HW_CACHE_MISS: %lu\n", values[5]);
-    printf("PERF_COUNT_HW_CACHE_DTLB_MISS: %lu\n", values[6]);
-    printf("PERF_COUNT_HW_CACHE_DTLB_ACCESSES: %lu\n", values[7]);
-    printf("PERF_COUNT_SW_CPU_MIGRATIONS: %lu\n", values[8]);
-    printf("PERF_COUNT_SW_PAGE_FAULTS_MIN: %lu\n", values[9]);
-    printf("PERF_COUNT_SW_PAGE_FAULTS_MAJ: %lu\n", values[10]);
     
-
-    // Close the file descriptors
-    for (int i = 0; i < MAX_EVENTS; i++) {
-        close(fd[i]);
-    }
-}
-
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         printf("Usage: %s <No of bits>\n", argv[0]);
