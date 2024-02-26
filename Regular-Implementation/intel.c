@@ -202,6 +202,7 @@ void monitor_performance() {
     pe[10].type = PERF_TYPE_SOFTWARE;
     pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
 
+
     // Open the events
     for (i = 0; i < MAX_EVENTS; i++) {
         fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
@@ -210,46 +211,88 @@ void monitor_performance() {
             exit(EXIT_FAILURE);
         }
     }
+    // Array of event type names
+    const char *event_names[MAX_EVENTS] = {
+        "PERF_COUNT_HW_CPU_CYCLES",
+        "PERF_COUNT_HW_INSTRUCTIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS",
+        "PERF_COUNT_HW_CACHE_L1D_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_ACCESSES",
+        "PERF_COUNT_SW_CPU_MIGRATIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS_MIN",
+        "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
+    };
 
-    // Start the events
-    for (i = 0; i < MAX_EVENTS; i++) {
-        ioctl(fd[i], PERF_EVENT_IOC_RESET, 0);
-        ioctl(fd[i], PERF_EVENT_IOC_ENABLE, 0);
+    // Open a file for writing
+    char binary_name[] = "intel"; // replace with actual binary name
+    int input_size = 100; // replace with actual input size
+
+    char filename[100];
+    sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+
+    FILE *file = fopen(filename, "w");
+    // file name should be perf_data_<binary_name>_<input_size>.csv
+    if (file == NULL) {
+        perror("Error opening file");
+        exit(EXIT_FAILURE);
     }
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++) {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
 
     // Run your code here...
+    for (int i = 0; i < 1000; i++) {
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
 
-    
-    // Your computation code goes here...
-     for (int i =0;i<1000;i++){
-        // printf("Iteration %d starting...\n",i);
+        // Your computation code goes here...
         multiply();
-        // printf("Iteration %d done...\n",i);
-            // Record the ending ticks
-        total_ticks += (end_ticks - start_ticks);
-    
-        if ((end_ticks - start_ticks) < min_ticks) {
-            min_ticks = (end_ticks - start_ticks);
-        } 
-            
-    }
-    // Stop monitoring
-    for (int i = 0; i < MAX_EVENTS; i++) {
-        if (ioctl(fd[i], PERF_EVENT_IOC_DISABLE, 0) == -1) {
-            perror("Error disabling counter");
-            exit(EXIT_FAILURE);
+        if(end_ticks - start_ticks < min_ticks){
+            min_ticks = end_ticks - start_ticks;
         }
+        total_ticks += end_ticks - start_ticks;
+
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Read and print the counter values
+        uint64_t values[MAX_EVENTS];
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1) {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            fprintf(file, "%lu,", values[j]);
+        }
+        fprintf(file, "\n");
     }
 
-    // Read and print the counter values
-    uint64_t values[MAX_EVENTS];
-    for (int i = 0; i < MAX_EVENTS; i++) {
-        if (read(fd[i], &values[i], sizeof(uint64_t)) == -1) {
-            perror("Error reading counter value");
-            exit(EXIT_FAILURE);
-        }
-    }
+    // Close the file
+    fclose(file);
 
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
+}
     printf("PERF_COUNT_HW_CPU_CYCLES: %lu\n", values[0]);
     printf("PERF_COUNT_HW_INSTRUCTIONS: %lu\n", values[1]);
     printf("PERF_COUNT_SW_PAGE_FAULTS: %lu\n", values[2]);

@@ -158,7 +158,6 @@ void multiply()
     }
     end_ticks = rdtsc();
 }
-#define MAX_EVENTS 11
 
 void monitor_performance() {
     struct perf_event_attr pe[MAX_EVENTS];
@@ -240,12 +239,14 @@ void monitor_performance() {
         "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
     };
 
-    // Open a file for writing
-    FILE *file = fopen("performance_data.csv", "w");
-    if (file == NULL) {
-        perror("Error opening file");
-        exit(EXIT_FAILURE);
-    }
+   // Open a file for writing
+    char binary_name[] = "intel-thp"; // replace with actual binary name
+    int input_size = 100; // replace with actual input size
+
+    char filename[100];
+    sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+
+    FILE *file = fopen(filename, "w");
 
     // Write the header to the CSV file
     for (int j = 0; j < MAX_EVENTS; j++) {
