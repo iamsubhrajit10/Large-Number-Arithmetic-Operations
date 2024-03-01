@@ -113,7 +113,7 @@ int main() {
         printf("Memory allocation failed for nums.\n");
         return 1;
     }
-    printf("Nums size: %ld\n", sizeof(nums));
+    printf("Nums size: %ld\n", sizeof(*nums));
     results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
     if (results == NULL) {
         printf("Memory allocation failed for results.\n");
