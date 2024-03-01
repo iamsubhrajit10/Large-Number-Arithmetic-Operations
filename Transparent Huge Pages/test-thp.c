@@ -140,7 +140,7 @@ int main() {
     //char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
     char *nums_space;
     posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(char));
-    int err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(char), MADV_HUGEPAGE);
+    err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(char), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise nums_space");
         exit(EXIT_FAILURE);
