@@ -231,7 +231,8 @@ int main() {
         }
 
         // Your computation code goes here...
-        multiply(&nums[i], &nums[i+1], &results[i]);
+        for (int j=0;j<1000000;j++)
+            multiply(&nums[i], &nums[i+1], &results[i]);
 
         if(end_ticks - start_ticks < min_ticks){
             min_ticks = end_ticks - start_ticks;
