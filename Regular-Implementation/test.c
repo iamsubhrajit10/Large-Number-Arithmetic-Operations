@@ -309,16 +309,16 @@ int main() {
     }
 
     // Free the allocated memory
-    for (int i = 0; i < NUM_DIGITS; i++) {
-        free(nums[i].digits);
-    }
-    free(nums);
-    for (int i = 0; i < NUM_DIGITS/2; i++) {
-        free(results[i].digits);
-    }
-    free(results);
-    free(nums_space);
-    free(results_space);
+    // for (int i = 0; i < NUM_DIGITS; i++) {
+    //     free(nums[i].digits);
+    // }
+    // free(nums);
+    // for (int i = 0; i < NUM_DIGITS/2; i++) {
+    //     free(results[i].digits);
+    // }
+    // free(results);
+    // free(nums_space);
+    // free(results_space);
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
     return 0;
