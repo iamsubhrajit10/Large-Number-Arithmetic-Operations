@@ -247,7 +247,7 @@ void monitor_performance() {
     fprintf(file, "\n");
 
     // Run your code here...
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 1000000; i++) {
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
@@ -330,7 +330,7 @@ int main(int argc, char *argv[]) {
 
     // Print results to the file
     printResultsToFile(results_file);
-    printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(1000),min_ticks);
+    printf("Average ticks: %f, Min Ticks: %ld\n",(double)total_ticks/(1000000),min_ticks);
     freeBigInteger(&final_result);
     freeBigInteger(&num1);
     freeBigInteger(&num2);
