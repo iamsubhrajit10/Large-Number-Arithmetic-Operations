@@ -154,7 +154,7 @@ int main() {
         printf("Memory allocation failed.\n");
         return 1;
     }
-    for (int i=0; i<NUM_DIGITS/2; i+=2) {
+    for (int i=0; i<NUM_DIGITS/2; i++) {
         int length = nums[i].length+nums[i+1].length+1;
         results[i].digits = results_space + i*(length + 1);
         if (results[i].digits == NULL) {
