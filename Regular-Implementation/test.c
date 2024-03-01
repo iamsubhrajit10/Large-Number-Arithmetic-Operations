@@ -16,6 +16,7 @@
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define NUM_DIGITS 500
+#define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
@@ -91,39 +92,70 @@ void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigIntege
     }
     end_ticks = rdtsc();
 }
+void generate_seed() {
+    // Get the current time
+    time_t now = time(0);
+
+    // Get the process ID
+    pid_t pid = getpid();
+
+    // Combine the current time and the process ID to create a seed
+    unsigned int seed = now ^ pid;
+
+    // Set the seed for the rand() function
+    srand(seed);
+}
 int main() {
     // Allocate memory for two integers
-    struct BigInteger *nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
-    struct BigInteger *results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
+    nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
+    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
 
     // Check if memory allocation was successful
     if (nums == NULL) {
-        printf("Memory allocation failed.\n");
+        printf("Memory allocation failed for nums.\n");
         return 1;
     }
+    if (results == NULL) {
+        printf("Memory allocation failed for results.\n");
+        return 1;
+    }
+    generate_seed();
+    char* sampleString = generateRandomNumber((rand() % 100) + 1);
+    int sample_length = strlen(sampleString);
 
+    // Preallocate memory for each integer and use it to generate random numbers
+    char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
     for (int i=0; i<NUM_DIGITS; i++) {
+        generate_seed();
         int randomNumber = (rand() % 100) + 1;
         char* randomString = generateRandomNumber(randomNumber);
         int length = strlen(randomString);
-        nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
-        strcpy(nums[i].digits, randomString);
-        nums[i].length = length;
+        //nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
+        nums[i].digits = nums_space + i*(length + 1);
         if (nums[i].digits == NULL) {
             printf("Memory allocation failed.\n");
             return 1;
         }
+        strcpy(nums[i].digits, randomString);
+        nums[i].length = length;
     }
+    generate_seed();
+    sampleString = generateRandomNumber((rand() % 100) + 1);
+    sample_length = strlen(randomString);
+    
+    // Preallocate memory for each integer and use it to generate random numbers
+    char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*sample_length + 1) * sizeof(char));
+    int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
-        results[i].digits = (char *)malloc((nums[i].length+nums[i+1].length+1) * sizeof(char));
+        int length = nums[i].length+nums[i+1].length+1;
+        //results[i].digits = (char *)malloc((nums[i].length+nums[i+1].length+1) * sizeof(char));
+        results[i].digits = results_space + j*(length + 1);
         results[i].length = nums[i].length+nums[i+1].length+1;
+        j++;
     }
 
-    // for (int i=0; i<NUM_DIGITS; i+=2) {
-
-    //     multiply(&nums[i], &nums[i+1], &results[i]);
-    // }
-        struct perf_event_attr pe[MAX_EVENTS];
+    // Define the events to monitor
+    struct perf_event_attr pe[MAX_EVENTS];
     int fd[MAX_EVENTS];
     long long count[MAX_EVENTS];
     int i;
@@ -231,7 +263,7 @@ int main() {
         }
 
         // Your computation code goes here...
-        for (int j=0;j<1000000;j++)
+        for (int j=0;j<NUM_ITERATIONS;j++)
             multiply(&nums[i], &nums[i+1], &results[i]);
 
         if(end_ticks - start_ticks < min_ticks){
@@ -271,11 +303,18 @@ int main() {
         close(fd[i]);
     }
 
-    // // Free the allocated memory
-    // for (int i = 0; i < NUM_DIGITS; i++) {
-    //     free(nums[i].digits);
-    // }
-    // free(nums);
-
+    // Free the allocated memory
+    for (int i = 0; i < NUM_DIGITS; i++) {
+        free(nums[i].digits);
+    }
+    free(nums);
+    for (int i = 0; i < NUM_DIGITS/2; i++) {
+        free(results[i].digits);
+    }
+    free(results);
+    free(nums_space);
+    free(results_space);
+    printf("Minimum ticks: %lu\n", min_ticks);
+    printf("Total ticks: %lu\n", total_ticks);
     return 0;
 }
