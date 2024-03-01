@@ -17,7 +17,7 @@
 
 #define NUM_DIGITS 100
 #define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 256
+#define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
 struct BigInteger *nums,*results;
@@ -243,19 +243,18 @@ int main() {
     char binary_name[] = "test"; // replace with actual binary name
     int input_size = 100; // replace with actual input size
 
+    // Open a file for writing
     char filename[100];
-    sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+    snprintf(filename, sizeof(filename), "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+    FILE *file = fopen(filename, "wb");
 
-    FILE *file = fopen(filename, "w");
-
-    if (file == NULL) {
-        perror("Error opening file");
-        return -1;
-    }
+    // Print counter values using %llu
+    //fprintf(file, "%llu,", values[j]);
 
     // Write the header to the CSV file
     for (int j = 0; j < MAX_EVENTS; j++) {
-        fprintf(file, "%s,", event_names[j]);
+        fprintf(file, "%llu,", event_names[j]);
+        //fprintf(file, "%s,", event_names[j]);
     }
     fprintf(file, "\n");
 
@@ -308,17 +307,6 @@ int main() {
         close(fd[i]);
     }
 
-    // Free the allocated memory
-    // for (int i = 0; i < NUM_DIGITS; i++) {
-    //     free(nums[i].digits);
-    // }
-    // free(nums);
-    // for (int i = 0; i < NUM_DIGITS/2; i++) {
-    //     free(results[i].digits);
-    // }
-    // free(results);
-    // free(nums_space);
-    // free(results_space);
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
     return 0;
