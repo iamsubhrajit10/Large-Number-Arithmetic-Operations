@@ -15,7 +15,7 @@
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
-#define NUM_DIGITS 50
+#define NUM_DIGITS 1000
 #define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
@@ -113,6 +113,13 @@ int main() {
         printf("Memory allocation failed for nums.\n");
         return 1;
     }
+    
+
+    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
+    if (results == NULL) {
+        printf("Memory allocation failed for results.\n");
+        return 1;
+    }
     generate_seed();
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
@@ -133,12 +140,6 @@ int main() {
         }
         strcpy(nums[i].digits, randomString);
         nums[i].length = length;
-    }
-
-    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
-    if (results == NULL) {
-        printf("Memory allocation failed for results.\n");
-        return 1;
     }
 
 
