@@ -122,20 +122,6 @@ int main() {
         perror("madvise results");
         exit(EXIT_FAILURE);
     }
-    //  // Allocate memory for two integers
-    // nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
-    // // Check if memory allocation was successful
-    // if (nums == NULL) {
-    //     printf("Memory allocation failed for nums.\n");
-    //     return 1;
-    // }
-    // //printf("Nums size: %ld\n", sizeof(nums));
-    // results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
-    // if (results == NULL) {
-    //     printf("Memory allocation failed for results.\n");
-    //     return 1;
-    // }
-    // //printf("Results size: %ld\n", sizeof(results));
 
     // Check if memory allocation was successful
     if (nums == NULL) {
@@ -184,16 +170,14 @@ int main() {
         perror("madvise results_space");
         exit(EXIT_FAILURE);
     }
-    int j=0;
-    for (int i=0; i<NUM_DIGITS; i+=2) {
+    for (int i=0; i<NUM_DIGITS/2; i++) {
         int length = nums[i].length+nums[i+1].length+1;
-        if (j*(length + 1) >= (NUM_DIGITS/2)*(2*(sample_length+1) + 1)) {
-            fprintf(stderr, "Out of bounds access in results_space\n");
-            exit(1);
+        results[i].digits = results_space + i*(length + 1);
+        if (results[i].digits == NULL) {
+            printf("Memory allocation failed.\n");
+            return 1;
         }
-        results[i].digits = results_space + j*(length + 1);
         results[i].length = length;
-        j++;
     }
     /* monitoring performance */
     struct perf_event_attr pe[MAX_EVENTS];
@@ -294,6 +278,7 @@ int main() {
     }
     fprintf(file, "\n");
 
+     int k=0;
     // Run your code here...
     for (int i = 0; i < NUM_DIGITS; i+=2) {
         // Start the events
@@ -301,11 +286,11 @@ int main() {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
-
+        
         // Your computation code goes here...
         for (int j=0;j<NUM_ITERATIONS;j++)
-            multiply(&nums[i], &nums[i+1], &results[i]);
-
+            multiply(&nums[i], &nums[i+1], &results[k]);
+        k++;
         if(end_ticks - start_ticks < min_ticks){
             min_ticks = end_ticks - start_ticks;
         }
