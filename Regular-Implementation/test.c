@@ -146,7 +146,7 @@ int main() {
     printf("Sample Length: %d\n", sample_length);
     
     // Preallocate memory for each integer and use it to generate random numbers
-    char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*sample_length + 1) * sizeof(char));
+    char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
     int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
