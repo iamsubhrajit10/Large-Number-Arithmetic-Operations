@@ -210,7 +210,7 @@ int main() {
     sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
 
     FILE *file = fopen(filename, "w");
-    FILE *file = fopen(filename, "w");
+
     if (file == NULL) {
         perror("Error opening file");
         return -1;
