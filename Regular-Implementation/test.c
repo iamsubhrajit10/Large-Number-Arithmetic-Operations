@@ -113,13 +113,6 @@ int main() {
         printf("Memory allocation failed for nums.\n");
         return 1;
     }
-    //printf("Nums size: %ld\n", sizeof(nums));
-    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
-    if (results == NULL) {
-        printf("Memory allocation failed for results.\n");
-        return 1;
-    }
-    //printf("Results size: %ld\n", sizeof(results));
     generate_seed();
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
@@ -141,6 +134,15 @@ int main() {
         strcpy(nums[i].digits, randomString);
         nums[i].length = length;
     }
+
+    //printf("Nums size: %ld\n", sizeof(nums));
+    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
+    if (results == NULL) {
+        printf("Memory allocation failed for results.\n");
+        return 1;
+    }
+    //printf("Results size: %ld\n", sizeof(results));
+
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
     sample_length = strlen(sampleString);
