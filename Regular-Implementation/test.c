@@ -6,6 +6,22 @@
 
 #define NUM_DIGITS 10000
 #define NUMBER_OF_BITS 8192
+#define MAX_EVENTS 11 // Maximum number of events to monitor
+uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
+struct BigInteger *nums,*results;
+
+long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
+    int ret;
+
+    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+    return ret;
+}
+// Function to get the current value of the Time Stamp Counter
+static inline uint64_t rdtsc(void) {
+    unsigned int lo, hi;
+    asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
 
 struct BigInteger
 {
@@ -36,10 +52,181 @@ char* generateRandomNumber(int seed) {
 
     return resultString;
 }
+void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigInteger *final_result)
+{
+    int len1 = num1->length;
+    int len2 = num2->length;    
+    long int product,carry;
+    start_ticks = rdtsc();
+    for (int i = 0; i < len1; i++)
+    {
+        carry = 0;
+        for (int  j = 0; j < len2; j++)
+        {
+            product = num1->digits[i] * num2->digits[j] + final_result->digits[i + j] + carry;
+            carry = product / 10;
+            final_result->digits[i + j] = product % 10;
+        }
+
+        if (carry)
+        {
+            final_result->digits[i + len2] += carry;
+        }
+    }
+
+    while (final_result->length > 1 && final_result->digits[final_result->length - 1] == 0)
+    {
+        final_result->length--;
+    }
+    end_ticks = rdtsc();
+}
+void monitor_performance() {
+    struct perf_event_attr pe[MAX_EVENTS];
+    int fd[MAX_EVENTS];
+    long long count[MAX_EVENTS];
+    int i;
+
+    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+
+    // Define the events to monitor
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+
+    pe[2].type = PERF_TYPE_SOFTWARE;
+    pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
+
+    pe[3].type = PERF_TYPE_HW_CACHE;
+    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Cache Misses
+    pe[5].type = PERF_TYPE_HARDWARE;
+    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
+
+    // TLB Misses
+    pe[6].type = PERF_TYPE_HW_CACHE;
+    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Page Walks
+    pe[7].type = PERF_TYPE_HW_CACHE;
+    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+
+    // CPU Migrations
+    pe[8].type = PERF_TYPE_SOFTWARE;
+    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
+
+    // Minor page faults
+    pe[9].type = PERF_TYPE_SOFTWARE;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+
+    // Major page faults
+    pe[10].type = PERF_TYPE_SOFTWARE;
+    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+
+
+    // Open the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1) {
+            fprintf(stderr, "Error opening event %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
+    // Array of event type names
+    const char *event_names[MAX_EVENTS] = {
+        "PERF_COUNT_HW_CPU_CYCLES",
+        "PERF_COUNT_HW_INSTRUCTIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS",
+        "PERF_COUNT_HW_CACHE_L1D_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_ACCESSES",
+        "PERF_COUNT_SW_CPU_MIGRATIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS_MIN",
+        "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
+    };
+
+   // Open a file for writing
+    char binary_name[] = "test"; // replace with actual binary name
+    int input_size = 100; // replace with actual input size
+
+    char filename[100];
+    sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+
+    FILE *file = fopen(filename, "w");
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++) {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
+
+    // Run your code here...
+    for (int i = 0; i < 1000000; i++) {
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+
+        // Your computation code goes here...
+        multiply();
+        if(end_ticks - start_ticks < min_ticks){
+            min_ticks = end_ticks - start_ticks;
+        }
+        total_ticks += end_ticks - start_ticks;
+
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Read and print the counter values
+        uint64_t values[MAX_EVENTS];
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1) {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            fprintf(file, "%lu,", values[j]);
+        }
+        fprintf(file, "\n");
+    }
+
+    // Close the file
+    fclose(file);
+
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
+}
 
 int main() {
     // Allocate memory for two integers
     struct BigInteger *nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
+    struct BigInteger *results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
 
     // Check if memory allocation was successful
     if (nums == NULL) {
@@ -59,10 +246,156 @@ int main() {
             return 1;
         }
     }
+    for (int i=0; i<NUM_DIGITS; i+=2) {
+        results[i].digits = (char *)malloc((nums[i].length+nums[i+1].length+1) * sizeof(char));
+        results[i].length = nums[i].length+nums[i+1].length+1;
+    }
 
-    // Print the values
-    printf("First integer: %s\n", nums[0].digits);
-    printf("Second integer: %s\n", nums[1].digits);
+    // for (int i=0; i<NUM_DIGITS; i+=2) {
+
+    //     multiply(&nums[i], &nums[i+1], &results[i]);
+    // }
+        struct perf_event_attr pe[MAX_EVENTS];
+    int fd[MAX_EVENTS];
+    long long count[MAX_EVENTS];
+    int i;
+
+    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+
+    // Define the events to monitor
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+
+    pe[2].type = PERF_TYPE_SOFTWARE;
+    pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
+
+    pe[3].type = PERF_TYPE_HW_CACHE;
+    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Cache Misses
+    pe[5].type = PERF_TYPE_HARDWARE;
+    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
+
+    // TLB Misses
+    pe[6].type = PERF_TYPE_HW_CACHE;
+    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Page Walks
+    pe[7].type = PERF_TYPE_HW_CACHE;
+    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+
+    // CPU Migrations
+    pe[8].type = PERF_TYPE_SOFTWARE;
+    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
+
+    // Minor page faults
+    pe[9].type = PERF_TYPE_SOFTWARE;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+
+    // Major page faults
+    pe[10].type = PERF_TYPE_SOFTWARE;
+    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+
+
+    // Open the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1) {
+            fprintf(stderr, "Error opening event %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
+    // Array of event type names
+    const char *event_names[MAX_EVENTS] = {
+        "PERF_COUNT_HW_CPU_CYCLES",
+        "PERF_COUNT_HW_INSTRUCTIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS",
+        "PERF_COUNT_HW_CACHE_L1D_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_ACCESSES",
+        "PERF_COUNT_SW_CPU_MIGRATIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS_MIN",
+        "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
+    };
+
+   // Open a file for writing
+    char binary_name[] = "intel-thp"; // replace with actual binary name
+    int input_size = 100; // replace with actual input size
+
+    char filename[100];
+    sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+
+    FILE *file = fopen(filename, "w");
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++) {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
+
+    // Run your code here...
+    for (int i = 0; i < NUM_DIGITS; i+=2) {
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+
+        // Your computation code goes here...
+        multiply(&nums[i], &nums[i+1], &results[i]);
+        
+        if(end_ticks - start_ticks < min_ticks){
+            min_ticks = end_ticks - start_ticks;
+        }
+        total_ticks += end_ticks - start_ticks;
+
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Read and print the counter values
+        uint64_t values[MAX_EVENTS];
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1) {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            fprintf(file, "%lu,", values[j]);
+        }
+        fprintf(file, "\n");
+    }
+
+    // Close the file
+    fclose(file);
+
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
 
     // Free the allocated memory
     for (int i = 0; i < NUM_DIGITS; i++) {
