@@ -1,1 +1,1 @@
-Average ticks: 111829.454917, Min Ticks: 109997
+Average ticks: 111979.662692, Min Ticks: 110178
