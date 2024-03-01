@@ -135,13 +135,12 @@ int main() {
         nums[i].length = length;
     }
 
-    //printf("Nums size: %ld\n", sizeof(nums));
     results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
     if (results == NULL) {
         printf("Memory allocation failed for results.\n");
         return 1;
     }
-    //printf("Results size: %ld\n", sizeof(results));
+
 
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
@@ -150,13 +149,14 @@ int main() {
     // Preallocate memory for each integer and use it to generate random numbers
     char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
     //printf("Results Space size: %ld\n", sizeof(results_space));
+    if (results_space == NULL) {
+        printf("Memory allocation failed.\n");
+        return 1;
+    }
     int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
-        if (j*(length + 1) >= (NUM_DIGITS/2)*(2*(sample_length+1) + 1)) {
-            fprintf(stderr, "Out of bounds access in results_space\n");
-            exit(1);
-        }
+
         results[i].digits = results_space + j*(length + 1);
         results[i].length = length;
         j++;
@@ -260,7 +260,7 @@ int main() {
         fprintf(file, "%s,", event_names[j]);
     }
     fprintf(file, "\n");
-
+    int k=0;
     // Run your code here...
     for (int i = 0; i < NUM_DIGITS; i+=2) {
         // Start the events
@@ -268,11 +268,11 @@ int main() {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
-
+        
         // Your computation code goes here...
         for (int j=0;j<NUM_ITERATIONS;j++)
-            multiply(&nums[i], &nums[i+1], &results[i]);
-
+            multiply(&nums[i], &nums[i+1], &results[k]);
+        k++;
         if(end_ticks - start_ticks < min_ticks){
             min_ticks = end_ticks - start_ticks;
         }
