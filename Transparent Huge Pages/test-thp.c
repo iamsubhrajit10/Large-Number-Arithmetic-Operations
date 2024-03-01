@@ -109,19 +109,33 @@ void generate_seed() {
 }
 
 int main() {
-    // Allocate memory for two integers
-    posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
-    int err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise nums");
-        exit(EXIT_FAILURE);
+    // // Allocate memory for two integers
+    // posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
+    // int err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
+    // if (err != 0) {
+    //     perror("madvise nums");
+    //     exit(EXIT_FAILURE);
+    // }
+    // posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS/2) * sizeof(struct BigInteger));
+    // err = madvise(results, (NUM_DIGITS/2) * sizeof(struct BigInteger), MADV_HUGEPAGE);
+    // if (err != 0) {
+    //     perror("madvise results");
+    //     exit(EXIT_FAILURE);
+    // }
+     // Allocate memory for two integers
+    nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
+    // Check if memory allocation was successful
+    if (nums == NULL) {
+        printf("Memory allocation failed for nums.\n");
+        return 1;
     }
-    posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS/2) * sizeof(struct BigInteger));
-    err = madvise(results, (NUM_DIGITS/2) * sizeof(struct BigInteger), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise results");
-        exit(EXIT_FAILURE);
+    //printf("Nums size: %ld\n", sizeof(nums));
+    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
+    if (results == NULL) {
+        printf("Memory allocation failed for results.\n");
+        return 1;
     }
+    //printf("Results size: %ld\n", sizeof(results));
 
     // Check if memory allocation was successful
     if (nums == NULL) {
