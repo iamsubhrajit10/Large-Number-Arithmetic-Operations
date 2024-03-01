@@ -17,7 +17,7 @@
 
 #define NUM_DIGITS 100
 #define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 256
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
 struct BigInteger *nums,*results;
