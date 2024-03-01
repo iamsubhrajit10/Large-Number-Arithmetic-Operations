@@ -16,6 +16,7 @@
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define NUM_DIGITS 500
+#define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
@@ -93,18 +94,32 @@ void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigIntege
     }
     end_ticks = rdtsc();
 }
+void generate_seed() {
+    // Get the current time
+    time_t now = time(0);
+
+    // Get the process ID
+    pid_t pid = getpid();
+
+    // Combine the current time and the process ID to create a seed
+    unsigned int seed = now ^ pid;
+
+    // Set the seed for the rand() function
+    srand(seed);
+}
+
 int main() {
     // Allocate memory for two integers
     posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
     int err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
     if (err != 0) {
-        perror("madvise");
+        perror("madvise nums");
         exit(EXIT_FAILURE);
     }
     posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS/2) * sizeof(struct BigInteger));
     err = madvise(results, (NUM_DIGITS/2) * sizeof(struct BigInteger), MADV_HUGEPAGE);
     if (err != 0) {
-        perror("madvise");
+        perror("madvise results");
         exit(EXIT_FAILURE);
     }
 
@@ -117,23 +132,54 @@ int main() {
         printf("Memory allocation failed for nums.\n");
         return 1;
     }
+    generate_seed();
+    char* sampleString = generateRandomNumber((rand() % 100) + 1);
+    int sample_length = strlen(sampleString);
 
-
-    for (int i=0; i<NUM_DIGITS; i++) {
+    // Preallocate memory for each integer and use it to generate random numbers
+    //char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
+    char *nums_space;
+    posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(char));
+    int err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise nums_space");
+        exit(EXIT_FAILURE);
+    }
+     for (int i=0; i<NUM_DIGITS; i++) {
+        generate_seed();
         int randomNumber = (rand() % 100) + 1;
         char* randomString = generateRandomNumber(randomNumber);
         int length = strlen(randomString);
-        nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
-        strcpy(nums[i].digits, randomString);
-        nums[i].length = length;
+        //nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
+        nums[i].digits = nums_space + i*(length + 1);
         if (nums[i].digits == NULL) {
             printf("Memory allocation failed.\n");
             return 1;
         }
+        strcpy(nums[i].digits, randomString);
+        nums[i].length = length;
     }
+    generate_seed();
+    sampleString = generateRandomNumber((rand() % 100) + 1);
+    sample_length = strlen(sampleString);
+    //char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
+    char *results_space;
+    posix_memalign((void **)&results_space, HPAGE_SIZE, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
+    err = madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise results_space");
+        exit(EXIT_FAILURE);
+    }
+    int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
-        results[i].digits = (char *)malloc((nums[i].length+nums[i+1].length+1) * sizeof(char));
-        results[i].length = nums[i].length+nums[i+1].length+1;
+        int length = nums[i].length+nums[i+1].length+1;
+        if (j*(length + 1) >= (NUM_DIGITS/2)*(2*(sample_length+1) + 1)) {
+            fprintf(stderr, "Out of bounds access in results_space\n");
+            exit(1);
+        }
+        results[i].digits = results_space + j*(length + 1);
+        results[i].length = length;
+        j++;
     }
     /* monitoring performance */
     struct perf_event_attr pe[MAX_EVENTS];
@@ -220,8 +266,7 @@ int main() {
     int input_size = 100; // replace with actual input size
 
     char filename[100];
-    sprintf(filename, "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
-
+    snprintf(filename, sizeof(filename), "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
     FILE *file = fopen(filename, "w");
 
     if (file == NULL) {
