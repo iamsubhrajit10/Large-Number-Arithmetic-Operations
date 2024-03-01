@@ -141,7 +141,7 @@ int main() {
     }
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
-    sample_length = strlen(randomString);
+    sample_length = strlen(sampleString);
     
     // Preallocate memory for each integer and use it to generate random numbers
     char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*sample_length + 1) * sizeof(char));
