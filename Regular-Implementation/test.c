@@ -130,6 +130,7 @@ int main() {
         int randomNumber = (rand() % 100) + 1;
         char* randomString = generateRandomNumber(randomNumber);
         int length = strlen(randomString);
+        printf("Digits Length: %d\n", length);
         //nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
         nums[i].digits = nums_space + i*(length + 1);
         if (nums[i].digits == NULL) {
@@ -148,6 +149,7 @@ int main() {
     int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
+        // printf("Length: %d\n", length);
         //results[i].digits = (char *)malloc((nums[i].length+nums[i+1].length+1) * sizeof(char));
         results[i].digits = results_space + j*(length + 1);
         results[i].length = nums[i].length+nums[i+1].length+1;
