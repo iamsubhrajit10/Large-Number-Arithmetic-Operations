@@ -113,20 +113,20 @@ int main() {
         printf("Memory allocation failed for nums.\n");
         return 1;
     }
-    printf("Nums size: %ld\n", sizeof(nums));
+    //printf("Nums size: %ld\n", sizeof(nums));
     results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
     if (results == NULL) {
         printf("Memory allocation failed for results.\n");
         return 1;
     }
-    printf("Results size: %ld\n", sizeof(results));
+    //printf("Results size: %ld\n", sizeof(results));
     generate_seed();
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
 
     // Preallocate memory for each integer and use it to generate random numbers
     char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
-    printf("Nums Space size: %ld\n", sizeof(nums_space));
+    //printf("Nums Space size: %ld\n", sizeof(nums_space));
     for (int i=0; i<NUM_DIGITS; i++) {
         generate_seed();
         int randomNumber = (rand() % 100) + 1;
@@ -147,7 +147,7 @@ int main() {
     
     // Preallocate memory for each integer and use it to generate random numbers
     char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
-    printf("Results Space size: %ld\n", sizeof(results_space));
+    //printf("Results Space size: %ld\n", sizeof(results_space));
     int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
