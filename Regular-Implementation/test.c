@@ -270,10 +270,10 @@ int main() {
         close(fd[i]);
     }
 
-    // Free the allocated memory
-    for (int i = 0; i < NUM_DIGITS; i++) {
-        free(nums[i].digits);
-    }
+    // // Free the allocated memory
+    // for (int i = 0; i < NUM_DIGITS; i++) {
+    //     free(nums[i].digits);
+    // }
     free(nums);
 
     return 0;
