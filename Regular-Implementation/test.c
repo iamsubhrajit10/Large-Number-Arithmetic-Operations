@@ -108,29 +108,30 @@ void generate_seed() {
 int main() {
     // Allocate memory for two integers
     nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
-    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
-
     // Check if memory allocation was successful
     if (nums == NULL) {
         printf("Memory allocation failed for nums.\n");
         return 1;
     }
+    printf("Nums size: %d\n", sizeof(nums));
+    results = (struct BigInteger *)malloc((NUM_DIGITS/2) * sizeof(struct BigInteger));
     if (results == NULL) {
         printf("Memory allocation failed for results.\n");
         return 1;
     }
+    printf("Results size: %d\n", sizeof(results));
     generate_seed();
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
 
     // Preallocate memory for each integer and use it to generate random numbers
     char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
+    printf("Nums Space: %p\n", nums_space);
     for (int i=0; i<NUM_DIGITS; i++) {
         generate_seed();
         int randomNumber = (rand() % 100) + 1;
         char* randomString = generateRandomNumber(randomNumber);
         int length = strlen(randomString);
-        printf("Digits Length: %d\n", length);
         //nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
         nums[i].digits = nums_space + i*(length + 1);
         if (nums[i].digits == NULL) {
@@ -143,10 +144,10 @@ int main() {
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
     sample_length = strlen(sampleString);
-    printf("Sample Length: %d\n", sample_length);
     
     // Preallocate memory for each integer and use it to generate random numbers
     char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
+    printf("Results Space: %p\n", results_space);
     int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
@@ -243,18 +244,18 @@ int main() {
     char binary_name[] = "test"; // replace with actual binary name
     int input_size = 100; // replace with actual input size
 
-    // Open a file for writing
     char filename[100];
     snprintf(filename, sizeof(filename), "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
-    FILE *file = fopen(filename, "wb");
+    FILE *file = fopen(filename, "w");
 
-    // Print counter values using %llu
-    //fprintf(file, "%llu,", values[j]);
+    if (file == NULL) {
+        perror("Error opening file");
+        return -1;
+    }
 
     // Write the header to the CSV file
     for (int j = 0; j < MAX_EVENTS; j++) {
-        fprintf(file, "%llu,", event_names[j]);
-        //fprintf(file, "%s,", event_names[j]);
+        fprintf(file, "%s,", event_names[j]);
     }
     fprintf(file, "\n");
 
