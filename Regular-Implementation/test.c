@@ -1,8 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <gmp.h>
 #include <time.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
+#include <gmp.h>
+#include <float.h>
+#include <fcntl.h>  // For file opening
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
+#include <sys/syscall.h> // For syscall()
+#include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define NUM_DIGITS 10000
 #define NUMBER_OF_BITS 8192
@@ -359,7 +370,7 @@ int main() {
 
         // Your computation code goes here...
         multiply(&nums[i], &nums[i+1], &results[i]);
-        
+
         if(end_ticks - start_ticks < min_ticks){
             min_ticks = end_ticks - start_ticks;
         }
