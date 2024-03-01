@@ -274,7 +274,7 @@ int main() {
     // for (int i = 0; i < NUM_DIGITS; i++) {
     //     free(nums[i].digits);
     // }
-    free(nums);
+    // free(nums);
 
     return 0;
 }
