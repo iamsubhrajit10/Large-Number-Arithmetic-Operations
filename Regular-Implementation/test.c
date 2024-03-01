@@ -143,14 +143,13 @@ int main() {
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
     sample_length = strlen(sampleString);
+    printf("Sample Length: %d\n", sample_length);
     
     // Preallocate memory for each integer and use it to generate random numbers
     char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*sample_length + 1) * sizeof(char));
     int j=0;
     for (int i=0; i<NUM_DIGITS; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
-        // printf("Length: %d\n", length);
-        //results[i].digits = (char *)malloc((nums[i].length+nums[i+1].length+1) * sizeof(char));
         results[i].digits = results_space + j*(length + 1);
         results[i].length = nums[i].length+nums[i+1].length+1;
         j++;
