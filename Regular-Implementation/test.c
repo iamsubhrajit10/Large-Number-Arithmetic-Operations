@@ -203,7 +203,7 @@ int main() {
     };
 
    // Open a file for writing
-    char binary_name[] = "intel-thp"; // replace with actual binary name
+    char binary_name[] = "test"; // replace with actual binary name
     int input_size = 100; // replace with actual input size
 
     char filename[100];
