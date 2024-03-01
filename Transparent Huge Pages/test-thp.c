@@ -342,6 +342,7 @@ int main() {
     for (int i = 0; i < MAX_EVENTS; i++) {
         close(fd[i]);
     }
-
+    printf("Minimum ticks: %lu\n", min_ticks);
+    printf("Total ticks: %lu\n", total_ticks);
     return 0;
 }
