@@ -154,13 +154,14 @@ int main() {
         printf("Memory allocation failed.\n");
         return 1;
     }
-    int j=0;
-    for (int i=0; i<NUM_DIGITS; i+=2) {
+    for (int i=0; i<NUM_DIGITS/2; i+=2) {
         int length = nums[i].length+nums[i+1].length+1;
-
-        results[i].digits = results_space + j*(length + 1);
+        results[i].digits = results_space + i*(length + 1);
+        if (results[i].digits == NULL) {
+            printf("Memory allocation failed.\n");
+            return 1;
+        }
         results[i].length = length;
-        j++;
     }
 
     // Define the events to monitor
