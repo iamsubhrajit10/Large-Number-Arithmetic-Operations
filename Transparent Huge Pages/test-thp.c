@@ -15,8 +15,8 @@
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
-#define NUM_DIGITS 1000
-#define NUM_ITERATIONS 1
+#define NUM_DIGITS 2000
+#define NUM_ITERATIONS 2
 #define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
@@ -281,7 +281,7 @@ int main() {
      int k=0;
     // Run your code here...
 
-    printf("Starting the computation for thp...\n");
+    // printf("Starting the computation for thp...\n");
     for (int i = 0; i < NUM_DIGITS; i+=2) {
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
@@ -320,9 +320,9 @@ int main() {
             fprintf(file, "%lu,", values[j]);
         }
         fprintf(file, "\n");
-        printf("Iteration %d\n",i);
+        // printf("Iteration %d\n",i);
     }
-    printf("Ending the computation for thp...\n");
+    // printf("Ending the computation for thp...\n");
 
     // Close the file
     fclose(file);
