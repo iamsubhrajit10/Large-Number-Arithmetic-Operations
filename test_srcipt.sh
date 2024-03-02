@@ -2,8 +2,8 @@
 
 cd ./Transparent\ Huge\ Pages
 gcc -o test-thp test-thp.c -lgmp
-sudo ./test-thp > test-thp-dump.txt
+sudo ./test-thp | tee test-thp-dump.txt
 
 cd ../Regular-Implementation
 gcc -o test test.c -lgmp
-sudo ./test > test-dump.txt
+sudo ./test | tee test-dump.txt

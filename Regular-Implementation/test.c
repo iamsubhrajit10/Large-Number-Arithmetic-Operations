@@ -264,6 +264,7 @@ int main() {
     fprintf(file, "\n");
     int k=0;
     // Run your code here...
+    printf("Starting the computation for non-thp...\n");
     for (int i = 0; i < NUM_DIGITS; i+=2) {
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
@@ -302,7 +303,9 @@ int main() {
             fprintf(file, "%lu,", values[j]);
         }
         fprintf(file, "\n");
+        printf("Iteration %d\n",i);
     }
+    printf("Ending the computation for non-thp...\n");
 
     // Close the file
     fclose(file);
