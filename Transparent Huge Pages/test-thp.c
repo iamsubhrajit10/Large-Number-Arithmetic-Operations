@@ -290,14 +290,15 @@ int main() {
         }
         
         // Your computation code goes here...
-        for (int j=0;j<NUM_ITERATIONS;j++)
+        for (int j=0;j<NUM_ITERATIONS;j++){
             multiply(&nums[i], &nums[i+1], &results[k]);
+            if(end_ticks - start_ticks < min_ticks){
+                min_ticks = end_ticks - start_ticks;
+            }
+            total_ticks += end_ticks - start_ticks;
+            }
         k++;
-        if(end_ticks - start_ticks < min_ticks){
-            min_ticks = end_ticks - start_ticks;
-        }
-        total_ticks += end_ticks - start_ticks;
-
+        
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++) {
             if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
@@ -333,5 +334,7 @@ int main() {
     }
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
+    madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(char), MADV_DONTNEED);
+    madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char), MADV_DONTNEED);
     return 0;
 }

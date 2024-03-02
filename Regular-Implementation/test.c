@@ -273,13 +273,14 @@ int main() {
         }
         
         // Your computation code goes here...
-        for (int j=0;j<NUM_ITERATIONS;j++)
+        for (int j=0;j<NUM_ITERATIONS;j++){
             multiply(&nums[i], &nums[i+1], &results[k]);
-        k++;
-        if(end_ticks - start_ticks < min_ticks){
-            min_ticks = end_ticks - start_ticks;
+            if(end_ticks - start_ticks < min_ticks){
+                min_ticks = end_ticks - start_ticks;
+            }
+            total_ticks += end_ticks - start_ticks;
         }
-        total_ticks += end_ticks - start_ticks;
+        k++;
 
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++) {
@@ -317,5 +318,7 @@ int main() {
 
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
+    free(nums_space);
+    free(results_space);
     return 0;
 }
