@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <complex.h>
 #include <time.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -7,7 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <gmp.h>
-#include <float.h>
+#include <float.h> // Include for DBL_MAX
 #include <fcntl.h>  // For file opening
 #include <sys/ioctl.h>
 #include <linux/perf_event.h>
@@ -32,7 +33,7 @@ static inline uint64_t rdtsc(void) {
 
 struct BigInteger
 {
-    char *digits;
+    int *digits;
     int length;
 };
 
@@ -60,7 +61,7 @@ char* generateRandomNumber(int seed) {
     return resultString;
 }
 // Function to perform Fast Fourier Transform
-void fft(complex double buf[], complex double out[], int n, int step) {
+void fft(complex double *buf, complex double *out, int n, int step) {
     if (step < n) {
         fft(out, buf, n, step * 2);
         fft(out + step, buf + step, n, step * 2);
@@ -75,7 +76,7 @@ void fft(complex double buf[], complex double out[], int n, int step) {
 
 // Function to multiply two numbers using FFT
 
-void multiply(int a[], int b[], int res[], int n) {
+void multiply(BigInteger *a, BigInteger *b, BigInteger *res, int n) {
     complex double *fa = f_space;
     complex double *fb = fa+ 2*NUMBER_OF_BITS;
     complex double *out = fb + 2*NUMBER_OF_BITS;
@@ -85,8 +86,8 @@ void multiply(int a[], int b[], int res[], int n) {
     }
 
     for (int i = 0; i < n; ++i) {
-        fa[i] = a[i];
-        fb[i] = b[i];
+        fa[i] = a->digits[i];
+        fb[i] = b->digits[i];
     }
 
 
@@ -99,7 +100,7 @@ void multiply(int a[], int b[], int res[], int n) {
     fft(out, fa, n, 1);
 
     for (int i = 0; i < n; ++i)
-        res[i] = round(creal(fa[i]) / n);
+        res->digits[i] = round(creal(fa[i]) / n);
 }
 
 void generate_seed() {
@@ -134,9 +135,16 @@ int main() {
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
     f_space = (complex double *)malloc(3 * NUMBER_OF_BITS * 2 * sizeof(complex double));
-
+    if (f_space == NULL) {
+        printf("Memory allocation failed.\n");
+        return 1;
+    }
     // Preallocate memory for each integer and use it to generate random numbers
-    char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
+    int *nums_space = (int *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(int));
+    if (nums_space == NULL) {
+        printf("Memory allocation failed.\n");
+        return 1;
+    }
     //printf("Nums Space size: %ld\n", sizeof(nums_space));
     for (int i=0; i<NUM_DIGITS; i++) {
         generate_seed();
@@ -149,7 +157,10 @@ int main() {
             printf("Memory allocation failed.\n");
             return 1;
         }
-        strcpy(nums[i].digits, randomString);
+        // strcpy(nums[i].digits, randomString);
+        for (int j=0;j<length;j++){
+            nums[i].digits[j] = randomString[j]-'0';
+        }
         nums[i].length = length;
     }
 
@@ -159,7 +170,7 @@ int main() {
     sample_length = strlen(sampleString);
     
     // Preallocate memory for each integer and use it to generate random numbers
-    char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
+    int *results_space = (int *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int));
     //printf("Results Space size: %ld\n", sizeof(results_space));
     if (results_space == NULL) {
         printf("Memory allocation failed.\n");
@@ -198,5 +209,6 @@ int main() {
     printf("Total ticks: %lu\n", total_ticks);
     free(nums_space);
     free(results_space);
+    free(f_space);
     return 0;
 }
