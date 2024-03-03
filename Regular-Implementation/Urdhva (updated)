@@ -12,7 +12,6 @@ struct BigInteger
     int length;
 };
 
-// Function to get the current value of the Time Stamp Counter
 static inline uint64_t rdtsc(void)
 {
     unsigned int lo, hi;
@@ -50,16 +49,12 @@ void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigIntege
 
 void generate_seed()
 {
-    // Get the current time
     time_t now = time(0);
 
-    // Get the process ID
     pid_t pid = getpid();
 
-    // Combine the current time and the process ID to create a seed
     unsigned int seed = now ^ pid;
 
-    // Set the seed for the rand() function
     srand(seed);
 }
 
@@ -70,7 +65,6 @@ int main()
 
     generate_seed();
 
-    // Generate random numbers for testing
     for (int i = 0; i < NUM_DIGITS; i++)
     {
         int randomNumber1 = rand() % 10;
@@ -96,7 +90,6 @@ int main()
     uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
     total_ticks = 0;
 
-    // Run Vedic multiplication
     for (int i = 0; i < NUM_DIGITS; i += 2)
     {
         start_ticks = rdtsc();
@@ -112,7 +105,6 @@ int main()
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
 
-    // Free allocated memory
     for (int i = 0; i < NUM_DIGITS; i++)
     {
         free(nums[i].digits);
