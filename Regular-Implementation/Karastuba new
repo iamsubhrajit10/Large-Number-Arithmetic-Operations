@@ -1,0 +1,213 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <string.h>
+#include <gmp.h>
+#include <stdint.h>
+#include <unistd.h> // For getpid()
+
+#define NUM_DIGITS 2000
+#define NUM_ITERATIONS 2
+#define NUMBER_OF_BITS 64 
+
+uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
+
+struct BigInteger
+{
+    char *digits;
+    int length;
+};
+
+// Function to get the current value of the Time Stamp Counter
+static inline uint64_t rdtsc(void)
+{
+    unsigned int lo, hi;
+    asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
+void generate_seed()
+{
+    // Get the current time
+    time_t now = time(0);
+
+    // Get the process ID
+    pid_t pid = getpid();
+
+    // Combine the current time and the process ID to create a seed
+    unsigned int seed = now ^ pid;
+
+    // Set the seed for the rand() function
+    srand(seed);
+}
+
+char *generateRandomNumber(int seed)
+{
+    gmp_randstate_t state;
+    mpz_t random_number;
+
+    // Initialize random number state
+    gmp_randinit_default(state);
+    gmp_randseed_ui(state, time(NULL) + seed);
+
+    // Initialize big number
+    mpz_init(random_number);
+
+    // Generate a random number of NUMBER_OF_BITS bits
+    mpz_urandomb(random_number, state, NUMBER_OF_BITS);
+
+    // Convert the number to a string
+    char* resultString = mpz_get_str(NULL, 10, random_number);
+
+    // Clean up
+    mpz_clear(random_number);
+    gmp_randclear(state);
+
+    return resultString;
+}
+
+void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
+{
+    int n = x->length;
+    int half = n / 2;
+
+    // Base case for recursion
+    if (n <= 4)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            for (int j = 0; j < n; ++j)
+            {
+                result->digits[i + j] += (x->digits[i] - '0') * (y->digits[j] - '0');
+            }
+        }
+        return;
+    }
+
+    // Splitting the digit sequences about the middle
+    struct BigInteger high1, low1, high2, low2;
+    high1.digits = x->digits;
+    high1.length = half;
+    low1.digits = x->digits + half;
+    low1.length = n - half;
+    high2.digits = y->digits;
+    high2.length = half;
+    low2.digits = y->digits + half;
+    low2.length = n - half;
+
+    // Intermediate results
+    struct BigInteger z0, z1, z2;
+    z0.digits = (char *)calloc(n * 2, sizeof(char));
+    z0.length = n * 2;
+    z1.digits = (char *)calloc(n * 2, sizeof(char));
+    z1.length = n * 2;
+    z2.digits = (char *)calloc(n * 2, sizeof(char));
+    z2.length = n * 2;
+
+    // Compute z0, z1, and z2
+    karatsuba_multiply(&low1, &low2, &z0);
+    karatsuba_multiply(&high1, &high2, &z2);
+
+    struct BigInteger low_sum, high_sum;
+    low_sum.digits = (char *)calloc(n * 2, sizeof(char));
+    low_sum.length = n * 2;
+    high_sum.digits = (char *)calloc(n * 2, sizeof(char));
+    high_sum.length = n * 2;
+
+    // Compute (low1 + high1) * (low2 + high2)
+    for (int i = 0; i < low1.length; ++i)
+    {
+        low_sum.digits[i] = low1.digits[i];
+    }
+    for (int i = 0; i < high1.length; ++i)
+    {
+        high_sum.digits[i] = high1.digits[i];
+    }
+    for (int i = 0; i < low2.length; ++i)
+    {
+        low_sum.digits[i + half] += low2.digits[i];
+    }
+    for (int i = 0; i < high2.length; ++i)
+    {
+        high_sum.digits[i + half] += high2.digits[i];
+    }
+
+    karatsuba_multiply(&low_sum, &high_sum, &z1);
+
+    // Compute the final result
+    for (int i = 0; i < n; ++i)
+    {
+        z1.digits[i] -= (z0.digits[i] + z2.digits[i]);
+    }
+
+    // Perform digit-wise addition to obtain the final result
+    for (int i = 0; i < n; ++i)
+    {
+        result->digits[i] += z0.digits[i];
+        result->digits[i + half] += z1.digits[i];
+        result->digits[i + n] += z2.digits[i];
+    }
+
+    // Clean up memory
+    free(z0.digits);
+    free(z1.digits);
+    free(z2.digits);
+    free(low_sum.digits);
+    free(high_sum.digits);
+}
+
+int main()
+{
+    struct BigInteger *nums, *results;
+
+    // Allocate memory for two arrays of BigIntegers
+    nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
+    if (nums == NULL)
+    {
+        printf("Memory allocation failed for nums.\n");
+        return 1;
+    }
+
+    results = (struct BigInteger *)malloc((NUM_DIGITS / 2) * sizeof(struct BigInteger));
+    if (results == NULL)
+    {
+        printf("Memory allocation failed for results.\n");
+        free(nums);
+        return 1;
+    }
+
+    generate_seed(); // Generate seed for random number generation
+
+    // Loop to generate random numbers and perform Karatsuba multiplication
+    for (int i = 0; i < NUM_DIGITS; i += 2)
+    {
+        // Generate random numbers for Karatsuba multiplication
+        char *num1_string = generateRandomNumber(i + 1);
+        char *num2_string = generateRandomNumber(i + 2);
+
+        // Convert random number strings to BigIntegers
+        nums[i].digits = num1_string;
+        nums[i + 1].digits = num2_string;
+
+        // Perform Karatsuba multiplication
+        karatsuba_multiply(&nums[i], &nums[i + 1], &results[i / 2]);
+
+        // Free memory allocated for random number strings
+        free(num1_string);
+        free(num2_string);
+    }
+
+    // Output minimum and total ticks
+    printf("Minimum ticks: %lu\n", min_ticks);
+    printf("Total ticks: %lu\n", total_ticks);
+
+    // Free allocated memory
+    for (int i = 0; i < NUM_DIGITS; i++)
+    {
+        free(nums[i].digits);
+    }
+    free(nums);
+    free(results);
+
+    return 0;
+}
