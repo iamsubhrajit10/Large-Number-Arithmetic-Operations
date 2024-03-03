@@ -17,7 +17,7 @@
 
 #define NUM_DIGITS 2000
 #define NUM_ITERATIONS 2
-#define NUMBER_OF_BITS 16384
+#define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
 
@@ -39,7 +39,7 @@ static inline uint64_t rdtsc(void) {
 
 struct BigInteger
 {
-    char *digits;
+    int *digits;
     int length;
 };
 
@@ -137,10 +137,10 @@ int main() {
     int sample_length = strlen(sampleString);
 
     // Preallocate memory for each integer and use it to generate random numbers
-    //char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
-    char *nums_space;
-    posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(char));
-    err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(char), MADV_HUGEPAGE);
+    
+    int *nums_space;
+    posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(int));
+    err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise nums_space");
         exit(EXIT_FAILURE);
@@ -156,16 +156,18 @@ int main() {
             printf("Memory allocation failed.\n");
             return 1;
         }
-        strcpy(nums[i].digits, randomString);
+        for (int j=0; j<length; j++) {
+            nums[i].digits[j] = randomString[j] - '0';
+        }
         nums[i].length = length;
     }
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
     sample_length = strlen(sampleString);
-    //char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
-    char *results_space;
-    posix_memalign((void **)&results_space, HPAGE_SIZE, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
-    err = madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char), MADV_HUGEPAGE);
+    
+    int *results_space;
+    posix_memalign((void **)&results_space, HPAGE_SIZE, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int));
+    err = madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise results_space");
         exit(EXIT_FAILURE);

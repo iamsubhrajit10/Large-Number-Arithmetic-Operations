@@ -17,7 +17,7 @@
 
 #define NUM_DIGITS 2000
 #define NUM_ITERATIONS 2
-#define NUMBER_OF_BITS 16384
+#define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
 struct BigInteger *nums,*results;
@@ -37,7 +37,7 @@ static inline uint64_t rdtsc(void) {
 
 struct BigInteger
 {
-    char *digits;
+    int *digits;
     int length;
 };
 
@@ -125,7 +125,7 @@ int main() {
     int sample_length = strlen(sampleString);
 
     // Preallocate memory for each integer and use it to generate random numbers
-    char *nums_space = (char *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(char));
+    int *nums_space = (int *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(int));
     //printf("Nums Space size: %ld\n", sizeof(nums_space));
     for (int i=0; i<NUM_DIGITS; i++) {
         generate_seed();
@@ -138,7 +138,10 @@ int main() {
             printf("Memory allocation failed.\n");
             return 1;
         }
-        strcpy(nums[i].digits, randomString);
+        for (int j=0; j<length; j++) {
+            nums[i].digits[j] = randomString[j] - '0';
+        }
+
         nums[i].length = length;
     }
 
@@ -148,7 +151,7 @@ int main() {
     sample_length = strlen(sampleString);
     
     // Preallocate memory for each integer and use it to generate random numbers
-    char *results_space = (char *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char));
+    int *results_space = (int *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int));
     //printf("Results Space size: %ld\n", sizeof(results_space));
     if (results_space == NULL) {
         printf("Memory allocation failed.\n");
