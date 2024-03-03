@@ -1,0 +1,2 @@
+Minimum ticks: 469670388
+Total ticks: 4730301904121
