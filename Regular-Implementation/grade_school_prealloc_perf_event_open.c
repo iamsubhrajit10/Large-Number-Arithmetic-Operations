@@ -17,7 +17,7 @@
 
 #define NUM_DIGITS 1000
 #define NUM_ITERATIONS 100
-#define NUMBER_OF_BITS 16384
+#define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
 struct BigInteger *nums,*results;
@@ -252,7 +252,7 @@ int main() {
     int input_size = 100; // replace with actual input size
 
     char filename[100];
-    snprintf(filename, sizeof(filename), "perf_data_%s_%d.csv", binary_name, NUMBER_OF_BITS);
+    snprintf(filename, sizeof(filename), "%s_%d.csv", binary_name, NUMBER_OF_BITS);
     FILE *file = fopen(filename, "w");
 
     if (file == NULL) {
