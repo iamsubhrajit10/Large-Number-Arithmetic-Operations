@@ -15,8 +15,8 @@
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
-#define NUM_DIGITS 10000
-#define NUM_ITERATIONS 10
+#define NUM_DIGITS 500
+#define NUM_ITERATIONS 1000
 #define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
@@ -284,7 +284,10 @@ int main() {
     // Run your code here...
 
     // printf("Starting the computation for thp...\n");
-    for (int i = 0; i < NUM_DIGITS; i+=2) {
+    int left = 0;
+    int right = NUM_DIGITS - 1;
+
+    while (left < right) {
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
@@ -292,13 +295,15 @@ int main() {
         }
         
         // Your computation code goes here...
-        for (int j=0;j<NUM_ITERATIONS;j++){
-            multiply(&nums[i], &nums[i+1], &results[k]);
+        for (int j = 0; j < NUM_ITERATIONS; j++) {
+            multiply(&nums[left], &nums[right], &results[k]);
             if(end_ticks - start_ticks < min_ticks){
                 min_ticks = end_ticks - start_ticks;
             }
             total_ticks += end_ticks - start_ticks;
-            }
+        }
+        left++;
+        right--;
         k++;
         
         // Stop monitoring
