@@ -15,9 +15,9 @@
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
-#define NUM_DIGITS 2000
+#define NUM_DIGITS 10000
 #define NUM_ITERATIONS 2
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 16384
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
 
