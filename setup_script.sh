@@ -22,3 +22,16 @@ EOF
 sudo apt-get update
 sudo apt-get install linux-image-$(uname -r)-dbgsym
 
+// write shell command to increase the timeout time of ssh disconnetion
+// Do the following
+// sudo nano /etc/ssh/sshd_config
+// Add the following line
+// ClientAliveInterval 120
+// ClientAliveCountMax 720
+echo "ClientAliveInterval 120" | sudo tee -a /etc/ssh/sshd_config
+echo "ClientAliveCountMax 720" | sudo tee -a /etc/ssh/sshd_config
+sudo systemctl restart sshd
+
+// write shell command to install perf
+sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -r`
+
