@@ -14,8 +14,9 @@
 #include <linux/hw_breakpoint.h>
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
+#include <math.h>
 
-#define NUM_DIGITS 10
+#define NUM_DIGITS 1000
 #define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 1024
 #define MAX_EVENTS 11 // Maximum number of events to monitor
@@ -77,21 +78,29 @@ char *generateRandomNumber(int seed)
 
     return resultString;
 }
+// Allocate the memory pool outside the function
+int *memory_pool;
+int MAX_RECURSION_DEPTH;
 
-void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
+
+void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result, int recursion_depth)
 {
     int n = x->length;
     int half = n / 2;
 
     // Base case for recursion
-    if (n <= 256)
+    if (n <= 64)
     {
         for (int i = 0; i < n; ++i)
         {
+            int carry = 0;
             for (int j = 0; j < n; ++j)
             {
-                result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
+                int temp = result->digits[i + j] + (x->digits[i]) * (y->digits[j]) + carry;
+                result->digits[i + j] = temp % 10;  // Store the last digit of the result
+                carry = temp / 10;  // Carry is the remaining part of the result
             }
+            result->digits[i + n] = carry;  // Store the remaining carry in the next digit
         }
         return;
     }
@@ -109,14 +118,11 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 
     // Intermediate results
     //preallocate space for z0, z1, and z2 using thp
-    int *z_space;
-    posix_memalign((void **)&z_space, HPAGE_SIZE, 3 * n* 2* sizeof(int));
-    int err = madvise(z_space, 3 * n* 2* sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise z_space");
-        exit(EXIT_FAILURE);
-    }
+    // Use slices of the memory pool for z_space and sum_space
+    int *z_space = memory_pool + recursion_depth * 3 * n * 2;
+    int *sum_space = memory_pool + recursion_depth * 2 * n * 2;
     struct BigInteger z0, z1, z2;
+
     z0.digits = z_space;
     z0.length = n * 2;
     z1.digits = z_space + n*2;
@@ -124,18 +130,10 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     z2.digits = z_space + 2*n*2;
     z2.length = n * 2;
 
-    // Compute z0, z1, and z2
-    multiply(&low1, &low2, &z0);
-    multiply(&high1, &high2, &z2);
+    // Pass the recursion depth to the recursive calls
+    multiply(&low1, &low2, &z0, recursion_depth + 1);
+    multiply(&high1, &high2, &z2, recursion_depth + 1);
 
-    //preallocate space for low_sum and high_sum using thp
-    int *sum_space;
-    posix_memalign((void **)&sum_space, HPAGE_SIZE, 2 * n* 2* sizeof(int));
-    err = madvise(sum_space, 2 * n* 2* sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise sum_space");
-        exit(EXIT_FAILURE);
-    }
     struct BigInteger low_sum, high_sum;
     low_sum.digits = sum_space;
     low_sum.length = n * 2;
@@ -160,7 +158,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         high_sum.digits[i + half] += high2.digits[i];
     }
 
-    multiply(&low_sum, &high_sum, &z1);
+    multiply(&low_sum, &high_sum, &z1, recursion_depth + 1);
 
     // Compute the final result
     for (int i = 0; i < n; ++i)
@@ -184,9 +182,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
             result->digits[i] %= 10;
         }
     }
-    // Clean up memory
-    madvise(z_space, 3 * n* 2* sizeof(int), MADV_DONTNEED);
-    madvise(sum_space, 2 * n* 2* sizeof(int), MADV_DONTNEED);
+
 }
 
 int main()
@@ -211,7 +207,13 @@ int main()
     generate_seed(); // Generate seed for random number generation
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
-
+    MAX_RECURSION_DEPTH = (int)log2(sample_length) + 1;
+    posix_memalign((void **)&memory_pool, HPAGE_SIZE, MAX_RECURSION_DEPTH * 3 * sample_length * 2 * sizeof(int));
+    err = madvise(memory_pool, MAX_RECURSION_DEPTH * 3 * sample_length * 2 * sizeof(int), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise memory_pool");
+        exit(EXIT_FAILURE);
+    }
     int *nums_space;
     posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(int));
     err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_HUGEPAGE);
@@ -266,7 +268,7 @@ int main()
         // Your computation code goes here...
         for (int j = 0; j < NUM_ITERATIONS; j++) {
             start_ticks = rdtsc();
-            multiply(&nums[left], &nums[right], &results[k]);
+            multiply(&nums[left], &nums[right], &results[k],0);
             end_ticks = rdtsc();
             if(end_ticks - start_ticks < min_ticks){
                 min_ticks = end_ticks - start_ticks;
@@ -285,6 +287,6 @@ int main()
     // Free allocated memory
     madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
     madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
-
+    madvise(memory_pool, MAX_RECURSION_DEPTH * 3 * n * 2 * sizeof(int), MADV_DONTNEED);
     return 0;
 }
