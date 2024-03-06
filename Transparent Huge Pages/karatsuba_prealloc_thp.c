@@ -108,12 +108,10 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     low2.length = n - half;
 
     // Intermediate results
-    //preallocate space for z0, z1, and z2 using thp
-    int *z_space;
-    posix_memalign((void **)&z_space, HPAGE_SIZE, 3 * n* 2* sizeof(int));
-    int err = madvise(z_space, 3 * n* 2* sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise z_space");
+    //preallocate space for z0, z1, and z2
+    int *z_space = (int *)malloc(3 * n* 2* sizeof(int));
+    if (z_space == NULL) {
+        perror("Memory allocation failed");
         exit(EXIT_FAILURE);
     }
     struct BigInteger z0, z1, z2;
@@ -128,12 +126,11 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     multiply(&low1, &low2, &z0);
     multiply(&high1, &high2, &z2);
 
-    //preallocate space for low_sum and high_sum using thp
-    int *sum_space;
-    posix_memalign((void **)&sum_space, HPAGE_SIZE, 2 * n* 2* sizeof(int));
-    err = madvise(sum_space, 2 * n* 2* sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise sum_space");
+    //preallocate space for low_sum and high_sum
+    int *sum_space = (int *)malloc(2 * n* 2* sizeof(int));
+    if (sum_space == NULL) {
+        perror("Memory allocation failed");
+        free(z_space);
         exit(EXIT_FAILURE);
     }
     struct BigInteger low_sum, high_sum;
@@ -185,8 +182,8 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         }
     }
     // Clean up memory
-    madvise(z_space, 3 * n* 2* sizeof(int), MADV_DONTNEED);
-    madvise(sum_space, 2 * n* 2* sizeof(int), MADV_DONTNEED);
+    free(z_space);
+    free(sum_space);
 }
 
 int main()
