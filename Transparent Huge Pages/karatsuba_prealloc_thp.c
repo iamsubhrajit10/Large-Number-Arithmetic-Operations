@@ -255,7 +255,7 @@ int main()
         }
         results[i].length = length;
     }
-`   // Loop to generate random numbers and perform Karatsuba multiplicati
+   // Loop to generate random numbers and perform Karatsuba multiplicati
     int k=0;
     // Run your code here...
     // printf("Starting the computation for non-thp...\n");
