@@ -93,8 +93,6 @@ void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigIn
                 result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
             }
         }
-        // // Clean up memory
-        // free(temp_space);
         return;
     }
 
@@ -112,11 +110,11 @@ void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigIn
     // Intermediate results
     struct BigInteger z0, z1, z2;
     z0.digits = temp_space;
-    z0.length = n * 2;
-    z1.digits = temp_space + n * 2;
-    z1.length = n * 2;
-    z2.digits = temp_space + 2 * n * 2;
-    z2.length = n * 2;
+    z0.length = 2 * n;
+    z1.digits = temp_space + n;
+    z1.length = 2 * n;
+    z2.digits = temp_space + 2 * n;
+    z2.length = 2 * n;
 
     // Compute z0, z1, and z2
     karatsuba_multiply(&low1, &low2, &z0, temp_space);
@@ -124,10 +122,10 @@ void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigIn
 
     // Compute (low1 + high1) * (low2 + high2)
     struct BigInteger low_sum, high_sum;
-    low_sum.digits = temp_space + 3 * n * 2;
-    low_sum.length = n * 2;
-    high_sum.digits = temp_space + 4 * n * 2;
-    high_sum.length = n * 2;
+    low_sum.digits = temp_space + 3 * n;
+    low_sum.length = 2 * n;
+    high_sum.digits = temp_space + 4 * n;
+    high_sum.length = 2 * n;
 
     for (int i = 0; i < low1.length; ++i)
     {
@@ -161,8 +159,9 @@ void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigIn
         result->digits[i + half] += z1.digits[i];
         result->digits[i + n] += z2.digits[i];
     }
+
     // Handle carry
-    for (int i = 0; i < n * 2; ++i)
+    for (int i = 0; i < 2 * n; ++i)
     {
         if (result->digits[i] >= 10)
         {
@@ -171,10 +170,11 @@ void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigIn
         }
     }
 }
+
 void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
 {
     int n = x->length;
-    int *temp_space = (int *)malloc(5 * n * 2 * sizeof(int));
+    int *temp_space = (int *)malloc(5 * n * sizeof(int));
     if (temp_space == NULL)
     {
         perror("Memory allocation failed");
@@ -182,6 +182,8 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     }
 
     karatsuba_multiply(x, y, result, temp_space);
+
+    free(temp_space); // Free allocated memory after use
 }
 
 int main()
