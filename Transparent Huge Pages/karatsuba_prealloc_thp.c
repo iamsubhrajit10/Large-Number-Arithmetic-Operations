@@ -1,17 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include <gmp.h>
 #include <float.h>
-
+#include <fcntl.h>  // For file opening
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
+#include <sys/syscall.h> // For syscall()
+#include <asm/unistd.h>  // For __NR_perf_event_open
 
 #define NUM_DIGITS 1000
 #define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 8192
+#define MAX_EVENTS 11 // Maximum number of events to monitor
+#define HPAGE_SIZE (2<<21)
+
 
 uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
 
@@ -99,10 +108,12 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     low2.length = n - half;
 
     // Intermediate results
-    //preallocate space for z0, z1, and z2
-    int *z_space = (int *)malloc(3 * n* 2* sizeof(int));
-    if (z_space == NULL) {
-        perror("Memory allocation failed");
+    //preallocate space for z0, z1, and z2 using thp
+    int *z_space;
+    posix_memalign((void **)&z_space, HPAGE_SIZE, 3 * n* 2* sizeof(int));
+    int err = madvise(z_space, 3 * n* 2* sizeof(int), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise z_space");
         exit(EXIT_FAILURE);
     }
     struct BigInteger z0, z1, z2;
@@ -117,11 +128,12 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     multiply(&low1, &low2, &z0);
     multiply(&high1, &high2, &z2);
 
-    //preallocate space for low_sum and high_sum
-    int *sum_space = (int *)malloc(2 * n* 2* sizeof(int));
-    if (sum_space == NULL) {
-        perror("Memory allocation failed");
-        free(z_space);
+    //preallocate space for low_sum and high_sum using thp
+    int *sum_space;
+    posix_memalign((void **)&sum_space, HPAGE_SIZE, 2 * n* 2* sizeof(int));
+    err = madvise(sum_space, 2 * n* 2* sizeof(int), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise sum_space");
         exit(EXIT_FAILURE);
     }
     struct BigInteger low_sum, high_sum;
@@ -173,47 +185,66 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         }
     }
     // Clean up memory
-    free(z_space);
-    free(sum_space);
+    madvise(z_space, 3 * n* 2* sizeof(int), MADV_DONTNEED);
+    madvise(sum_space, 2 * n* 2* sizeof(int), MADV_DONTNEED);
 }
 
 int main()
 {
     struct BigInteger *nums, *results;
 
-    // Allocate memory for two arrays of BigIntegers
-    nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
-    if (nums == NULL)
-    {
-        printf("Memory allocation failed for nums.\n");
-        return 1;
+    // Allocate memory for arrays of BigIntegers
+    posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
+    int err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise nums");
+        exit(EXIT_FAILURE);
+    }
+    posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS/2) * sizeof(struct BigInteger));
+    err = madvise(results, (NUM_DIGITS/2) * sizeof(struct BigInteger), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise results");
+        exit(EXIT_FAILURE);
     }
 
-    results = (struct BigInteger *)malloc((NUM_DIGITS / 2) * sizeof(struct BigInteger));
-    if (results == NULL)
-    {
-        printf("Memory allocation failed for results.\n");
-        free(nums);
-        return 1;
-    }
 
     generate_seed(); // Generate seed for random number generation
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
 
-    // Preallocate memory for each integer and use it to generate random numbers
-    int *nums_space = (int *)malloc(NUM_DIGITS*(sample_length + 1) * sizeof(int));
-
+    int *nums_space;
+    posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(int));
+    err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise nums_space");
+        exit(EXIT_FAILURE);
+    }
+     for (int i=0; i<NUM_DIGITS; i++) {
+        generate_seed();
+        int randomNumber = (rand() % 100) + 1;
+        char* randomString = generateRandomNumber(randomNumber);
+        int length = strlen(randomString);
+        //nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
+        nums[i].digits = nums_space + i*(length + 1);
+        if (nums[i].digits == NULL) {
+            printf("Memory allocation failed.\n");
+            return 1;
+        }
+        for (int j=0; j<length; j++) {
+            nums[i].digits[j] = randomString[j] - '0';
+        }
+        nums[i].length = length;
+    }
     generate_seed();
     sampleString = generateRandomNumber((rand() % 100) + 1);
     sample_length = strlen(sampleString);
     
-    // Preallocate memory for each integer and use it to generate random numbers
-    int *results_space = (int *)malloc((NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int));
-    //printf("Results Space size: %ld\n", sizeof(results_space));
-    if (results_space == NULL) {
-        printf("Memory allocation failed.\n");
-        return 1;
+    int *results_space;
+    posix_memalign((void **)&results_space, HPAGE_SIZE, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int));
+    err = madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_HUGEPAGE);
+    if (err != 0) {
+        perror("madvise results_space");
+        exit(EXIT_FAILURE);
     }
     for (int i=0; i<NUM_DIGITS/2; i++) {
         int length = nums[i].length+nums[i+1].length+1;
@@ -224,7 +255,7 @@ int main()
         }
         results[i].length = length;
     }
-   // Loop to generate random numbers and perform Karatsuba multiplicati
+`   // Loop to generate random numbers and perform Karatsuba multiplicati
     int k=0;
     // Run your code here...
     // printf("Starting the computation for non-thp...\n");
@@ -252,12 +283,8 @@ int main()
     printf("Total ticks: %lu\n", total_ticks);
 
     // Free allocated memory
-    for (int i = 0; i < NUM_DIGITS; i++)
-    {
-        free(nums[i].digits);
-    }
-    free(nums);
-    free(results);
+    madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
+    madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
 
     return 0;
 }
