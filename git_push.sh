@@ -8,10 +8,9 @@ do
     mv nohup.out ~/
   fi
   git checkout server_commit_branch || git checkout -b server_commit_branch
+  git pull origin main
   git add .
   git commit -m "server commit"
   git push origin server_commit_branch
-  git checkout main
-  git pull
   sleep 1800
 done
