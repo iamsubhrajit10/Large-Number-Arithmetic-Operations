@@ -109,13 +109,16 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 
     // Intermediate results
     //preallocate space for z0, z1, and z2 using thp
-    int *z_space;
-    posix_memalign((void **)&z_space, HPAGE_SIZE, 3 * n* 2* sizeof(int));
-    int err = madvise(z_space, 3 * n* 2* sizeof(int), MADV_HUGEPAGE);
+    int total_size = (3 * n * 2 + 2 * n * 2) * sizeof(int);
+    posix_memalign((void **)&z_space, HPAGE_SIZE, total_size);
+    int err = madvise(z_space, total_size, MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise z_space");
         exit(EXIT_FAILURE);
     }
+
+    // Assign z_space and sum_space within the allocated memory
+    int *sum_space = z_space + 3 * n * 2;
     struct BigInteger z0, z1, z2;
     z0.digits = z_space;
     z0.length = n * 2;
@@ -128,14 +131,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     multiply(&low1, &low2, &z0);
     multiply(&high1, &high2, &z2);
 
-    //preallocate space for low_sum and high_sum using thp
-    int *sum_space;
-    posix_memalign((void **)&sum_space, HPAGE_SIZE, 2 * n* 2* sizeof(int));
-    err = madvise(sum_space, 2 * n* 2* sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise sum_space");
-        exit(EXIT_FAILURE);
-    }
+    
     struct BigInteger low_sum, high_sum;
     low_sum.digits = sum_space;
     low_sum.length = n * 2;
