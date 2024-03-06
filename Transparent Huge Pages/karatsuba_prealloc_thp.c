@@ -106,17 +106,11 @@ char* karatsuba(const char *x, const char *y) {
     int y_len = strlen(y);
 
     // Base case: Switch to simple multiplication if small numbers
-    if (x_len == 1 || y_len == 1) {
-        long long result = atoll(x) * atoll(y);
-        // Calculate required space for the string representation
-        int required_space = snprintf(NULL, 0, "%lld", result) + 1; 
-
-        // Allocate memory
-        char* str_result = malloc(sizeof(char) * required_space); 
-
-        // Format the number into the allocated string
-        sprintf(str_result, "%lld", result);
-        return str_result;
+    if (strlen(x) < 2 && strlen(y) < 2) {
+        int result = (x[0] - '0') * (y[0] - '0');
+        char *result_str = malloc(3); // Allocate space for result and null terminator
+        sprintf(result_str, "%d", result);
+        return result_str;
     }
 
     int max_len = (x_len > y_len) ? x_len : y_len;
