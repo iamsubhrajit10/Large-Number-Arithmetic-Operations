@@ -19,6 +19,7 @@ void split_number(const char *num, char **first, char **second, int n) {
     (*second)[half_size + remainder] = '\0'; 
 }
 
+
 // Adds two large numbers represented as strings
 char *sum(const char *x, const char *y) {
     printf("Adding %s + %s\n", x, y);
@@ -47,10 +48,12 @@ char *sum(const char *x, const char *y) {
     // Handle potential leading zero and add null terminator
     if (carry > 0) {
         result[0] = carry + '0';
+        result[max_len + 1] = '\0';
     } else {
-        memmove(result, result + 1, max_len + 1); // Shift left to remove leading '0'
+        memmove(result, result + 1, max_len); // Shift left to remove leading '0'
+        result[max_len] = '\0';
     }
-    result[max_len + 1] = '\0';
+
     printf("Result: %s\n", result);
     return result;
 }
@@ -161,7 +164,7 @@ char* karatsuba(const char *x, const char *y) {
 }
 int main() {
     char *num1 = "1234";
-    char *num2 = "5678";
+    char *num2 = "567";
     char *result = karatsuba(num1, num2);
     printf("Karatsuba Result: %s\n", result);
     return 0;
