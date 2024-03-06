@@ -195,7 +195,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 int main()
 {
     // Define the desired stack size in bytes (10 GB)
-    rlim_t stack_size = 10 * 1024 * 1024 * 1024;
+    uint64_t stack_size = 10ULL * 1024 * 1024 * 1024;
 
     // Define the resource limit structure
     struct rlimit rl;
