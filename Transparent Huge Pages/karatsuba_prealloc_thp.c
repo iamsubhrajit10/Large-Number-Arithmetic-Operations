@@ -78,8 +78,7 @@ char *generateRandomNumber(int seed)
 
     return resultString;
 }
-
-void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
+void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result, int *temp_space)
 {
     int n = x->length;
     int half = n / 2;
@@ -94,6 +93,8 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
                 result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
             }
         }
+        // Clean up memory
+        free(temp_space);
         return;
     }
 
@@ -109,38 +110,25 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     low2.length = n - half;
 
     // Intermediate results
-    //preallocate space for z0, z1, and z2
-    int *z_space = (int *)malloc(3 * n* 2* sizeof(int));
-    if (z_space == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
     struct BigInteger z0, z1, z2;
-    z0.digits = z_space;
+    z0.digits = temp_space;
     z0.length = n * 2;
-    z1.digits = z_space + n*2;
+    z1.digits = temp_space + n * 2;
     z1.length = n * 2;
-    z2.digits = z_space + 2*n*2;
+    z2.digits = temp_space + 2 * n * 2;
     z2.length = n * 2;
 
     // Compute z0, z1, and z2
-    multiply(&low1, &low2, &z0);
-    multiply(&high1, &high2, &z2);
-
-    //preallocate space for low_sum and high_sum
-    int *sum_space = (int *)malloc(2 * n* 2* sizeof(int));
-    if (sum_space == NULL) {
-        perror("Memory allocation failed");
-        free(z_space);
-        exit(EXIT_FAILURE);
-    }
-    struct BigInteger low_sum, high_sum;
-    low_sum.digits = sum_space;
-    low_sum.length = n * 2;
-    high_sum.digits = sum_space + n*2;
-    high_sum.length = n * 2;
+    karatsuba_multiply(&low1, &low2, &z0, temp_space);
+    karatsuba_multiply(&high1, &high2, &z2, temp_space);
 
     // Compute (low1 + high1) * (low2 + high2)
+    struct BigInteger low_sum, high_sum;
+    low_sum.digits = temp_space + 3 * n * 2;
+    low_sum.length = n * 2;
+    high_sum.digits = temp_space + 4 * n * 2;
+    high_sum.length = n * 2;
+
     for (int i = 0; i < low1.length; ++i)
     {
         low_sum.digits[i] = low1.digits[i];
@@ -158,7 +146,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         high_sum.digits[i + half] += high2.digits[i];
     }
 
-    multiply(&low_sum, &high_sum, &z1);
+    karatsuba_multiply(&low_sum, &high_sum, &z1, temp_space);
 
     // Compute the final result
     for (int i = 0; i < n; ++i)
@@ -182,9 +170,18 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
             result->digits[i] %= 10;
         }
     }
-    // Clean up memory
-    free(z_space);
-    free(sum_space);
+}
+void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
+{
+    int n = x->length;
+    int *temp_space = (int *)malloc(5 * n * 2 * sizeof(int));
+    if (temp_space == NULL)
+    {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    karatsuba_multiply(x, y, result, temp_space);
 }
 
 int main()
