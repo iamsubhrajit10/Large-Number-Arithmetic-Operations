@@ -171,7 +171,7 @@ char* karatsuba(const char *x, const char *y) {
 }
 int main() {
     char *num1 = "1234";
-    char *num2 = "567";
+    char *num2 = "10";
     char *result = karatsuba(num1, num2);
     printf("Karatsuba Result: %s\n", result);
     return 0;
