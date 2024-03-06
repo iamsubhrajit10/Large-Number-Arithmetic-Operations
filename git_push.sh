@@ -12,5 +12,6 @@ do
   git commit -m "server commit"
   git push origin server_commit_branch
   git checkout main
+  git pull
   sleep 1800
 done
