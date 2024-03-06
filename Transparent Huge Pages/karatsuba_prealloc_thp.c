@@ -12,10 +12,10 @@ void split_number(const char *num, char **first, char **second, int n) {
     *first = malloc(half_size + 1);
     *second = malloc(half_size + remainder + 1);
 
-    memcpy(*first, num, half_size);
+    strncpy(*first, num, half_size);
     (*first)[half_size] = '\0'; 
 
-    memcpy(*second, num + half_size, half_size + remainder);
+    strncpy(*second, num + half_size, half_size + remainder);
     (*second)[half_size + remainder] = '\0'; 
 }
 
