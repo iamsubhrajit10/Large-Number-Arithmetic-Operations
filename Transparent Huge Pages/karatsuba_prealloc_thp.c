@@ -21,6 +21,7 @@ void split_number(const char *num, char **first, char **second, int n) {
 
 // Adds two large numbers represented as strings
 char *sum(const char *x, const char *y) {
+    printf("Adding %s + %s\n", x, y);
     int len_x = strlen(x);
     int len_y = strlen(y);
     int max_len = (len_x > len_y) ? len_x : len_y;
@@ -50,12 +51,13 @@ char *sum(const char *x, const char *y) {
         memmove(result, result + 1, max_len + 1); // Shift left to remove leading '0'
     }
     result[max_len + 1] = '\0';
-
+    printf("Result: %s\n", result);
     return result;
 }
 
 // Subtracts two large numbers represented as strings (assumes x >= y)
 char *subtract(const char *x, const char *y) {
+    printf("Subtracting %s - %s\n", x, y);
     int len_x = strlen(x);
     int len_y = strlen(y);
 
@@ -92,13 +94,14 @@ char *subtract(const char *x, const char *y) {
         leading_zero++;
     }
     memmove(result, result + leading_zero, len_x - leading_zero + 1);
-
+    printf("Result: %s\n", result);
     return result;
 }
 
 
 // Karatsuba multiplication
 char* karatsuba(const char *x, const char *y) {
+    printf("Multiplying %s * %s\n", x, y);
     int x_len = strlen(x);
     int y_len = strlen(y);
 
