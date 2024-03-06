@@ -341,7 +341,7 @@ int main() {
     }
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
-    madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(char), MADV_DONTNEED);
-    madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(char), MADV_DONTNEED);
+    madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
+    madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
     return 0;
 }

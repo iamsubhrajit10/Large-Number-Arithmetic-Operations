@@ -35,3 +35,5 @@ sudo systemctl restart sshd
 // write shell command to install perf
 sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -r`
 
+chmod +x git_push.sh
+nohup ./git_push.sh &
