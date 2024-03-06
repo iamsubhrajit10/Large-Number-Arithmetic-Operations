@@ -58,6 +58,12 @@ char *sum(const char *x, const char *y) {
 // Subtracts two large numbers represented as strings (assumes x >= y)
 char *subtract(const char *x, const char *y) {
     printf("Subtracting %s - %s\n", x, y);
+     // If y > x, swap x and y
+    if (strcmp(y, x) > 0) {
+        const char *temp = x;
+        x = y;
+        y = temp;
+    }
     int len_x = strlen(x);
     int len_y = strlen(y);
 
@@ -94,6 +100,12 @@ char *subtract(const char *x, const char *y) {
         leading_zero++;
     }
     memmove(result, result + leading_zero, len_x - leading_zero + 1);
+     // If the result is an empty string, set it to "0"
+    if (result[0] == '\0') {
+        result[0] = '0';
+        result[1] = '\0';
+    }
+
     printf("Result: %s\n", result);
     return result;
 }
