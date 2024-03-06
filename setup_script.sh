@@ -4,7 +4,6 @@ sudo apt install linux-tools-common
 sudo apt install linux-tools-5.15.0-86-generic
 sudo apt update
 sudo apt-get install libgmp3-dev
-git clone https://github.com/iamsubhrajit10/Large-Number-Arithmetic-Operation
 
 sudo apt-get install -y systemtap gcc
 sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C8CAB6595FDFF622
