@@ -7,5 +7,6 @@ do
   git add .
   git commit -m "server commit"
   git push origin server_commit_branch
+  git checkout main
   sleep 1800
 done
