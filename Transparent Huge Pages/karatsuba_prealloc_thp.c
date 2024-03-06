@@ -194,26 +194,20 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 
 int main()
 {
-    // Define the desired stack size in bytes (10 GB)
-    uint64_t stack_size = 10ULL * 1024 * 1024 * 1024;
-
-    // Define the resource limit structure
-    struct rlimit rl;
+       struct rlimit rl;
 
     // Get the current stack size limit
     if (getrlimit(RLIMIT_STACK, &rl) == 0) {
-        // Update the stack size limit
-        rl.rlim_cur = stack_size;
-        rl.rlim_max = stack_size;
-
         // Set the new stack size limit
+        rl.rlim_cur = 10 * 1024 * 1024 * 1024; // 10GB in bytes
+        rl.rlim_max = 10 * 1024 * 1024 * 1024; // 10GB in bytes
         if (setrlimit(RLIMIT_STACK, &rl) != 0) {
             perror("setrlimit");
-            exit(EXIT_FAILURE);
+            return 1;
         }
     } else {
         perror("getrlimit");
-        exit(EXIT_FAILURE);
+        return 1;
     }
     struct BigInteger *nums, *results;
 
