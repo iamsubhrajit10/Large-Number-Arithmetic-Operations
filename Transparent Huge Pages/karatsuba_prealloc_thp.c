@@ -118,36 +118,31 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 
     // Intermediate results
     //preallocate space for z0, z1, and z2 using thp
-    // Use slices of the memory pool for z_space and sum_space
     // Allocate new slices of the memory pool for each recursive call
     int *z_space0 = memory_pool + recursion_depth * 3 * n * 2;
-    int *sum_space0 = memory_pool + recursion_depth * 2 * n * 2;
+    int *z_space1 = memory_pool + (recursion_depth + 1) * 3 * n * 2;
+    int *z_space2 = memory_pool + (recursion_depth + 2) * 3 * n * 2;
+    int *sum_space = memory_pool + (recursion_depth + 3) * 2 * n * 2;
 
-    // Allocate for the first recursive call
-    struct BigInteger z0;
+    // Allocate for the recursive calls
+    struct BigInteger z0, z1, z2;
     z0.digits = z_space0;
     z0.length = n * 2;
+    z1.digits = z_space1;
+    z1.length = n * 2;
+    z2.digits = z_space2;
+    z2.length = n * 2;
+
     
 
     // Pass the recursion depth to the recursive calls
     multiply(&low1, &low2, &z0, recursion_depth + 1);
-    // Allocate new slices of the memory pool for each recursive call
-    // Allocate new slices of the memory pool for the third recursive call
-    int *z_space2 = memory_pool + (recursion_depth + 2) * 3 * n * 2;
-    int *sum_space2 = memory_pool + (recursion_depth + 2) * 2 * n * 2;
-
-    // Allocate for the third recursive call
-    struct BigInteger z2;
-    z2.digits = z_space2;
-    z2.length = n * 2;
-
-    // Pass the recursion depth to the third recursive call
-    multiply(&low1, &low2, &z2, recursion_depth + 1);
+    multiply(&high1, &high2, &z2, recursion_depth + 1); // Corrected this line
 
     struct BigInteger low_sum, high_sum;
     low_sum.digits = sum_space;
     low_sum.length = n * 2;
-    high_sum.digits = sum_space + n*2;
+    high_sum.digits = sum_space + n * 2;
     high_sum.length = n * 2;
 
     // Compute (low1 + high1) * (low2 + high2)
@@ -167,14 +162,6 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     {
         high_sum.digits[i + half] += high2.digits[i];
     }
-    // Allocate new slices of the memory pool for the second recursive call
-    int *z_space1 = memory_pool + (recursion_depth + 1) * 3 * n * 2;
-    int *sum_space1 = memory_pool + (recursion_depth + 1) * 2 * n * 2;
-
-    // Allocate for the second recursive call
-    struct BigInteger z1;
-    z1.digits = z_space1;
-    z1.length = n * 2;
 
     multiply(&low_sum, &high_sum, &z1, recursion_depth + 1);
 
