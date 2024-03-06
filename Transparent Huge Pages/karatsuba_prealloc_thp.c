@@ -264,7 +264,7 @@ int main()
         // Your computation code goes here...
         for (int j = 0; j < NUM_ITERATIONS; j++) {
             start_ticks = rdtsc();
-            multiply(&nums[left], &nums[right], &results[k],0);
+            multiply(&nums[left], &nums[right], &results[k]);
             end_ticks = rdtsc();
             if(end_ticks - start_ticks < min_ticks){
                 min_ticks = end_ticks - start_ticks;
