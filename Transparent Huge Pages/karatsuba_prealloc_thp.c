@@ -199,8 +199,8 @@ int main()
     // Get the current stack size limit
     if (getrlimit(RLIMIT_STACK, &rl) == 0) {
         // Set the new stack size limit
-        rl.rlim_cur = 2 * 1024 * 1024 * 1024; // 10GB in bytes
-        rl.rlim_max = 2 * 1024 * 1024 * 1024; // 10GB in bytes
+        rl.rlim_cur = (2 << 30); // 10GB in bytes
+        rl.rlim_max = (2 << 30); // 10GB in bytes
         if (setrlimit(RLIMIT_STACK, &rl) != 0) {
             perror("setrlimit");
             return 1;
