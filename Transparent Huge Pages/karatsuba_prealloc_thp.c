@@ -78,6 +78,7 @@ char *generateRandomNumber(int seed)
     return resultString;
 }
 
+
 void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
 {
     int n = x->length;
@@ -108,18 +109,12 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     low2.length = n - half;
 
     // Intermediate results
-    //preallocate space for z0, z1, and z2 using thp
-    int total_size = (3 * n * 2 + 2 * n * 2) * sizeof(int);
-    printf("Total size: %d\n", total_size);
-    // int *z_space = (int *)malloc(total_size);
-    // if (z_space == NULL) {
-    //     perror("z_space malloc failed");
-    //     return;
-    // }
-    int z_space[3 * n * 2 + 2 * n * 2];
-
-    // Assign z_space and sum_space within the allocated memory
-    int *sum_space = z_space + 3 * n * 2;
+    //preallocate space for z0, z1, and z2
+    int *z_space = (int *)malloc(3 * n* 2* sizeof(int));
+    if (z_space == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
     struct BigInteger z0, z1, z2;
     z0.digits = z_space;
     z0.length = n * 2;
@@ -132,7 +127,13 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     multiply(&low1, &low2, &z0);
     multiply(&high1, &high2, &z2);
 
-    
+    //preallocate space for low_sum and high_sum
+    int *sum_space = (int *)malloc(2 * n* 2* sizeof(int));
+    if (sum_space == NULL) {
+        perror("Memory allocation failed");
+        free(z_space);
+        exit(EXIT_FAILURE);
+    }
     struct BigInteger low_sum, high_sum;
     low_sum.digits = sum_space;
     low_sum.length = n * 2;
@@ -182,7 +183,8 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         }
     }
     // Clean up memory
-    // free(z_space);
+    free(z_space);
+    free(sum_space);
 }
 
 int main()
