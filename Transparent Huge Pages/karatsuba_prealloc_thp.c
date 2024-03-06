@@ -88,23 +88,18 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     int n = x->length;
     int half = n / 2;
 
-    // Base case for recursion
+     // Base case for recursion
     if (n <= 64)
     {
         for (int i = 0; i < n; ++i)
         {
-            int carry = 0;
             for (int j = 0; j < n; ++j)
             {
-                int temp = result->digits[i + j] + (x->digits[i]) * (y->digits[j]) + carry;
-                result->digits[i + j] = temp % 10;  // Store the last digit of the result
-                carry = temp / 10;  // Carry is the remaining part of the result
+                result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
             }
-            result->digits[i + n] = carry;  // Store the remaining carry in the next digit
         }
         return;
     }
-
     // Splitting the digit sequences about the middle
     struct BigInteger high1, low1, high2, low2;
     high1.digits = x->digits;
