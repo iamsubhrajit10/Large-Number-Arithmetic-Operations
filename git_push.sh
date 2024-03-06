@@ -36,5 +36,5 @@ do
   git push origin $SERVER_BRANCH
   
   # Wait for 30 seconds before next iteration
-  sleep 360000
+  sleep 30
 done
