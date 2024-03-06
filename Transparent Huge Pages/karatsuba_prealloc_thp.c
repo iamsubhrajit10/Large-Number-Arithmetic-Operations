@@ -181,8 +181,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         }
     }
     // Clean up memory
-    madvise(z_space, 3 * n* 2* sizeof(int), MADV_DONTNEED);
-    madvise(sum_space, 2 * n* 2* sizeof(int), MADV_DONTNEED);
+    free(z_space);
 }
 
 int main()
