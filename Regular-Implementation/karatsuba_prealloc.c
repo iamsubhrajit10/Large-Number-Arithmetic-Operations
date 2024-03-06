@@ -10,7 +10,7 @@
 
 
 #define NUM_DIGITS 1000
-#define NUM_ITERATIONS 100
+#define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 8192
 
 uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
