@@ -17,7 +17,7 @@
 
 #define NUM_DIGITS 10
 #define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 1024
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
 
