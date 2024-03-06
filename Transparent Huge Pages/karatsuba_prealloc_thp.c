@@ -111,12 +111,10 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     //preallocate space for z0, z1, and z2 using thp
     int total_size = (3 * n * 2 + 2 * n * 2) * sizeof(int);
     printf("Total size: %d\n", total_size);
-    int *z_space;
-    posix_memalign((void **)&z_space, HPAGE_SIZE, total_size);
-    int err = madvise(z_space, total_size, MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise z_space");
-        exit(EXIT_FAILURE);
+    int *z_space = (int *)malloc(total_size);
+    if (z_space == NULL) {
+        perror("z_space malloc failed");
+        return;
     }
 
     // Assign z_space and sum_space within the allocated memory
