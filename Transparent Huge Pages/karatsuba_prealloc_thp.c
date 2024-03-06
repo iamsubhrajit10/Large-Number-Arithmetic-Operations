@@ -16,6 +16,7 @@
 #include <linux/hw_breakpoint.h>
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
+#include <sys/resource.h>
 
 #define NUM_DIGITS 1000
 #define NUM_ITERATIONS 1
@@ -193,6 +194,27 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 
 int main()
 {
+    // Define the desired stack size in bytes (10 GB)
+    rlim_t stack_size = 10 * 1024 * 1024 * 1024;
+
+    // Define the resource limit structure
+    struct rlimit rl;
+
+    // Get the current stack size limit
+    if (getrlimit(RLIMIT_STACK, &rl) == 0) {
+        // Update the stack size limit
+        rl.rlim_cur = stack_size;
+        rl.rlim_max = stack_size;
+
+        // Set the new stack size limit
+        if (setrlimit(RLIMIT_STACK, &rl) != 0) {
+            perror("setrlimit");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        perror("getrlimit");
+        exit(EXIT_FAILURE);
+    }
     struct BigInteger *nums, *results;
 
     // Allocate memory for arrays of BigIntegers
