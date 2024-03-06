@@ -287,6 +287,6 @@ int main()
     // Free allocated memory
     madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
     madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
-    madvise(memory_pool, MAX_RECURSION_DEPTH * 3 * n * 2 * sizeof(int), MADV_DONTNEED);
+    madvise(memory_pool, MAX_RECURSION_DEPTH * 3 * sample_length * 2 * sizeof(int), MADV_DONTNEED);
     return 0;
 }
