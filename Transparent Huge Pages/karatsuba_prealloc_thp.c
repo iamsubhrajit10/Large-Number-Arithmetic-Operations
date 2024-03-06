@@ -132,14 +132,16 @@ char* karatsuba(const char *x, const char *y) {
 
     // Reconstruct the result
     char *P1_shifted = malloc(strlen(P1) + 2 * half_size + 1); // Shifts P1
-    memset(P1_shifted, '0', 2 * half_size);
-    strcpy(P1_shifted + 2 * half_size, P1); 
+    strcpy(P1_shifted, P1);
+    memset(P1_shifted + strlen(P1), '0', 2 * half_size);
+    P1_shifted[strlen(P1) + 2 * half_size] = '\0';
 
     char *temp = subtract(P3, P1);  
     temp = subtract(temp, P2);
     char *temp_shifted = malloc(strlen(temp) + half_size + 1); // Shifts (P3-P1-P2)
-    memset(temp_shifted, '0', half_size); 
-    strcpy(temp_shifted + half_size, temp);
+    strcpy(temp_shifted, temp);
+    memset(temp_shifted + strlen(temp), '0', half_size);
+    temp_shifted[strlen(temp) + half_size] = '\0';
 
     char *result = sum(P1_shifted, temp_shifted);
     result = sum(result, P2);
