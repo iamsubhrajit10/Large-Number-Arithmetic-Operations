@@ -7,15 +7,16 @@
 // Splits a number into two parts, handling numbers with odd lengths.
 void split_number(const char *num, char **first, char **second, int n) {
     int half_size = n / 2;
+    int remainder = n % 2; 
 
     *first = malloc(half_size + 1);
-    *second = malloc(n - half_size + 1);
+    *second = malloc(half_size + remainder + 1); // +1 for null-terminator
 
-    strncpy(*first, num, half_size);
+    memcpy(*first, num, half_size);
     (*first)[half_size] = '\0'; 
 
-    strncpy(*second, num + half_size, n - half_size);
-    (*second)[n - half_size] = '\0'; 
+    memcpy(*second, num + half_size, half_size + remainder);
+    (*second)[half_size + remainder] = '\0'; 
 }
 
 
