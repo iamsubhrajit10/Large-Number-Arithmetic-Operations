@@ -119,20 +119,30 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     // Intermediate results
     //preallocate space for z0, z1, and z2 using thp
     // Use slices of the memory pool for z_space and sum_space
-    int *z_space = memory_pool + recursion_depth * 3 * n * 2;
-    int *sum_space = memory_pool + recursion_depth * 2 * n * 2;
-    struct BigInteger z0, z1, z2;
+    // Allocate new slices of the memory pool for each recursive call
+    int *z_space0 = memory_pool + recursion_depth * 3 * n * 2;
+    int *sum_space0 = memory_pool + recursion_depth * 2 * n * 2;
 
-    z0.digits = z_space;
+    // Allocate for the first recursive call
+    struct BigInteger z0;
+    z0.digits = z_space0;
     z0.length = n * 2;
-    z1.digits = z_space + n*2;
-    z1.length = n * 2;
-    z2.digits = z_space + 2*n*2;
-    z2.length = n * 2;
+    
 
     // Pass the recursion depth to the recursive calls
     multiply(&low1, &low2, &z0, recursion_depth + 1);
-    multiply(&high1, &high2, &z2, recursion_depth + 1);
+    // Allocate new slices of the memory pool for each recursive call
+    // Allocate new slices of the memory pool for the third recursive call
+    int *z_space2 = memory_pool + (recursion_depth + 2) * 3 * n * 2;
+    int *sum_space2 = memory_pool + (recursion_depth + 2) * 2 * n * 2;
+
+    // Allocate for the third recursive call
+    struct BigInteger z2;
+    z2.digits = z_space2;
+    z2.length = n * 2;
+
+    // Pass the recursion depth to the third recursive call
+    multiply(&low1, &low2, &z2, recursion_depth + 1);
 
     struct BigInteger low_sum, high_sum;
     low_sum.digits = sum_space;
@@ -157,6 +167,14 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     {
         high_sum.digits[i + half] += high2.digits[i];
     }
+    // Allocate new slices of the memory pool for the second recursive call
+    int *z_space1 = memory_pool + (recursion_depth + 1) * 3 * n * 2;
+    int *sum_space1 = memory_pool + (recursion_depth + 1) * 2 * n * 2;
+
+    // Allocate for the second recursive call
+    struct BigInteger z1;
+    z1.digits = z_space1;
+    z1.length = n * 2;
 
     multiply(&low_sum, &high_sum, &z1, recursion_depth + 1);
 
@@ -208,8 +226,8 @@ int main()
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
     MAX_RECURSION_DEPTH = (int)log2(sample_length) + 1;
-    posix_memalign((void **)&memory_pool, HPAGE_SIZE, MAX_RECURSION_DEPTH * 3 * sample_length * 2 * sizeof(int));
-    err = madvise(memory_pool, MAX_RECURSION_DEPTH * 3 * sample_length * 2 * sizeof(int), MADV_HUGEPAGE);
+    posix_memalign((void **)&memory_pool, HPAGE_SIZE, MAX_RECURSION_DEPTH * 5 * sample_length * 2 * sizeof(int));
+    err = madvise(memory_pool, MAX_RECURSION_DEPTH * 6 * sample_length * 2 * sizeof(int), MADV_HUGEPAGE);
     if (err != 0) {
         perror("madvise memory_pool");
         exit(EXIT_FAILURE);
@@ -287,6 +305,6 @@ int main()
     // Free allocated memory
     madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
     madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
-    madvise(memory_pool, MAX_RECURSION_DEPTH * 3 * sample_length * 2 * sizeof(int), MADV_DONTNEED);
+    madvise(memory_pool, MAX_RECURSION_DEPTH * 6 * sample_length * 2 * sizeof(int), MADV_DONTNEED);
     return 0;
 }
