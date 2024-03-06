@@ -44,13 +44,12 @@ char *sum(const char *x, const char *y) {
     }
 
     // Handle potential leading zero and add null terminator
-    result[0] = carry + '0';  
-    result[max_len + 1] = '\0';
-
-    // Trim leading '0'  if necessary
-    if (result[0] == '0') {
+    if (carry > 0) {
+        result[0] = carry + '0';
+    } else {
         memmove(result, result + 1, max_len + 1); // Shift left to remove leading '0'
     }
+    result[max_len + 1] = '\0';
 
     return result;
 }
