@@ -1,306 +1,152 @@
-/* Run with --main-stacksize=10737418240  (10gb)*/
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <string.h>
-#include <gmp.h>
-#include <float.h>
-#include <fcntl.h>  // For file opening
-#include <sys/ioctl.h>
-#include <linux/perf_event.h>
-#include <linux/hw_breakpoint.h>
-#include <sys/syscall.h> // For syscall()
-#include <asm/unistd.h>  // For __NR_perf_event_open
-#include <sys/resource.h>
 
-#define NUM_DIGITS 1000
-#define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 8192
-#define MAX_EVENTS 11 // Maximum number of events to monitor
-#define HPAGE_SIZE (2<<21)
+#define BASE 10 
 
+// Splits a number into two parts, handling numbers with odd lengths.
+void split_number(const char *num, char **first, char **second, int n) {
+    int half_size = n / 2;
+    int remainder = n % 2; 
 
-uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
+    *first = malloc(half_size + 1);
+    *second = malloc(half_size + remainder + 1);
 
-struct BigInteger
-{
-    int *digits;
-    int length;
-};
+    memcpy(*first, num, half_size);
+    (*first)[half_size] = '\0'; 
 
-// Function to get the current value of the Time Stamp Counter
-static inline uint64_t rdtsc(void)
-{
-    unsigned int lo, hi;
-    asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
+    memcpy(*second, num + half_size, half_size + remainder);
+    (*second)[half_size + remainder] = '\0'; 
 }
 
-void generate_seed()
-{
-    // Get the current time
-    time_t now = time(0);
+// Adds two large numbers represented as strings
+char *sum(const char *x, const char *y) {
+    int len_x = strlen(x);
+    int len_y = strlen(y);
+    int max_len = (len_x > len_y) ? len_x : len_y;
 
-    // Get the process ID
-    pid_t pid = getpid();
+    // Allocate space for the result, considering the potential carry
+    char *result = malloc(max_len + 2); 
 
-    // Combine the current time and the process ID to create a seed
-    unsigned int seed = now ^ pid;
+    int carry = 0;
+    int i = len_x - 1, j = len_y - 1, k = max_len;
 
-    // Set the seed for the rand() function
-    srand(seed);
+    // Perform digit-by-digit addition with carry
+    while (i >= 0 || j >= 0 || carry > 0) {
+        int digit_x = (i >= 0) ? x[i] - '0' : 0;
+        int digit_y = (j >= 0) ? y[j] - '0' : 0;
+
+        int sum = digit_x + digit_y + carry;
+        result[k] = (sum % 10) + '0';
+        carry = sum / 10;
+
+        i--; j--; k--;
+    }
+
+    // Handle potential leading zero and add null terminator
+    result[0] = carry + '0';  
+    result[max_len + 1] = '\0';
+
+    // Trim leading '0'  if necessary
+    if (result[0] == '0') {
+        memmove(result, result + 1, max_len + 1); // Shift left to remove leading '0'
+    }
+
+    return result;
 }
 
-char *generateRandomNumber(int seed)
-{
-    gmp_randstate_t state;
-    mpz_t random_number;
+// Subtracts two large numbers represented as strings (assumes x >= y)
+char *subtract(const char *x, const char *y) {
+    int len_x = strlen(x);
+    int len_y = strlen(y);
 
-    // Initialize random number state
-    gmp_randinit_default(state);
-    gmp_randseed_ui(state, time(NULL) + seed);
+    // Allocate space for the result
+    char *result = malloc(len_x + 1); 
 
-    // Initialize big number
-    mpz_init(random_number);
+    int i = len_x - 1, j = len_y - 1, k = len_x - 1;
+    int borrow = 0;
 
-    // Generate a random number of NUMBER_OF_BITS bits
-    mpz_urandomb(random_number, state, NUMBER_OF_BITS);
+    // Perform digit-by-digit subtraction with borrowing
+    while (i >= 0) {
+        int digit_x = x[i] - '0';
+        int digit_y = (j >= 0) ? y[j] - '0' : 0;
 
-    // Convert the number to a string
-    char* resultString = mpz_get_str(NULL, 10, random_number);
+        digit_x -= borrow; 
 
-    // Clean up
-    mpz_clear(random_number);
-    gmp_randclear(state);
+        if (digit_x < digit_y) {
+            digit_x += 10;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
 
-    return resultString;
+        result[k] = (digit_x - digit_y) + '0'; 
+
+        i--; j--; k--;
+    }
+
+    result[len_x] = '\0'; 
+
+    // Trim leading zeros
+    int leading_zero = 0;
+    while (result[leading_zero] == '0') {
+        leading_zero++;
+    }
+    memmove(result, result + leading_zero, len_x - leading_zero + 1);
+
+    return result;
 }
 
 
-void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
-{
-    int n = x->length;
-    int half = n / 2;
+// Karatsuba multiplication
+char* karatsuba(const char *x, const char *y) {
+    int x_len = strlen(x);
+    int y_len = strlen(y);
 
-    // Base case for recursion
-    if (n <= 64)
-    {
-        for (int i = 0; i < n; ++i)
-        {
-            for (int j = 0; j < n; ++j)
-            {
-                result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
-            }
-        }
-        return;
+    // Base case: Switch to simple multiplication if small numbers
+    if (x_len == 1 || y_len == 1) {
+        long long result = atoll(x) * atoll(y);
+        char* str_result = malloc(sizeof(char) * (sprintf(NULL, "%lld", result) + 1));
+        sprintf(str_result, "%lld", result);
+        return str_result;
     }
 
-    // Splitting the digit sequences about the middle
-    struct BigInteger high1, low1, high2, low2;
-    high1.digits = x->digits;
-    high1.length = half;
-    low1.digits = x->digits + half;
-    low1.length = n - half;
-    high2.digits = y->digits;
-    high2.length = half;
-    low2.digits = y->digits + half;
-    low2.length = n - half;
+    int max_len = (x_len > y_len) ? x_len : y_len;
+    int half_size = max_len / 2 + (max_len % 2);
 
-    // Intermediate results
-    //preallocate space for z0, z1, and z2
-    int *z_space = (int *)malloc(3 * n* 2* sizeof(int));
-    if (z_space == NULL) {
-        perror("Memory allocation failed");
-        exit(EXIT_FAILURE);
-    }
-    struct BigInteger z0, z1, z2;
-    z0.digits = z_space;
-    z0.length = n * 2;
-    z1.digits = z_space + n*2;
-    z1.length = n * 2;
-    z2.digits = z_space + 2*n*2;
-    z2.length = n * 2;
+    char *x1, *x0, *y1, *y0;
+    split_number(x, &x1, &x0, x_len);
+    split_number(y, &y1, &y0, y_len);
 
-    // Compute z0, z1, and z2
-    multiply(&low1, &low2, &z0);
-    multiply(&high1, &high2, &z2);
+    char *P1 = karatsuba(x1, y1);
+    char *P2 = karatsuba(x0, y0);
+    char *P3 = karatsuba(sum(x1, x0), sum(y1, y0)); 
 
-    //preallocate space for low_sum and high_sum
-    int *sum_space = (int *)malloc(2 * n* 2* sizeof(int));
-    if (sum_space == NULL) {
-        perror("Memory allocation failed");
-        free(z_space);
-        exit(EXIT_FAILURE);
-    }
-    struct BigInteger low_sum, high_sum;
-    low_sum.digits = sum_space;
-    low_sum.length = n * 2;
-    high_sum.digits = sum_space + n*2;
-    high_sum.length = n * 2;
+    // Reconstruct the result
+    char *P1_shifted = malloc(strlen(P1) + 2 * half_size + 1); // Shifts P1
+    memset(P1_shifted, '0', 2 * half_size);
+    strcpy(P1_shifted + 2 * half_size, P1); 
 
-    // Compute (low1 + high1) * (low2 + high2)
-    for (int i = 0; i < low1.length; ++i)
-    {
-        low_sum.digits[i] = low1.digits[i];
-    }
-    for (int i = 0; i < high1.length; ++i)
-    {
-        high_sum.digits[i] = high1.digits[i];
-    }
-    for (int i = 0; i < low2.length; ++i)
-    {
-        low_sum.digits[i + half] += low2.digits[i];
-    }
-    for (int i = 0; i < high2.length; ++i)
-    {
-        high_sum.digits[i + half] += high2.digits[i];
-    }
+    char *temp = subtract(P3, P1);  
+    temp = subtract(temp, P2);
+    char *temp_shifted = malloc(strlen(temp) + half_size + 1); // Shifts (P3-P1-P2)
+    memset(temp_shifted, '0', half_size); 
+    strcpy(temp_shifted + half_size, temp);
 
-    multiply(&low_sum, &high_sum, &z1);
+    char *result = sum(P1_shifted, temp_shifted);
+    result = sum(result, P2);
 
-    // Compute the final result
-    for (int i = 0; i < n; ++i)
-    {
-        z1.digits[i] -= (z0.digits[i] + z2.digits[i]);
-    }
+    // Free memory 
+    free(x1); free(x0); free(y1); free(y0); 
+    free(P1); free(P2); free(P3); 
+    free(P1_shifted); free(temp); free(temp_shifted);
 
-    // Perform digit-wise addition to obtain the final result
-    for (int i = 0; i < n; ++i)
-    {
-        result->digits[i] += z0.digits[i];
-        result->digits[i + half] += z1.digits[i];
-        result->digits[i + n] += z2.digits[i];
-    }
-    // Handle carry
-    for (int i = 0; i < n * 2; ++i)
-    {
-        if (result->digits[i] >= 10)
-        {
-            result->digits[i + 1] += result->digits[i] / 10;
-            result->digits[i] %= 10;
-        }
-    }
-    // Clean up memory
-    free(z_space);
-    free(sum_space);
+    return result;
 }
-
-int main()
-{
-       struct rlimit rl;
-
-    // Get the current stack size limit
-    if (getrlimit(RLIMIT_STACK, &rl) == 0) {
-        // Set the new stack size limit
-        rl.rlim_cur = (2 << 30); // 10GB in bytes
-        rl.rlim_max = (2 << 30); // 10GB in bytes
-        if (setrlimit(RLIMIT_STACK, &rl) != 0) {
-            perror("setrlimit");
-            return 1;
-        }
-    } else {
-        perror("getrlimit");
-        return 1;
-    }
-    struct BigInteger *nums, *results;
-
-    // Allocate memory for arrays of BigIntegers
-    posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
-    int err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise nums");
-        exit(EXIT_FAILURE);
-    }
-    posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS/2) * sizeof(struct BigInteger));
-    err = madvise(results, (NUM_DIGITS/2) * sizeof(struct BigInteger), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise results");
-        exit(EXIT_FAILURE);
-    }
-
-
-    generate_seed(); // Generate seed for random number generation
-    char* sampleString = generateRandomNumber((rand() % 100) + 1);
-    int sample_length = strlen(sampleString);
-
-    int *nums_space;
-    posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(int));
-    err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise nums_space");
-        exit(EXIT_FAILURE);
-    }
-     for (int i=0; i<NUM_DIGITS; i++) {
-        generate_seed();
-        int randomNumber = (rand() % 100) + 1;
-        char* randomString = generateRandomNumber(randomNumber);
-        int length = strlen(randomString);
-        //nums[i].digits = (char *)malloc((length + 1) * sizeof(char));
-        nums[i].digits = nums_space + i*(length + 1);
-        if (nums[i].digits == NULL) {
-            printf("Memory allocation failed.\n");
-            return 1;
-        }
-        for (int j=0; j<length; j++) {
-            nums[i].digits[j] = randomString[j] - '0';
-        }
-        nums[i].length = length;
-    }
-    generate_seed();
-    sampleString = generateRandomNumber((rand() % 100) + 1);
-    sample_length = strlen(sampleString);
-    
-    int *results_space;
-    posix_memalign((void **)&results_space, HPAGE_SIZE, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int));
-    err = madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise results_space");
-        exit(EXIT_FAILURE);
-    }
-    for (int i=0; i<NUM_DIGITS/2; i++) {
-        int length = nums[i].length+nums[i+1].length+1;
-        results[i].digits = results_space + i*(length + 1);
-        if (results[i].digits == NULL) {
-            printf("Memory allocation failed.\n");
-            return 1;
-        }
-        results[i].length = length;
-    }
-   // Loop to generate random numbers and perform Karatsuba multiplicati
-    int k=0;
-    // Run your code here...
-    // printf("Starting the computation for non-thp...\n");
-    int left = 0;
-    int right = NUM_DIGITS - 1;
-
-    while (left < right) {
-        // Your computation code goes here...
-        for (int j = 0; j < NUM_ITERATIONS; j++) {
-            start_ticks = rdtsc();
-            multiply(&nums[left], &nums[right], &results[k]);
-            end_ticks = rdtsc();
-            if(end_ticks - start_ticks < min_ticks){
-                min_ticks = end_ticks - start_ticks;
-            }
-            total_ticks += end_ticks - start_ticks;
-        }
-        left++;
-        right--;
-        k++;
-    }
-
-    // Output minimum and total ticks
-    printf("Minimum ticks: %lu\n", min_ticks);
-    printf("Total ticks: %lu\n", total_ticks);
-
-    // Free allocated memory
-    madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
-    madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
-
+int main() {
+    char *num1 = "1234";
+    char *num2 = "5678";
+    char *result = karatsuba(num1, num2);
+    printf("Karatsuba Result: %s\n", result);
     return 0;
 }
