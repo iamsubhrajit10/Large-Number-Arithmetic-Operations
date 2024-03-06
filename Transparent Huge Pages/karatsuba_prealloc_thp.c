@@ -182,7 +182,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         }
     }
     // Clean up memory
-    free(z_space);
+    // free(z_space);
 }
 
 int main()
