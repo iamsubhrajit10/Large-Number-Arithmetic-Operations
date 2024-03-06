@@ -78,12 +78,8 @@ char *generateRandomNumber(int seed)
 
     return resultString;
 }
-// Allocate the memory pool outside the function
-int *memory_pool;
-int MAX_RECURSION_DEPTH;
 
-
-void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result, int recursion_depth)
+void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *result)
 {
     int n = x->length;
     int half = n / 2;
@@ -93,14 +89,10 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     {
         for (int i = 0; i < n; ++i)
         {
-            int carry = 0;
             for (int j = 0; j < n; ++j)
             {
-                int temp = result->digits[i + j] + (x->digits[i]) * (y->digits[j]) + carry;
-                result->digits[i + j] = temp % 10;  // Store the last digit of the result
-                carry = temp / 10;  // Carry is the remaining part of the result
+                result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
             }
-            result->digits[i + n] = carry;  // Store the remaining carry in the next digit
         }
         return;
     }
@@ -117,32 +109,35 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     low2.length = n - half;
 
     // Intermediate results
-    //preallocate space for z0, z1, and z2 using thp
-    // Allocate new slices of the memory pool for each recursive call
-    int *z_space0 = memory_pool + recursion_depth * 3 * n * 2;
-    int *z_space1 = memory_pool + (recursion_depth + 1) * 3 * n * 2;
-    int *z_space2 = memory_pool + (recursion_depth + 2) * 3 * n * 2;
-    int *sum_space = memory_pool + (recursion_depth + 3) * 2 * n * 2;
-
-    // Allocate for the recursive calls
+    //preallocate space for z0, z1, and z2
+    int *z_space = (int *)malloc(3 * n* 2* sizeof(int));
+    if (z_space == NULL) {
+        perror("Memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
     struct BigInteger z0, z1, z2;
-    z0.digits = z_space0;
+    z0.digits = z_space;
     z0.length = n * 2;
-    z1.digits = z_space1;
+    z1.digits = z_space + n*2;
     z1.length = n * 2;
-    z2.digits = z_space2;
+    z2.digits = z_space + 2*n*2;
     z2.length = n * 2;
 
-    
+    // Compute z0, z1, and z2
+    multiply(&low1, &low2, &z0);
+    multiply(&high1, &high2, &z2);
 
-    // Pass the recursion depth to the recursive calls
-    multiply(&low1, &low2, &z0, recursion_depth + 1);
-    multiply(&high1, &high2, &z2, recursion_depth + 1); // Corrected this line
-
+    //preallocate space for low_sum and high_sum
+    int *sum_space = (int *)malloc(2 * n* 2* sizeof(int));
+    if (sum_space == NULL) {
+        perror("Memory allocation failed");
+        free(z_space);
+        exit(EXIT_FAILURE);
+    }
     struct BigInteger low_sum, high_sum;
     low_sum.digits = sum_space;
     low_sum.length = n * 2;
-    high_sum.digits = sum_space + n * 2;
+    high_sum.digits = sum_space + n*2;
     high_sum.length = n * 2;
 
     // Compute (low1 + high1) * (low2 + high2)
@@ -163,7 +158,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
         high_sum.digits[i + half] += high2.digits[i];
     }
 
-    multiply(&low_sum, &high_sum, &z1, recursion_depth + 1);
+    multiply(&low_sum, &high_sum, &z1);
 
     // Compute the final result
     for (int i = 0; i < n; ++i)
@@ -187,7 +182,9 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
             result->digits[i] %= 10;
         }
     }
-
+    // Clean up memory
+    free(z_space);
+    free(sum_space);
 }
 
 int main()
@@ -212,13 +209,7 @@ int main()
     generate_seed(); // Generate seed for random number generation
     char* sampleString = generateRandomNumber((rand() % 100) + 1);
     int sample_length = strlen(sampleString);
-    MAX_RECURSION_DEPTH = (int)log2(sample_length) + 1;
-    posix_memalign((void **)&memory_pool, HPAGE_SIZE, MAX_RECURSION_DEPTH * 5 * sample_length * 2 * sizeof(int));
-    err = madvise(memory_pool, MAX_RECURSION_DEPTH * 6 * sample_length * 2 * sizeof(int), MADV_HUGEPAGE);
-    if (err != 0) {
-        perror("madvise memory_pool");
-        exit(EXIT_FAILURE);
-    }
+    
     int *nums_space;
     posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS*(sample_length + 1) * sizeof(int));
     err = madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_HUGEPAGE);
@@ -292,6 +283,6 @@ int main()
     // Free allocated memory
     madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
     madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
-    madvise(memory_pool, MAX_RECURSION_DEPTH * 12 * sample_length * 2 * sizeof(int), MADV_DONTNEED);
+    
     return 0;
 }
