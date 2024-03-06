@@ -110,6 +110,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     // Intermediate results
     //preallocate space for z0, z1, and z2 using thp
     int total_size = (3 * n * 2 + 2 * n * 2) * sizeof(int);
+    int *z_space;
     posix_memalign((void **)&z_space, HPAGE_SIZE, total_size);
     int err = madvise(z_space, total_size, MADV_HUGEPAGE);
     if (err != 0) {
