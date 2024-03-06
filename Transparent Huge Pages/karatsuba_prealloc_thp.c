@@ -110,7 +110,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     // Intermediate results
     //preallocate space for z0, z1, and z2 using thp
     int *z_space;
-    posix_memalign((void **)&z_space, HPAGE_SIZE, 3 * n* 2* sizeof(int));
+    posix_memalign((void **)&z_space, 4096, 3 * n* 2* sizeof(int));
     // int err = madvise(z_space, 3 * n* 2* sizeof(int), MADV_HUGEPAGE);
     // if (err != 0) {
     //     perror("madvise z_space");
@@ -130,7 +130,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
 
     //preallocate space for low_sum and high_sum using thp
     int *sum_space;
-    posix_memalign((void **)&sum_space, HPAGE_SIZE, 2 * n* 2* sizeof(int));
+    posix_memalign((void **)&sum_space, 4096, 2 * n* 2* sizeof(int));
     // err = madvise(sum_space, 2 * n* 2* sizeof(int), MADV_HUGEPAGE);
     // if (err != 0) {
     //     perror("madvise sum_space");
