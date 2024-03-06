@@ -84,7 +84,7 @@ void multiply(struct BigInteger *x, struct BigInteger *y, struct BigInteger *res
     int half = n / 2;
 
     // Base case for recursion
-    if (n <= 64)
+    if (n <= 256)
     {
         for (int i = 0; i < n; ++i)
         {
