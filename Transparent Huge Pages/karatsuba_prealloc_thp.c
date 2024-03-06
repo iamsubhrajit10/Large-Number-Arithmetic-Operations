@@ -106,7 +106,13 @@ char* karatsuba(const char *x, const char *y) {
     // Base case: Switch to simple multiplication if small numbers
     if (x_len == 1 || y_len == 1) {
         long long result = atoll(x) * atoll(y);
-        char* str_result = malloc(sizeof(char) * (sprintf(NULL, "%lld", result) + 1));
+        // Calculate required space for the string representation
+        int required_space = snprintf(NULL, 0, "%lld", result) + 1; 
+
+        // Allocate memory
+        char* str_result = malloc(sizeof(char) * required_space); 
+
+        // Format the number into the allocated string
         sprintf(str_result, "%lld", result);
         return str_result;
     }
