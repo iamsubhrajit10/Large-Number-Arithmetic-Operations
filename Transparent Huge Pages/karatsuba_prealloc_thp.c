@@ -93,8 +93,8 @@ void karatsuba_multiply(struct BigInteger *x, struct BigInteger *y, struct BigIn
                 result->digits[i + j] += (x->digits[i]) * (y->digits[j]);
             }
         }
-        // Clean up memory
-        free(temp_space);
+        // // Clean up memory
+        // free(temp_space);
         return;
     }
 
