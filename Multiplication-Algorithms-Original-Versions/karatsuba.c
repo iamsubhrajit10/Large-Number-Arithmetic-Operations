@@ -31,9 +31,6 @@ char* padding(char *x, int n) {
 }
 
 char* karatsuba(char *x, char*y){
-    
-    printf("x:%s y:%s\n",x,y);
-
     // if x or y is 0, return 0
     if (strcmp(x, "0") == 0 || strcmp(y, "0") == 0) {
         char *result = malloc(2);
@@ -92,7 +89,7 @@ char* karatsuba(char *x, char*y){
     } else if (y_len > x_len) {
         x = padding(x, y_len - x_len);
     }
-    printf("x:%s y:%s\n",x,y);
+
     int first_half;
     if (n % 2 == 0) {
         first_half = n / 2;
@@ -133,10 +130,6 @@ char* karatsuba(char *x, char*y){
     free(b);
     free(c);
     free(d);
-    // free(ac);
-    // free(bd);
-    // free(ad_plus_bc);
-    // free(ad_plus_bc_minus_ac_minus_bd);
     result = remove_leading_zeros(result);
     return result;
 }
