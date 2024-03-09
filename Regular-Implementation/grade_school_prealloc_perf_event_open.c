@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <stdbool.h>
@@ -15,9 +16,9 @@
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
 
-#define NUM_DIGITS 1000
-#define NUM_ITERATIONS 100
-#define NUMBER_OF_BITS 16384
+#define NUM_DIGITS 10000
+#define NUM_ITERATIONS 1
+#define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
 struct BigInteger *nums,*results;
@@ -93,8 +94,10 @@ void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigIntege
     end_ticks = rdtsc();
 }
 void generate_seed() {
-    // Get the current time
-    time_t now = time(0);
+    // Get the current time in microseconds
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    unsigned long long now = time.tv_sec * 1e6 + time.tv_usec;
 
     // Get the process ID
     pid_t pid = getpid();
@@ -105,8 +108,41 @@ void generate_seed() {
     // Set the seed for the rand() function
     srand(seed);
 }
+
+// Function to print the header of the CSV file
+void printHeader(FILE *file) {
+    fprintf(file, "Number 1,Number 2,Result,Ticks\n");
+}
+
+// Function to print a BigInteger to a file
+void printBigIntegerToFile(struct BigInteger num, FILE *file) {
+    for (int i = num.length-1; i>=0; i--) {
+        fprintf(file, "%d", num.digits[i]);
+    }
+}
+
+// Function to print the results to a file
+void printResultsToFile(FILE *file, struct BigInteger num1, struct BigInteger num2, struct BigInteger final_result) {
+    printBigIntegerToFile(num1, file);
+    fprintf(file, ",");
+    printBigIntegerToFile(num2, file);
+    fprintf(file, ",");
+    printBigIntegerToFile(final_result, file);
+    fprintf(file, ",%lu\n", end_ticks - start_ticks);
+}
 int main() {
     // Allocate memory for two integers
+    char CSV_FILENAME[100];
+    snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_grade_school_multiplication_results_peo_%d.csv", NUMBER_OF_BITS);
+
+    FILE *results_file;
+    results_file = fopen(CSV_FILENAME, "w");
+    if (results_file == NULL) {
+        printf("Error opening CSV file for writing!\n");
+        return 1;
+    }
+
+    printHeader(results_file);
     nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
     // Check if memory allocation was successful
     if (nums == NULL) {
@@ -248,7 +284,7 @@ int main() {
     };
 
    // Open a file for writing
-    char binary_name[] = "test"; // replace with actual binary name
+    char binary_name[] = "perf_peo_grade_school"; // replace with actual binary name
     int input_size = 100; // replace with actual input size
 
     char filename[100];
@@ -268,10 +304,27 @@ int main() {
     int k=0;
     // Run your code here...
     // printf("Starting the computation for non-thp...\n");
-    int left = 0;
-    int right = NUM_DIGITS - 1;
+    // int left = 0;
+    // int right = NUM_DIGITS - 1;
 
-    while (left < right) {
+    int indices[NUM_DIGITS];
+    for (int i = 0; i < NUM_DIGITS; i++) {
+        indices[i] = i;
+    }
+
+
+    for (int i = 0; i < NUM_DIGITS; i += 2) {
+        // Shuffle the indices array
+        for (int j = NUM_DIGITS - 1; j > 0; j--) {
+            int randomIndex = rand() % (j + 1);
+            int temp = indices[j];
+            indices[j] = indices[randomIndex];
+            indices[randomIndex] = temp;
+        }
+        
+        int index1 = indices[i];
+        int index2 = indices[i + 1];
+        
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
@@ -280,16 +333,32 @@ int main() {
         
         // Your computation code goes here...
         for (int j = 0; j < NUM_ITERATIONS; j++) {
-            multiply(&nums[left], &nums[right], &results[k]);
-            if(end_ticks - start_ticks < min_ticks){
+            multiply(&nums[index1], &nums[index2], &results[k]);
+            if (end_ticks - start_ticks < min_ticks) {
                 min_ticks = end_ticks - start_ticks;
             }
             total_ticks += end_ticks - start_ticks;
         }
-        left++;
-        right--;
-        k++;
+        printf("Multiplication of Num %d and Num %d done, count: %d \n", index1, index2, k);
+        // printf("Index1: %d, Index2: %d\n", index1, index2);
+        // printf("Number 1: ");
+        // for (int j = nums[index1].length-1; j>=0; j--) {
+        //     printf("%d", nums[index1].digits[j]);
+        // }
+        // printf("\n");
+        // printf("Number 2: ");
+        // for (int j = nums[index2].length-1; j>=0; j--) {
+        //     printf("%d", nums[index2].digits[j]);
+        // }
+        // printf("\n");
+        // printf("Result: ");
+        // for (int j = results[k].length-1; j>=0; j--) {
+        //     printf("%d", results[k].digits[j]);
+        // }
+        printResultsToFile(results_file, nums[index1], nums[index2], results[k]);
 
+        k++;
+        
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++) {
             if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
