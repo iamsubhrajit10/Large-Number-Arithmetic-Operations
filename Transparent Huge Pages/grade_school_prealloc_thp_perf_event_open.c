@@ -284,10 +284,27 @@ int main() {
     // Run your code here...
 
     // printf("Starting the computation for thp...\n");
-    int left = 0;
-    int right = NUM_DIGITS - 1;
+    // int left = 0;
+    // int right = NUM_DIGITS - 1;
 
-    while (left < right) {
+    // printf("Starting the computation for thp...\n");
+    int indices[NUM_DIGITS];
+    for (int i = 0; i < NUM_DIGITS; i++) {
+        indices[i] = i;
+    }
+    
+    for (int i = 0; i < NUM_DIGITS; i += 2) {
+        // Shuffle the indices array
+        for (int j = NUM_DIGITS - 1; j > 0; j--) {
+            int randomIndex = rand() % (j + 1);
+            int temp = indices[j];
+            indices[j] = indices[randomIndex];
+            indices[randomIndex] = temp;
+        }
+        
+        int index1 = indices[i];
+        int index2 = indices[i + 1];
+        
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
@@ -296,14 +313,12 @@ int main() {
         
         // Your computation code goes here...
         for (int j = 0; j < NUM_ITERATIONS; j++) {
-            multiply(&nums[left], &nums[right], &results[k]);
-            if(end_ticks - start_ticks < min_ticks){
+            multiply(&nums[index1], &nums[index2], &results[k]);
+            if (end_ticks - start_ticks < min_ticks) {
                 min_ticks = end_ticks - start_ticks;
             }
             total_ticks += end_ticks - start_ticks;
         }
-        left++;
-        right--;
         k++;
         
         // Stop monitoring
