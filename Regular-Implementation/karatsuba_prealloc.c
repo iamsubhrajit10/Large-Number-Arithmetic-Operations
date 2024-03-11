@@ -1,17 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include <gmp.h>
 #include <float.h>
+#include <fcntl.h>  // For file opening
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
+#include <sys/syscall.h> // For syscall()
+#include <asm/unistd.h>  // For __NR_perf_event_open
 #include <math.h>
 
-#define NUM_DIGITS 1000
+#define NUM_DIGITS 10000
 #define NUM_ITERATIONS 1
 #define NUMBER_OF_BITS 8192
+#define MAX_EVENTS 11 // Maximum number of events to monitor
 
 uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
 char *add(char *x, char *y);
@@ -36,10 +45,17 @@ static inline uint64_t rdtsc(void)
     return ((uint64_t)hi << 32) | lo;
 }
 
-void generate_seed()
-{
-    // Get the current time
-    time_t now = time(0);
+long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
+    int ret;
+
+    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+    return ret;
+}
+void generate_seed() {
+    // Get the current time in microseconds
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    unsigned long long now = time.tv_sec * 1e6 + time.tv_usec;
 
     // Get the process ID
     pid_t pid = getpid();
@@ -91,7 +107,7 @@ char *padding(char *x, int n)
     char *result = (char *)malloc(x_len + n + 1);
     if (result == NULL)
     {
-        perror("Memory allocation failed");
+        perror("Memory allocation failed, padding failed");
         exit(1);
     }
     for (int i = 0; i < n; i++)
@@ -111,7 +127,7 @@ char *karatsuba(char *x, char *y)
         char *result = malloc(2);
         if (result == NULL)
         {
-            perror("Memory allocation failed");
+            perror("Memory allocation failed, karatsuba result failed");
             exit(1);
         }
         result[0] = '0';
@@ -158,7 +174,7 @@ char *karatsuba(char *x, char *y)
         char *result_str = malloc(num_digits + 1);
         if (result_str == NULL)
         {
-            printf("Memory allocation failed\n");
+            perror("Memory allocation failed, karatsuba result_str failed");
             exit(1);
         }
 
@@ -196,7 +212,7 @@ char *karatsuba(char *x, char *y)
 
     if (a == NULL || b == NULL || c == NULL || d == NULL)
     {
-        perror("Memory allocation failed");
+        perror("Memory allocation failed, karatsuba a,b,c,d failed");
         exit(1);
     }
     strncpy(a, x, first_half);
@@ -217,17 +233,24 @@ char *karatsuba(char *x, char *y)
     char *ad_plus_bc_minus_ac_minus_bd = subtract(subtract(ad_plus_bc, ac), bd);
     // printf("ad_plus_bc_minus_ac_minus_bd:%s\n",ad_plus_bc_minus_ac_minus_bd);
 
-    char *result = add(add(shift(ac, 2 * second_half), shift(ad_plus_bc_minus_ac_minus_bd, second_half)), bd);
+    char *return_result = add(add(shift(ac, 2 * second_half), shift(ad_plus_bc_minus_ac_minus_bd, second_half)), bd);
+    char *result = (char *)malloc(strlen(return_result) + 1);
+    strncpy(result, return_result, strlen(return_result) + 1);
     free(a);
     free(b);
     free(c);
     free(d);
+    // free(ad_plus_bc);
+    // free(ac);
+    // free(bd);
+    free(ad_plus_bc_minus_ac_minus_bd);
     result = remove_leading_zeros(result);
     return result;
 }
 
 char *add(char *x, char *y)
 {
+   
     int is_x_negative = (x[0] == '-');
     int is_y_negative = (y[0] == '-');
 
@@ -269,7 +292,8 @@ char *add(char *x, char *y)
         char *result_str = malloc(num_digits + 1);
         if (result_str == NULL)
         {
-            perror("Memory allocation failed");
+             printf("Adding %s and %s\n", x, y);
+            perror("Memory allocation failed, add result_str failed");
             exit(1);
         }
         snprintf(result_str, num_digits + 1, "%d", result);
@@ -283,7 +307,7 @@ char *add(char *x, char *y)
     char *result = malloc(max_len + 2);
     if (result == NULL)
     {
-        perror("Memory allocation failed");
+        perror("Memory allocation failed, add result failed");
         exit(1);
     }
     result[max_len + 1] = '\0';
@@ -417,22 +441,56 @@ char *shift(char *x, int n)
     return result;
 }
 
+// Function to print the header of the CSV file
+void printHeader(FILE *file) {
+    fprintf(file, "Number 1,Number 2,Result,Ticks\n");
+}
+
+// Function to print a BigInteger to a file
+void printBigIntegerToFile(struct BigInteger num, FILE *file) {
+    for (int i = num.length-1; i>=0; i--) {
+        fprintf(file, "%c", num.digits[i]);
+    }
+}
+
+// Function to print the results to a file
+void printResultsToFile(FILE *file, struct BigInteger num1, struct BigInteger num2, struct BigInteger final_result) {
+    printBigIntegerToFile(num1, file);
+    fprintf(file, ",");
+    printBigIntegerToFile(num2, file);
+    fprintf(file, ",");
+    printBigIntegerToFile(final_result, file);
+    fprintf(file, ",%lu\n", end_ticks - start_ticks);
+}
+
 int main()
 {
+    char CSV_FILENAME[100];
+    snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_karatsuba_results_peo_%d.csv", NUMBER_OF_BITS);
+
+    FILE *results_file;
+    results_file = fopen(CSV_FILENAME, "w");
+
+    printHeader(results_file);
+    if (results_file == NULL) {
+        printf("Error opening CSV file for writing!\n");
+        return 1;
+    }
     struct BigInteger *nums, *results;
 
     // Allocate memory for two arrays of BigIntegers
     nums = (struct BigInteger *)malloc(NUM_DIGITS * sizeof(struct BigInteger));
     if (nums == NULL)
     {
-        printf("Memory allocation failed for nums.\n");
+        perror("Memory allocation failed, nums failed");
         return 1;
     }
+
 
     results = (struct BigInteger *)malloc((NUM_DIGITS / 2) * sizeof(struct BigInteger));
     if (results == NULL)
     {
-        printf("Memory allocation failed for results.\n");
+        perror("Memory allocation failed, results failed");
         free(nums);
         return 1;
     }
@@ -443,73 +501,224 @@ int main()
 
     // Preallocate memory for each integer and use it to generate random numbers
     char *nums_space = (char *)malloc(NUM_DIGITS * (sample_length + 1) * sizeof(char));
-
-    generate_seed();
-    sampleString = generateRandomNumber((rand() % 100) + 1);
-    sample_length = strlen(sampleString);
-
-    // Preallocate memory for each integer and use it to generate random numbers
-    char *results_space = (char *)malloc((NUM_DIGITS / 2) * (2 * (sample_length + 1) + 1) * sizeof(char));
-    // printf("Results Space size: %ld\n", sizeof(results_space));
-    if (results_space == NULL)
+    if (nums_space == NULL)
     {
-        printf("Memory allocation failed.\n");
+        perror("Memory allocation failed, nums_space failed");
+        free(nums);
+        free(results);
         return 1;
     }
-    for (int i = 0; i < NUM_DIGITS / 2; i++)
-    {
-        int length = nums[i].length + nums[i + 1].length + 1;
-        results[i].digits = results_space + i * (length + 1);
-        if (results[i].digits == NULL)
-        {
-            printf("Memory allocation failed.\n");
-            return 1;
-        }
-        results[i].length = length;
-    }
-    // Loop to generate random numbers and perform Karatsuba multiplicati
-    int k = 0;
-    // Run your code here...
-    // printf("Starting the computation for non-thp...\n");
-    int left = 0;
-    int right = NUM_DIGITS - 1;
-
-    while (left < right)
-    {
-        // Your computation code goes here...
-        // Generate random numbers for Karatsuba multiplication
-        char *num1_string = generateRandomNumber(left);
-        char *num2_string = generateRandomNumber(right);
-
-        // Convert random number strings to BigIntegers
-        nums[left].digits = num1_string;
-        nums[right].digits = num2_string;
-        start_ticks = rdtsc();
-        // Perform Karatsuba multiplication
-        results[k].digits = karatsuba(nums[left].digits, nums[right].digits);
-        // printf("Num1: %s, Num2: %s, Result: %s\n",nums[left].digits, nums[right].digits, karatsuba(nums[left].digits, nums[right].digits));
-        end_ticks = rdtsc();
-        if (end_ticks - start_ticks < min_ticks)
-        {
-            min_ticks = end_ticks - start_ticks;
-        }
-        total_ticks += end_ticks - start_ticks;
-        left++;
-        right--;
-        k++;
-    }
-
-    // Output minimum and total ticks
-    printf("Minimum ticks: %lu\n", min_ticks);
-    printf("Total ticks: %lu\n", total_ticks);
-
-    // Free allocated memory
     for (int i = 0; i < NUM_DIGITS; i++)
     {
-        free(nums[i].digits);
+        generate_seed();
+        int randomNumber = (rand() % 100) + 1;
+        char *randomString = generateRandomNumber(randomNumber);
+        int length = strlen(randomString);
+        nums[i].digits = nums_space + i * (length + 1);
+        if (nums[i].digits == NULL)
+        {
+            perror("Memory allocation failed, nums[i].digits failed");
+            free(nums);
+            free(results);
+            return 1;
+        }
+        for (int j = 0; j < length; j++)
+        {
+            nums[i].digits[j] = randomString[j];
+        }
+        nums[i].digits[length] = '\0';
+        nums[i].length = length;
     }
-    free(nums);
-    free(results);
 
+
+    /* monitoring performance */
+    struct perf_event_attr pe[MAX_EVENTS];
+    int fd[MAX_EVENTS];
+    long long count[MAX_EVENTS];
+    int i;
+
+    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+
+    // Define the events to monitor
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+
+    pe[2].type = PERF_TYPE_SOFTWARE;
+    pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
+
+    pe[3].type = PERF_TYPE_HW_CACHE;
+    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Cache Misses
+    pe[5].type = PERF_TYPE_HARDWARE;
+    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
+
+    // TLB Misses
+    pe[6].type = PERF_TYPE_HW_CACHE;
+    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Page Walks
+    pe[7].type = PERF_TYPE_HW_CACHE;
+    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+
+    // CPU Migrations
+    pe[8].type = PERF_TYPE_SOFTWARE;
+    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
+
+    // Minor page faults
+    pe[9].type = PERF_TYPE_SOFTWARE;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+
+    // Major page faults
+    pe[10].type = PERF_TYPE_SOFTWARE;
+    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+
+
+    // Open the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1) {
+            fprintf(stderr, "Error opening event %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
+    // Array of event type names
+    const char *event_names[MAX_EVENTS] = {
+        "PERF_COUNT_HW_CPU_CYCLES",
+        "PERF_COUNT_HW_INSTRUCTIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS",
+        "PERF_COUNT_HW_CACHE_L1D_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_ACCESSES",
+        "PERF_COUNT_SW_CPU_MIGRATIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS_MIN",
+        "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
+    };
+
+   // Open a file for writing
+    char binary_name[] = "perf_peo_karatsuba"; // replace with actual binary name
+    int input_size = 100; // replace with actual input size
+
+    char filename[100];
+    snprintf(filename, sizeof(filename), "%s_%d.csv", binary_name, NUMBER_OF_BITS);
+    FILE *file = fopen(filename, "w");
+
+    if (file == NULL) {
+        perror("Error opening file");
+        return -1;
+    }
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++) {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
+
+     int k=0;
+    // Run your code here...
+
+    // printf("Starting the computation for thp...\n");
+    // int left = 0;
+    // int right = NUM_DIGITS - 1;
+
+    // printf("Starting the computation for thp...\n");
+    int indices[NUM_DIGITS];
+    for (int i = 0; i < NUM_DIGITS; i++) {
+        indices[i] = i;
+    }
+    
+    for (int i = 0; i < NUM_DIGITS; i += 2) {
+        // Shuffle the indices array
+        for (int j = NUM_DIGITS - 1; j > 0; j--) {
+            int randomIndex = rand() % (j + 1);
+            int temp = indices[j];
+            indices[j] = indices[randomIndex];
+            indices[randomIndex] = temp;
+        }
+        
+        int index1 = indices[i];
+        int index2 = indices[i + 1];
+        
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+        
+        // Your computation code goes here...
+        for (int j = 0; j < NUM_ITERATIONS; j++) {
+            printf("Index1: %d, Index2: %d\n", index1, index2);
+            start_ticks = rdtsc();
+            results[k].digits = karatsuba(nums[index1].digits, nums[index2].digits);
+            end_ticks = rdtsc();
+            results[k].length = strlen(results[k].digits);
+            // printf("Multiplying %s and %s\n", nums[index1].digits, nums[index2].digits);
+            // printf("Result: %s\n", results[k].digits);
+            
+            
+            if (end_ticks - start_ticks < min_ticks) {
+                min_ticks = end_ticks - start_ticks;
+            }
+            total_ticks += end_ticks - start_ticks;
+        }
+        printResultsToFile(results_file, nums[index1], nums[index2], results[k]);
+
+        k++;
+        
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Read and print the counter values
+        uint64_t values[MAX_EVENTS];
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1) {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            fprintf(file, "%lu,", values[j]);
+        }
+        fprintf(file, "\n");
+        printf("Multiplication %d done\n", k);
+    }
+    // printf("Ending the computation for thp...\n");
+
+    // Close the file
+    fclose(file);
+
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
+    printf("Minimum ticks: %lu\n", min_ticks);
+    printf("Total ticks: %lu\n", total_ticks);
+    // madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
+    free(nums_space);
+
+    // madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
     return 0;
 }

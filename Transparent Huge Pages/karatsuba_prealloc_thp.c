@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,9 +21,9 @@
 #include <asm/unistd.h>
 
 
-#define NUM_DIGITS 1000
+#define NUM_DIGITS 10000
 #define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 256
 #define MAX_EVENTS 11 // Maximum number of events to monitor
 #define HPAGE_SIZE (2<<21)
 
@@ -48,11 +49,17 @@ static inline uint64_t rdtsc(void)
     asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
     return ((uint64_t)hi << 32) | lo;
 }
+long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
+    int ret;
 
-void generate_seed()
-{
-    // Get the current time
-    time_t now = time(0);
+    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+    return ret;
+}
+void generate_seed() {
+    // Get the current time in microseconds
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    unsigned long long now = time.tv_sec * 1e6 + time.tv_usec;
 
     // Get the process ID
     pid_t pid = getpid();
@@ -203,16 +210,69 @@ char *karatsuba(char *x, char *y)
     }
     int second_half = n - first_half;
 
-    char *a = malloc(first_half + 1);
-    char *b = malloc(second_half + 1);
-    char *c = malloc(first_half + 1);
-    char *d = malloc(second_half + 1);
+    //char *a = malloc(first_half + 1);
+    // char *b = malloc(second_half + 1);
+    // char *c = malloc(first_half + 1);
+    // char *d = malloc(second_half + 1);
 
-    if (a == NULL || b == NULL || c == NULL || d == NULL)
+    /* if (a == NULL || b == NULL || c == NULL || d == NULL)
     {
         perror("Memory allocation failed");
         exit(1);
+    }*/
+    char *a;
+    int err = posix_memalign((void **)&a, HPAGE_SIZE, (first_half + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign a");
+        exit(EXIT_FAILURE);
     }
+    err = madvise(a, (first_half + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise a");
+        exit(EXIT_FAILURE);
+    }
+    char *b;
+    err = posix_memalign((void **)&b, HPAGE_SIZE, (second_half + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign b");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(b, (second_half + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise b");
+        exit(EXIT_FAILURE);
+    }
+    char *c;
+    err = posix_memalign((void **)&c, HPAGE_SIZE, (first_half + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign c");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(c, (first_half + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise c");
+        exit(EXIT_FAILURE);
+    }
+    char *d;
+    err = posix_memalign((void **)&d, HPAGE_SIZE, (second_half + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign d");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(d, (second_half + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise d");
+        exit(EXIT_FAILURE);
+    }
+
     strncpy(a, x, first_half);
     a[first_half] = '\0';
     strncpy(b, x + first_half, second_half);
@@ -231,11 +291,61 @@ char *karatsuba(char *x, char *y)
     char *ad_plus_bc_minus_ac_minus_bd = subtract(subtract(ad_plus_bc, ac), bd);
     // printf("ad_plus_bc_minus_ac_minus_bd:%s\n",ad_plus_bc_minus_ac_minus_bd);
 
-    char *result = add(add(shift(ac, 2 * second_half), shift(ad_plus_bc_minus_ac_minus_bd, second_half)), bd);
-    free(a);
-    free(b);
-    free(c);
-    free(d);
+    char *return_result = add(add(shift(ac, 2 * second_half), shift(ad_plus_bc_minus_ac_minus_bd, second_half)), bd);
+    // char *result = (char *)malloc(strlen(return_result) + 1);
+    char *result;
+    err = posix_memalign((void **)&result, HPAGE_SIZE, (strlen(return_result) + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign result");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(result, (strlen(return_result) + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise result");
+        exit(EXIT_FAILURE);
+    }
+    strncpy(result, return_result, strlen(return_result) + 1);
+    // free(a);
+    err = madvise(a, (first_half + 1) * sizeof(char), MADV_DONTNEED);
+    if (err != 0)
+    {
+        perror("madvise free a");
+        exit(EXIT_FAILURE);
+    }
+    // free(b);
+    err = madvise(b, (second_half + 1) * sizeof(char), MADV_DONTNEED);
+    if (err != 0)
+    {
+        perror("madvise free b");
+        exit(EXIT_FAILURE);
+    }
+    // free(c);
+    err = madvise(c, (first_half + 1) * sizeof(char), MADV_DONTNEED);
+    if (err != 0)
+    {
+        perror("madvise free c");
+        exit(EXIT_FAILURE);
+    }
+    // free(d);
+    err = madvise(d, (second_half + 1) * sizeof(char), MADV_DONTNEED);
+    if (err != 0)
+    {
+        perror("madvise free d");
+        exit(EXIT_FAILURE);
+    }
+
+    // free(ad_plus_bc);
+    // free(ac);
+    // free(bd);
+    // free(ad_plus_bc_minus_ac_minus_bd);
+    err = madvise(ad_plus_bc_minus_ac_minus_bd, (strlen(ad_plus_bc_minus_ac_minus_bd) + 1) * sizeof(char), MADV_DONTNEED);
+    if (err != 0)
+    {
+        perror("madvise free ad_plus_bc");
+        exit(EXIT_FAILURE);
+    }
     result = remove_leading_zeros(result);
     return result;
 }
@@ -294,7 +404,21 @@ char *add(char *x, char *y)
     int max_len = (len_x > len_y) ? len_x : len_y;
     int carry = 0;
     int i = len_x - 1, j = len_y - 1, k = max_len;
-    char *result = malloc(max_len + 2);
+    // char *result = malloc(max_len + 2);
+    char *result;
+    int err = posix_memalign((void **)&result, HPAGE_SIZE, (max_len + 2) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign result");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(result, (max_len + 2) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise result");
+        exit(EXIT_FAILURE);
+    }
+
     if (result == NULL)
     {
         perror("Memory allocation failed");
@@ -362,7 +486,20 @@ char *subtract(char *x, char *y)
             len_y = strlen(y);
         }
 
-        char *result = malloc(len_x + 1);
+        // char *result = malloc(len_x + 1);
+        char *result;
+        int err = posix_memalign((void **)&result, HPAGE_SIZE, (len_x + 1) * sizeof(char));
+        if (err != 0)
+        {
+            perror("posix_memalign result");
+            exit(EXIT_FAILURE);
+        }
+        err = madvise(result, (len_x + 1) * sizeof(char), MADV_HUGEPAGE);
+        if (err != 0)
+        {
+            perror("madvise result");
+            exit(EXIT_FAILURE);
+        }
         int i = len_x - 1, j = len_y - 1, k = len_x - 1;
         int borrow = 0;
 
@@ -416,7 +553,20 @@ char *subtract(char *x, char *y)
 char *shift(char *x, int n)
 {
     int x_len = strlen(x);
-    char *result = (char *)malloc(x_len + n + 1);
+    // char *result = (char *)malloc(x_len + n + 1);
+    char *result;
+    int err = posix_memalign((void **)&result, HPAGE_SIZE, (x_len + n + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign result");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(result, (x_len + n + 1) * sizeof(char), MADV_HUGEPAGE);
+    if (err != 0)
+    {
+        perror("madvise result");
+        exit(EXIT_FAILURE);
+    }
     if (result == NULL)
     {
         perror("Memory allocation failed");
@@ -431,19 +581,62 @@ char *shift(char *x, int n)
     return result;
 }
 
+// Function to print the header of the CSV file
+void printHeader(FILE *file) {
+    fprintf(file, "Number 1,Number 2,Result,Ticks\n");
+}
+
+// Function to print a BigInteger to a file
+void printBigIntegerToFile(struct BigInteger num, FILE *file) {
+    for (int i = num.length-1; i>=0; i--) {
+        fprintf(file, "%c", num.digits[i]);
+    }
+}
+
+// Function to print the results to a file
+void printResultsToFile(FILE *file, struct BigInteger num1, struct BigInteger num2, struct BigInteger final_result) {
+    printBigIntegerToFile(num1, file);
+    fprintf(file, ",");
+    printBigIntegerToFile(num2, file);
+    fprintf(file, ",");
+    printBigIntegerToFile(final_result, file);
+    fprintf(file, ",%lu\n", end_ticks - start_ticks);
+}
+
 int main()
 {
+    char CSV_FILENAME[100];
+    snprintf(CSV_FILENAME, sizeof(CSV_FILENAME), "experiment_karatsuba_results_peo_%d.csv", NUMBER_OF_BITS);
+
+    FILE *results_file;
+    results_file = fopen(CSV_FILENAME, "w");
+
+    printHeader(results_file);
+    if (results_file == NULL) {
+        printf("Error opening CSV file for writing!\n");
+        return 1;
+    }
     struct BigInteger *nums, *results;
 
     // Allocate memory for two integers
-    posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
-    int err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
+    int err = posix_memalign((void **)&nums, HPAGE_SIZE, NUM_DIGITS * sizeof(struct BigInteger));
+    if (err != 0)
+    {
+        perror("posix_memalign nums");
+        exit(EXIT_FAILURE);
+    }
+    err = madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_HUGEPAGE);
     if (err != 0)
     {
         perror("madvise nums");
         exit(EXIT_FAILURE);
     }
-    posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS / 2) * sizeof(struct BigInteger));
+    err = posix_memalign((void **)&results, HPAGE_SIZE, (NUM_DIGITS / 2) * sizeof(struct BigInteger));
+    if (err != 0)
+    {
+        perror("posix_memalign results");
+        exit(EXIT_FAILURE);
+    }
     err = madvise(results, (NUM_DIGITS / 2) * sizeof(struct BigInteger), MADV_HUGEPAGE);
     if (err != 0)
     {
@@ -469,7 +662,12 @@ int main()
 
     // Preallocate memory for each integer and use it to generate random numbers
     char *nums_space;
-    posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS * (sample_length + 1) * sizeof(char));
+    err = posix_memalign((void **)&nums_space, HPAGE_SIZE, NUM_DIGITS * (sample_length + 1) * sizeof(char));
+    if (err != 0)
+    {
+        perror("posix_memalign nums_space");
+        exit(EXIT_FAILURE);
+    }
     err = madvise(nums_space, NUM_DIGITS * (sample_length + 1) * sizeof(char), MADV_HUGEPAGE);
     if (err != 0)
     {
@@ -488,84 +686,204 @@ int main()
             printf("Memory allocation failed.\n");
             return 1;
         }
-        strcpy(nums[i].digits, randomString);
+        for (int j = 0; j < length; j++)
+        {
+            nums[i].digits[j] = randomString[j];
+        }
+        nums[i].digits[length] = '\0';
         nums[i].length = length;
     }   
 
-    generate_seed();
-    sampleString = generateRandomNumber((rand() % 100) + 1);
-    sample_length = strlen(sampleString);
+      /* monitoring performance */
+    struct perf_event_attr pe[MAX_EVENTS];
+    int fd[MAX_EVENTS];
+    long long count[MAX_EVENTS];
+    int i;
 
-    // Preallocate memory for each integer and use it to generate random numbers
-    char *results_space;
-    posix_memalign((void **)&results_space, HPAGE_SIZE, (NUM_DIGITS / 2) * (2 * (sample_length + 1) + 1) * sizeof(char));
-    err = madvise(results_space, (NUM_DIGITS / 2) * (2 * (sample_length + 1) + 1) * sizeof(char), MADV_HUGEPAGE);
-    if (err != 0)
-    {
-        perror("madvise results_space");
-        exit(EXIT_FAILURE);
+    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+
+    // Define the events to monitor
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+
+    pe[2].type = PERF_TYPE_SOFTWARE;
+    pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
+
+    pe[3].type = PERF_TYPE_HW_CACHE;
+    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Cache Misses
+    pe[5].type = PERF_TYPE_HARDWARE;
+    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
+
+    // TLB Misses
+    pe[6].type = PERF_TYPE_HW_CACHE;
+    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+
+    // Page Walks
+    pe[7].type = PERF_TYPE_HW_CACHE;
+    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
+                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
+                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+
+    // CPU Migrations
+    pe[8].type = PERF_TYPE_SOFTWARE;
+    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
+
+    // Minor page faults
+    pe[9].type = PERF_TYPE_SOFTWARE;
+    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+
+    // Major page faults
+    pe[10].type = PERF_TYPE_SOFTWARE;
+    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+
+
+    // Open the events
+    for (i = 0; i < MAX_EVENTS; i++) {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1) {
+            fprintf(stderr, "Error opening event %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+    }
+    // Array of event type names
+    const char *event_names[MAX_EVENTS] = {
+        "PERF_COUNT_HW_CPU_CYCLES",
+        "PERF_COUNT_HW_INSTRUCTIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS",
+        "PERF_COUNT_HW_CACHE_L1D_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_MISS",
+        "PERF_COUNT_HW_CACHE_DTLB_ACCESSES",
+        "PERF_COUNT_SW_CPU_MIGRATIONS",
+        "PERF_COUNT_SW_PAGE_FAULTS_MIN",
+        "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
+    };
+
+   // Open a file for writing
+    char binary_name[] = "perf_peo_karatsuba"; // replace with actual binary name
+    int input_size = 100; // replace with actual input size
+
+    char filename[100];
+    snprintf(filename, sizeof(filename), "%s_%d.csv", binary_name, NUMBER_OF_BITS);
+    FILE *file = fopen(filename, "w");
+
+    if (file == NULL) {
+        perror("Error opening file");
+        return -1;
+    }
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++) {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
+
+     int k=0;
+    // Run your code here...
+
+    // printf("Starting the computation for thp...\n");
+    // int left = 0;
+    // int right = NUM_DIGITS - 1;
+
+    // printf("Starting the computation for thp...\n");
+    int indices[NUM_DIGITS];
+    for (int i = 0; i < NUM_DIGITS; i++) {
+        indices[i] = i;
     }
     
-    // printf("Results Space size: %ld\n", sizeof(results_space));
-    if (results_space == NULL)
-    {
-        printf("Memory allocation failed.\n");
-        return 1;
-    }
-    for (int i = 0; i < NUM_DIGITS / 2; i++)
-    {
-        int length = nums[i].length + nums[i + 1].length + 1;
-        results[i].digits = results_space + i * (length + 1);
-        if (results[i].digits == NULL)
-        {
-            printf("Memory allocation failed.\n");
-            return 1;
+    for (int i = 0; i < NUM_DIGITS; i += 2) {
+        // Shuffle the indices array
+        for (int j = NUM_DIGITS - 1; j > 0; j--) {
+            int randomIndex = rand() % (j + 1);
+            int temp = indices[j];
+            indices[j] = indices[randomIndex];
+            indices[randomIndex] = temp;
         }
-        results[i].length = length;
-    }
-    // Loop to generate random numbers and perform Karatsuba multiplicati
-    int k = 0;
-    // Run your code here...
-    // printf("Starting the computation for non-thp...\n");
-    int left = 0;
-    int right = NUM_DIGITS - 1;
-
-    while (left < right)
-    {
+        
+        int index1 = indices[i];
+        int index2 = indices[i + 1];
+        
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+        
         // Your computation code goes here...
-        // Generate random numbers for Karatsuba multiplication
-        char *num1_string = generateRandomNumber(left);
-        char *num2_string = generateRandomNumber(right);
-
-        // Convert random number strings to BigIntegers
-        nums[left].digits = num1_string;
-        nums[right].digits = num2_string;
-        start_ticks = rdtsc();
-        // Perform Karatsuba multiplication
-        results[k].digits = karatsuba(nums[left].digits, nums[right].digits);
-        // printf("Num1: %s, Num2: %s, Result: %s\n",nums[left].digits, nums[right].digits, karatsuba(nums[left].digits, nums[right].digits));
-        end_ticks = rdtsc();
-        if (end_ticks - start_ticks < min_ticks)
-        {
-            min_ticks = end_ticks - start_ticks;
+        for (int j = 0; j < NUM_ITERATIONS; j++) {
+            printf("Index1: %d, Index2: %d\n", index1, index2);
+            start_ticks = rdtsc();
+            results[k].digits = karatsuba(nums[index1].digits, nums[index2].digits);
+            end_ticks = rdtsc();
+            results[k].length = strlen(results[k].digits);
+            // printf("Multiplying %s and %s\n", nums[index1].digits, nums[index2].digits);
+            // printf("Result: %s\n", results[k].digits);
+            
+            
+            if (end_ticks - start_ticks < min_ticks) {
+                min_ticks = end_ticks - start_ticks;
+            }
+            total_ticks += end_ticks - start_ticks;
         }
-        total_ticks += end_ticks - start_ticks;
-        left++;
-        right--;
-        k++;
-    }
+        printResultsToFile(results_file, nums[index1], nums[index2], results[k]);
 
-    // Output minimum and total ticks
+        k++;
+        
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1) {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Read and print the counter values
+        uint64_t values[MAX_EVENTS];
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1) {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++) {
+            fprintf(file, "%lu,", values[j]);
+        }
+        fprintf(file, "\n");
+        printf("Multiplication %d done\n", k);
+    }
+    // printf("Ending the computation for thp...\n");
+
+    // Close the file
+    fclose(file);
+
+    // Close the file descriptors
+    for (int i = 0; i < MAX_EVENTS; i++) {
+        close(fd[i]);
+    }
     printf("Minimum ticks: %lu\n", min_ticks);
     printf("Total ticks: %lu\n", total_ticks);
+    madvise(nums_space, NUM_DIGITS*(sample_length + 1) * sizeof(int), MADV_DONTNEED);
+    madvise(nums, NUM_DIGITS * sizeof(struct BigInteger), MADV_DONTNEED);
+    madvise(results, (NUM_DIGITS/2) * sizeof(struct BigInteger), MADV_DONTNEED);
 
-    // Free allocated memory
-    for (int i = 0; i < NUM_DIGITS; i++)
-    {
-        free(nums[i].digits);
-    }
-    free(nums);
-    free(results);
 
+    // madvise(results_space, (NUM_DIGITS/2)*(2*(sample_length+1) + 1) * sizeof(int), MADV_DONTNEED);
     return 0;
 }

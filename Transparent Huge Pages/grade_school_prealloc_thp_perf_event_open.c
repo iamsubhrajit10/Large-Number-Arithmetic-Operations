@@ -118,7 +118,10 @@ void printHeader(FILE *file) {
 
 // Function to print a BigInteger to a file
 void printBigIntegerToFile(struct BigInteger num, FILE *file) {
-    for (int i = num.length-1; i>=0; i--) {
+    // for (int i = num.length-1; i>=0; i--) {
+    //     fprintf(file, "%d", num.digits[i]);
+    // }
+    for (int i = 0; i < num.length; i++) {
         fprintf(file, "%d", num.digits[i]);
     }
 }
