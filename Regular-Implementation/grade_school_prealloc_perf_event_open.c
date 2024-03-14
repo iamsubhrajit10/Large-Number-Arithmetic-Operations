@@ -15,11 +15,14 @@
 #include <linux/hw_breakpoint.h>
 #include <sys/syscall.h> // For syscall()
 #include <asm/unistd.h>  // For __NR_perf_event_open
+#define _GNU_SOURCE
+#include <x86intrin.h>
 
-#define NUM_DIGITS 10000
+#define NUM_DIGITS 100000
+#define NUM_MULTIPLICATIONS 10000
 #define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 8192
-#define MAX_EVENTS 11 // Maximum number of events to monitor
+#define NUMBER_OF_BITS 16384
+#define MAX_EVENTS 7 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks,total_ticks,min_ticks=UINT64_MAX;
 struct BigInteger *nums,*results;
 
@@ -70,7 +73,7 @@ void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigIntege
     int len1 = num1->length;
     int len2 = num2->length;    
     long int product,carry;
-    start_ticks = rdtsc();
+    
     for (int i = 0; i < len1; i++)
     {
         carry = 0;
@@ -91,7 +94,6 @@ void multiply(struct BigInteger *num1, struct BigInteger *num2, struct BigIntege
     {
         final_result->length--;
     }
-    end_ticks = rdtsc();
 }
 void generate_seed() {
     // Get the current time in microseconds
@@ -122,14 +124,17 @@ void printBigIntegerToFile(struct BigInteger num, FILE *file) {
 }
 
 // Function to print the results to a file
-void printResultsToFile(FILE *file, struct BigInteger num1, struct BigInteger num2, struct BigInteger final_result) {
+void printResultsToFile(FILE *file, struct BigInteger num1, struct BigInteger num2,int index1, int index2, struct BigInteger final_result) {
     printBigIntegerToFile(num1, file);
     fprintf(file, ",");
     printBigIntegerToFile(num2, file);
     fprintf(file, ",");
+    fprintf(file, "%d,%d,",index1,index2);
     printBigIntegerToFile(final_result, file);
-    fprintf(file, ",%lu\n", end_ticks - start_ticks);
+    // fprintf(file, ",%lu\n", end_ticks - start_ticks);
 }
+
+
 int main() {
     // Allocate memory for two integers
     char CSV_FILENAME[100];
@@ -212,52 +217,39 @@ int main() {
     memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
 
     // Define the events to monitor
+
+    // CPU cycles
     pe[0].type = PERF_TYPE_HARDWARE;
     pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
 
+    // Instructions
     pe[1].type = PERF_TYPE_HARDWARE;
     pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
 
+    // Page faults
     pe[2].type = PERF_TYPE_SOFTWARE;
     pe[2].config = PERF_COUNT_SW_PAGE_FAULTS;
 
+    // DTLB Misses
     pe[3].type = PERF_TYPE_HW_CACHE;
-    pe[3].config = (PERF_COUNT_HW_CACHE_L1D | 
+    pe[3].config = (PERF_COUNT_HW_CACHE_DTLB | 
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
+    // LLC Misses
     pe[4].type = PERF_TYPE_HW_CACHE;
-    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB | 
+    pe[4].config = (PERF_COUNT_HW_CACHE_LL | 
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
 
-    // Cache Misses
-    pe[5].type = PERF_TYPE_HARDWARE;
-    pe[5].config = PERF_COUNT_HW_CACHE_MISSES;
-
-    // TLB Misses
-    pe[6].type = PERF_TYPE_HW_CACHE;
-    pe[6].config = (PERF_COUNT_HW_CACHE_DTLB | 
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
-                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-
-    // Page Walks
-    pe[7].type = PERF_TYPE_HW_CACHE;
-    pe[7].config = (PERF_COUNT_HW_CACHE_DTLB | 
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) | 
-                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
-
-    // CPU Migrations
-    pe[8].type = PERF_TYPE_SOFTWARE;
-    pe[8].config = PERF_COUNT_SW_CPU_MIGRATIONS;
 
     // Minor page faults
-    pe[9].type = PERF_TYPE_SOFTWARE;
-    pe[9].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+    pe[5].type = PERF_TYPE_SOFTWARE;
+    pe[5].config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
 
     // Major page faults
-    pe[10].type = PERF_TYPE_SOFTWARE;
-    pe[10].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
+    pe[6].type = PERF_TYPE_SOFTWARE;
+    pe[6].config = PERF_COUNT_SW_PAGE_FAULTS_MAJ;
 
 
     // Open the events
@@ -273,12 +265,8 @@ int main() {
         "PERF_COUNT_HW_CPU_CYCLES",
         "PERF_COUNT_HW_INSTRUCTIONS",
         "PERF_COUNT_SW_PAGE_FAULTS",
-        "PERF_COUNT_HW_CACHE_L1D_MISS",
         "PERF_COUNT_HW_CACHE_DTLB_MISS",
-        "PERF_COUNT_HW_CACHE_MISS",
-        "PERF_COUNT_HW_CACHE_DTLB_MISS",
-        "PERF_COUNT_HW_CACHE_DTLB_ACCESSES",
-        "PERF_COUNT_SW_CPU_MIGRATIONS",
+        "PERF_COUNT_HW_CACHE_LL_MISS",
         "PERF_COUNT_SW_PAGE_FAULTS_MIN",
         "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
     };
@@ -313,7 +301,7 @@ int main() {
     }
 
 
-    for (int i = 0; i < NUM_DIGITS; i += 2) {
+    for (int i = 0; i < NUM_MULTIPLICATIONS; i += 2) {
         // Shuffle the indices array
         for (int j = NUM_DIGITS - 1; j > 0; j--) {
             int randomIndex = rand() % (j + 1);
@@ -324,40 +312,30 @@ int main() {
         
         int index1 = indices[i];
         int index2 = indices[i + 1];
-        
+        // flush the caches here
+        _mm_clflush(nums[index1].digits);
+        _mm_clflush(nums[index2].digits);
+        _mm_clflush(results[k].digits);
+        // _mm_clflush(nums_space);
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
+
         
         // Your computation code goes here...
         for (int j = 0; j < NUM_ITERATIONS; j++) {
-            multiply(&nums[index1], &nums[index2], &results[k]);
-            if (end_ticks - start_ticks < min_ticks) {
-                min_ticks = end_ticks - start_ticks;
-            }
-            total_ticks += end_ticks - start_ticks;
-        }
-        printf("Multiplication of Num %d and Num %d done, count: %d \n", index1, index2, k);
-        // printf("Index1: %d, Index2: %d\n", index1, index2);
-        // printf("Number 1: ");
-        // for (int j = nums[index1].length-1; j>=0; j--) {
-        //     printf("%d", nums[index1].digits[j]);
-        // }
-        // printf("\n");
-        // printf("Number 2: ");
-        // for (int j = nums[index2].length-1; j>=0; j--) {
-        //     printf("%d", nums[index2].digits[j]);
-        // }
-        // printf("\n");
-        // printf("Result: ");
-        // for (int j = results[k].length-1; j>=0; j--) {
-        //     printf("%d", results[k].digits[j]);
-        // }
-        printResultsToFile(results_file, nums[index1], nums[index2], results[k]);
+            // start_ticks = rdtsc();     
 
-        k++;
+            multiply(&nums[index1], &nums[index2], &results[k]);
+
+            // end_ticks = rdtsc();
+            // if (end_ticks - start_ticks < min_ticks) {
+            //     min_ticks = end_ticks - start_ticks;
+            // }
+            // total_ticks += end_ticks - start_ticks;
+        }
         
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++) {
@@ -366,7 +344,9 @@ int main() {
                 exit(EXIT_FAILURE);
             }
         }
-
+        printf("Multiplication of Num %d and Num %d done, count: %d \n", index1, index2, k);
+        printResultsToFile(results_file, nums[index1], nums[index2],index1,index2, results[k]);
+        k++;
         // Read and print the counter values
         uint64_t values[MAX_EVENTS];
         for (int j = 0; j < MAX_EVENTS; j++) {
@@ -393,8 +373,8 @@ int main() {
         close(fd[i]);
     }
 
-    printf("Minimum ticks: %lu\n", min_ticks);
-    printf("Total ticks: %lu\n", total_ticks);
+    // printf("Minimum ticks: %lu\n", min_ticks);
+    // printf("Total ticks: %lu\n", total_ticks);
     free(nums_space);
     free(results_space);
     return 0;
