@@ -20,6 +20,7 @@ EOF
 
 sudo apt-get update
 sudo apt-get install linux-image-$(uname -r)-dbgsym
+sudo apt-get install linux-image-$(uname -r)-dbg
 
 # // write shell command to increase the timeout time of ssh disconnetion
 # // Do the following
