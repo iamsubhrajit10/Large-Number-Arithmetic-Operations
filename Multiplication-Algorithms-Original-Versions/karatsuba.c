@@ -295,8 +295,8 @@ char* shift(char *x, int n) {
 }
 
 int main() {
-    char *x = "1461233";
-    char *y = "3521203";
+    char *x = "12345678";
+    char *y = "98765432";
     char *result = karatsuba(x, y);
     printf("Result: %s\n", result);
     free(result);

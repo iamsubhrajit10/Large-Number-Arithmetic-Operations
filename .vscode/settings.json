@@ -1,5 +1,6 @@
 {
-    "files.associations": {
-        "karastuba new": "c"
-    }
+  "files.associations": {
+    "karastuba new": "c"
+  },
+  "C_Cpp_Runner.msvcBatchPath": ""
 }
