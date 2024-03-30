@@ -9,9 +9,11 @@ typedef struct {
     double imag;
 } Complex;
 
-void fft(Complex* x, int N, int inverse) {
+Complex *x_one,*x_two, *y_one,*y_two,*y_three;
+int N, *result;
+
+void fft(Complex* x, Complex *y, int N, int inverse) {
     int i, j, k;
-    Complex* y = (Complex*)calloc(N, sizeof(Complex));
     double pi = 3.14159265358979323846;
     double angle;
     Complex w, w_N;
@@ -60,45 +62,38 @@ void fft(Complex* x, int N, int inverse) {
             x[i].imag /= N;
         }
     }
-    free(y);
 }
 
-void multiply(const char* num1, const char* num2) {
+void multiply(const char* num1, const char* num2, int len1, int len2) {
     // Convert the input numbers to Complex arrays
-    int len1 = strlen(num1);
-    int len2 = strlen(num2);
-    int N = 2 * (int)pow(2, ceil(log2(2 * (len1 + len2))));
-
-    Complex* x1 = (Complex*)calloc(N, sizeof(Complex));
-    Complex* x2 = (Complex*)calloc(N, sizeof(Complex));
 
     for (int i = 0; i < len1; i++) {
-        x1[i].real = num1[len1 - i - 1] - '0';
+        x_one[i].real = num1[len1 - i - 1] - '0';
     }
 
     for (int i = 0; i < len2; i++) {
-        x2[i].real = num2[len2 - i - 1] - '0';
+        x_two[i].real = num2[len2 - i - 1] - '0';
     }
 
     // Perform FFT on the input numbers
-    fft(x1, N, 0);
-    fft(x2, N, 0);
+    fft(x_one, y_one, N, 0);
+    fft(x_two, y_two, N, 0);
 
     // Multiply the transformed numbers
     for (int i = 0; i < N; i++) {
-        double real = x1[i].real * x2[i].real - x1[i].imag * x2[i].imag;
-        double imag = x1[i].real * x2[i].imag + x1[i].imag * x2[i].real;
-        x1[i].real = real;
-        x1[i].imag = imag;
+        double real = x_one[i].real * x_two[i].real - x_one[i].imag * x_two[i].imag;
+        double imag = x_one[i].real * x_two[i].imag + x_one[i].imag * x_two[i].real;
+        x_one[i].real = real;
+        x_one[i].imag = imag;
     }
 
     // Perform inverse FFT to get the result
-    fft(x1, N, 1);
+    fft(x_one, y_three, N, 1);
 
     // Convert the result back to the time domain and handle carry
-    int* result = (int*)calloc(N, sizeof(int));
+    
     for (int i = 0; i < N; i++) {
-        result[i] = round(x1[i].real);
+        result[i] = round(x_one[i].real);
     }
     for (int i = 0; i < N; i++) {
         if (result[i] >= 10) {
@@ -113,7 +108,22 @@ void multiply(const char* num1, const char* num2) {
             }
         }
     }
+}
 
+int main() {
+    char num1[] = "12345678";
+    char num2[] = "98765432";
+
+    int len1 = strlen(num1);
+    int len2 = strlen(num2);
+    N = 2 * (int)pow(2, ceil(log2(2 * (len1 + len2))));
+    x_one =(Complex*)calloc(N, sizeof(Complex));
+    x_two =(Complex*)calloc(N,sizeof(Complex));
+    y_one =(Complex*)calloc(N, sizeof(Complex));
+    y_two =(Complex*)calloc(N,sizeof(Complex));
+    y_three =(Complex*)calloc(N,sizeof(Complex));
+    result = (int*)calloc(N, sizeof(int));
+    multiply(num1, num2,len1,len2);
     // Print the result
     printf("Result: ");
     int start = N - 1;
@@ -124,16 +134,11 @@ void multiply(const char* num1, const char* num2) {
     printf("\n");
 
     // Free memory
-    free(x1);
-    free(x2);
+    free(x_one);
+    free(x_two);
+    free(y_one);
+    free(y_two);
+    free(y_three);
     free(result);
-}
-
-int main() {
-    char num1[] = "12345678";
-    char num2[] = "98765432";
-
-    multiply(num1, num2);
-
     return 0;
 }
