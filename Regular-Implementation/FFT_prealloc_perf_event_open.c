@@ -20,16 +20,13 @@
 #include <x86intrin.h>
 #endif
 #include <math.h>
-#include <limits.h>
-#include <inttypes.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+
 
 
 #define NUM_DIGITS 100000
 #define NUM_MULTIPLICATIONS 10000
 #define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 512
+#define NUMBER_OF_BITS 64
 #define MAX_EVENTS 7 // Maximum number of events to monitor
 struct BigInteger *nums,*results;
 typedef struct {
@@ -407,10 +404,10 @@ int main() {
     }
 
     // Write the header to the CSV file
-    for (int j = 0; j < MAX_EVENTS; j++) {
-        fprintf(file, "%s,", event_names[j]);
-    }
-    fprintf(file, "\n");
+    // for (int j = 0; j < MAX_EVENTS; j++) {
+    //     fprintf(file, "%s,", event_names[j]);
+    // }
+    // fprintf(file, "\n");
 
      int k=0;
     // Run your code here...
@@ -425,8 +422,37 @@ int main() {
         indices[i] = i;
     }
     printf("Starting the computation for non-thp...\n");
+    // Allocate memory for the Complex arrays
+    int length = nums[0].length + nums[1].length + 1;
+    x_one =(Complex*)calloc(length, sizeof(Complex));
+    if (x_one == NULL) {
+        printf("Memory allocation failed:x_one\n");
+        return 1;
+    }
+    x_two =(Complex*)calloc(length,sizeof(Complex));
+    if (x_two == NULL) {
+        printf("Memory allocation failed:x_two\n");
+        return 1;
+    }
+    y_one =(Complex*)calloc(length, sizeof(Complex));
+    if (y_one == NULL) {
+        printf("Memory allocation failed:y_one\n");
+        return 1;
+    }
+    y_two =(Complex*)calloc(length,sizeof(Complex));
+    if (y_two == NULL) {
+        printf("Memory allocation failed:y_two\n");
+        return 1;
+    }
+    y_three =(Complex*)calloc(length,sizeof(Complex));
+    if (y_three == NULL) {
+        printf("Memory allocation failed:y_three\n");
+        return 1;
+    }
+
     for (int i = 0; i < NUM_MULTIPLICATIONS; i += 2) {
         // Shuffle the indices array
+        generate_seed();
         for (int j = NUM_DIGITS - 1; j > 0; j--) {
             int randomIndex = rand() % (j + 1);
             int temp = indices[j];
@@ -460,33 +486,26 @@ int main() {
         flushCache((void*)aligned_ptr2, aligned_size2);
         flushCache((void*)aligned_ptr3, aligned_size3);
 
+        
+
 
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++) {
             ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
-        int length = nums[index1].length + nums[index2].length + 1;
+        
         // Your computation code goes here...
         for (int j = 0; j < NUM_ITERATIONS; j++) {
             // start_ticks = rdtsc();
             // flush the caches
         
             
-            x_one =(Complex*)calloc(length, sizeof(Complex));
-            x_two =(Complex*)calloc(length,sizeof(Complex));
-            y_one =(Complex*)calloc(length, sizeof(Complex));
-            y_two =(Complex*)calloc(length,sizeof(Complex));
-            y_three =(Complex*)calloc(length,sizeof(Complex));
+
             multiply(&nums[index1], &nums[index2], &results[k]);
             
             printf("Multiplication of Num %d and Num %d done, count: %d \n", index1, index2, k);
 
-            free(x_one);
-            free(x_two);
-            free(y_one);
-            free(y_two);
-            free(y_three);
         }
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++) {
@@ -518,7 +537,20 @@ int main() {
         }
         fprintf(file, "\n");
         // printf("Iteration %d\n",i);
+        // Reset the memory
+        memset(x_one, 0, length * sizeof(Complex));
+        memset(x_two, 0, length * sizeof(Complex));
+        memset(y_one, 0, length * sizeof(Complex));
+        memset(y_two, 0, length * sizeof(Complex));
+        memset(y_three, 0, length * sizeof(Complex));
     }
+    // Deallocate the memory after the loop
+    // free(x_one);
+    // free(x_two);
+    // free(y_one);
+    // free(y_two);
+    // free(y_three);
+
     // printf("Ending the computation for non-thp...\n");
 
     // Close the file
