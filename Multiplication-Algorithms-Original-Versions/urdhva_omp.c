@@ -33,14 +33,13 @@ Refer: https://www.upavidhi.com/sutra/urdhva-tiryagbhyam
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <omp.h>
 #include <time.h>
 #include <sys/time.h>
 #include <gmp.h>
 #include <unistd.h>
 
-#define NUMBER_OF_BITS 8192
-
-
+#define NUMBER_OF_BITS 16384
 
 // Function to make the two number strings equidistant by adding zeroes in front of the smaller number, and reallocate space for the smaller number
 void make_equidistant(int **num1_base, int **num2_base, int *n_1, int *n_2)
@@ -161,6 +160,99 @@ void suddhikaran(int *arr, int n)
     }
 }
 
+// // Function to extract the prefix sets of a number string and insert them into result array from a given index
+// // example: extract_prefix([1,2,3,4], 4, 4, [0,0,0,0,0,0,0]) => [1,12,123,1234,0,0,0]
+// // Extract the prefix sets
+// // num_set is a 2d-array, where each column represents a set of prefixes in terms of number string, and storing starts from store_index_start
+// void extract_prefix(int *num, int n, int **num_set, int *num_set_col_size)
+// {
+//     if (n == 0)
+//         return;
+//     int available_threads = omp_get_max_threads();
+    
+//     if (available_threads > n)
+//         available_threads = n;
+//     int num_rept = n / available_threads;
+//     int num_rem = n % available_threads;
+//     #pragma omp parallel num_threads(available_threads) shared(num_set, num_set_col_size)
+//     {
+//         int tid = omp_get_thread_num();
+//         int start = 0;
+//         for (int i = 0; i < num_rept; i++)
+//         {
+//             int end = tid + i;
+//             int store_index_start = tid + i;
+//             int *prefix = (int *)calloc(end+1, sizeof(int));
+//             for (int j = 0; j <= end; j++)
+//                 prefix[j] = num[j];
+//             num_set[store_index_start] = prefix;
+//             num_set_col_size[store_index_start] = end+1;
+//         }
+//         if (tid == available_threads - 1)
+//         {
+//             int start = 0;
+//             for (int i = 0; i < num_rem; i++)
+//             {
+//                 int end = tid+ 1 + i;
+//                 int store_index_start = tid+ 1 + i;
+//                 int *prefix = (int *)calloc(end+1, sizeof(int));
+//                 for (int j = 0; j <= end; j++)
+//                     prefix[j] = num[j];
+//                 num_set[store_index_start] = prefix;
+//                 num_set_col_size[store_index_start] = end+1;
+//             }
+//         }
+//     }    
+// }
+
+// // Function to extract the suffix sets of a number string and insert them into result array from a given index
+// // example: extract_suffix([1,2,3,4], 4, 4, [1,12,123,1234,0,0,0]) => [1,12,123,1234,234,34,4]
+// // Extract the suffix sets
+// // num_set is a 2d-array, where each column represents a set of suffixes in terms of number string, and storing starts from store_index_start
+// void extract_suffix(int *num, int n, int **num_set, int *num_set_col_size)
+// {
+//     if (n == 0)
+//         return;
+//     int available_threads = omp_get_max_threads();
+//     if (available_threads > n - 1)
+//         available_threads = n - 1;
+//     int num_rept = (n - 1) / available_threads;
+//     int num_rem = (n - 1) % available_threads;
+//     #pragma omp parallel num_threads(available_threads) shared(num_set, num_set_col_size)
+//     {
+//         int tid = omp_get_thread_num();
+//         int end = n - 1;
+//         for (int i = 0; i < num_rept; i++)
+//         {
+//             int start = 1 + tid + i;
+//             int store_index_start = n + tid + i;
+//             int *suffix = (int *)calloc(end-start+1, sizeof(int));
+//             int k = 0;
+//             for (int j = start; j <= end; j++)
+//                 suffix[k++] =  num[j];                                    
+//             num_set[store_index_start] = suffix;
+//             num_set_col_size[store_index_start] = end-start+1;
+//         }
+//         if (tid == available_threads - 1)
+//         {
+            
+//             int end = n - 1;
+//             for (int i = 0; i < num_rem; i++)
+//             {
+//                 int start = n - 1 + i;
+//                 int store_index_start = n + tid + num_rept + i;
+//                 int *suffix = (int *)calloc(end - start + 1, sizeof(int));
+//                 int k = 0;
+//                 for (int j = start; j <= end; j++)
+//                     suffix[k++] = num[j];
+//                 num_set[store_index_start] = suffix;
+//                 num_set_col_size[store_index_start] = end - start + 1;
+//             }
+//         }
+//     }   
+// }
+
+
 // Function to extract the prefix sets of a number string and insert them into result array from a given index
 // example: extract_prefix([1,2,3,4], 4, 4, [0,0,0,0,0,0,0]) => [1,12,123,1234,0,0,0]
 // Extract the prefix sets
@@ -232,7 +324,7 @@ int* urdhva_tiryakbhyam(int *num1, int *num2, int num_len)
 
     int *result_set = (int *)calloc(2*num_len-1, sizeof(int));
     
-
+    // linearly extracting the prefix and suffix sets of num1 and num2
     extract_prefix(num1, num_len, numset1, numset1_col_size);
     extract_suffix(num1, num_len, numset1, numset1_col_size);
     extract_prefix(num2, num_len, numset2, numset2_col_size);
@@ -242,14 +334,60 @@ int* urdhva_tiryakbhyam(int *num1, int *num2, int num_len)
     reverse(numset2, 2*num_len-1, numset2_col_size);
 
     // Now for each sets in numset1 and numset2, calculate the cross product and store in result_set
-    // for n-digit set, the Cross-Product:
-    // For even-number of digits: Sum of the cross-wise product of the digits, that are equidistant from the ends.
-    // For odd-number of digits: Sum of the cross-wise product of the digits, that are equidistant from the ends - summed with central-digits multiplied with each other.
 
+    // Approach 1: main omp parallel for loop
+    // #pragma omp parallel for
+    // for (int i = 0; i < 2*num_len-1; i++) {
+    //     // iterate the num2 set in reverse order to avoid cross-multiplication of the same set
+    //     int sum = 0;
+    //     // printf("Multiplying set %d\n", i);
+    //     int num1_index = 0;
+    //     int num2_index = 0;
+    //     while (num1_index < numset1_col_size[i] && num2_index <= numset2_col_size[i])
+    //     {
+    //         sum += numset1[i][num1_index] * numset2[i][num2_index];
+    //         num1_index++;
+    //         num2_index++;
+    //     }
+    //     // store the sums into result_set
+    //     result_set[i] = sum;
+    // }
+
+    // Approach 2: omp parallel with manual thread management
+    // #pragma omp parallel
+    // {
+    //     int tid = omp_get_thread_num();
+    //     int per_thread = (2*num_len-1)/omp_get_num_threads();
+    //     int remainder = (2*num_len-1)%omp_get_num_threads();
+    //     int start = tid*per_thread;
+    //     int end = (tid+1)*per_thread;
+    //     if (tid == omp_get_num_threads()-1)
+    //         end += remainder;
+    //     for (int i = start; i < end; i++) {
+    //         // iterate the num2 set in reverse order to avoid cross-multiplication of the same set
+    //         int sum = 0;
+    //         // printf("Multiplying set %d\n", i);
+    //         int num1_index = 0;
+    //         int num2_index = 0;
+    //         while (num1_index < numset1_col_size[i] && num2_index <= numset2_col_size[i])
+    //         {
+    //             sum += numset1[i][num1_index] * numset2[i][num2_index];
+    //             num1_index++;
+    //             num2_index++;
+    //         }
+    //         // store the sums into result_set
+    //         result_set[i] = sum;
+    //     }
+    // }
+
+    // Approach 3: omp parallel for with reduction
+    #pragma omp parallel for
     for (int i = 0; i < 2*num_len-1; i++) {
         // iterate the num2 set in reverse order to avoid cross-multiplication of the same set
         int sum = 0;
+        // printf("Multiplying set %d\n", i);
 
+        #pragma omp parallel for reduction(+:sum)
         for(int j = 0; j < numset1_col_size[i]; j++)
         {
             sum += numset1[i][j] * numset2[i][j];
@@ -258,11 +396,15 @@ int* urdhva_tiryakbhyam(int *num1, int *num2, int num_len)
         result_set[i] = sum;
     }
 
+
+
+
+    
+
     // Perform śūddhikaran
     suddhikaran(result_set, 2*num_len-1);
     return result_set;
 }
-
 
 char* generateRandomNumber(int seed) {
     gmp_randstate_t state;
@@ -324,37 +466,29 @@ void main()
         exit(0);
     }
     // Copy the number string into the integer array
+    printf("Num1: ");
     for (int i = 0; i < n1; i++)
     {
         num1[i] = num1_str[i] - '0';
+        printf("%d", num1[i]);
     }
     int *num2 = (int *)calloc(n2, sizeof(int));
+
     if (num2 == NULL)
     {
         perror("Memory allocation failed for num2\n");
         exit(0);
     }
     // Copy the number string into the integer array
+    printf("\nNum2: ");
     for (int i = 0; i < n2; i++)
     {
         num2[i] = num2_str[i] - '0';
-    }
-
-    // make the two numbers equidistant
-    make_equidistant(&num1, &num2, &n1, &n2);
-
-    printf("Num1\n");
-    for (int i = 0; i < n1; i++)
-    {
-        printf("%d", num1[i]);
-    }
-    printf("\n");
-    printf("Num2\n");
-    for (int i = 0; i < n2; i++)
-    {
         printf("%d", num2[i]);
     }
     printf("\n");
+    // make the two numbers equidistant
+    make_equidistant(&num1, &num2, &n1, &n2);
 
     int n = (n1 > n2) ? n1 : n2;
     // measure elapsed time with high precision
