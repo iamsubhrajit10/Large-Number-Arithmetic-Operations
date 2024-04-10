@@ -38,7 +38,7 @@ Refer: https://www.upavidhi.com/sutra/urdhva-tiryagbhyam
 #include <gmp.h>
 #include <unistd.h>
 
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 16384
 
 
 
@@ -205,20 +205,6 @@ void extract_suffix(int *num, int n, int **num_set, int *num_set_col_size)
     }
 }
 
-// Function to reverse the 2d array of integers, basically reversing the columns
-void reverse(int **num_set, int num_set_rows, int *num_set_col_size)
-{
-    for (int i = 0; i < num_set_rows; i++)
-    {
-        int n = num_set_col_size[i];
-        for (int j = 0; j < n / 2; j++)
-        {
-            int temp = num_set[i][j];
-            num_set[i][j] = num_set[i][n - j - 1];
-            num_set[i][n - j - 1] = temp;
-        }
-    }
-}
 
 // Function to perform Urdhva Tiryakbhyam multiplication
 int* urdhva_tiryakbhyam(int *num1, int *num2, int num_len)
@@ -238,9 +224,6 @@ int* urdhva_tiryakbhyam(int *num1, int *num2, int num_len)
     extract_prefix(num2, num_len, numset2, numset2_col_size);
     extract_suffix(num2, num_len, numset2, numset2_col_size);
 
-    // reverse the numset2 for cross-multiplication to be cache-friendly
-    reverse(numset2, 2*num_len-1, numset2_col_size);
-
     // Now for each sets in numset1 and numset2, calculate the cross product and store in result_set
     // for n-digit set, the Cross-Product:
     // For even-number of digits: Sum of the cross-wise product of the digits, that are equidistant from the ends.
@@ -249,10 +232,14 @@ int* urdhva_tiryakbhyam(int *num1, int *num2, int num_len)
     for (int i = 0; i < 2*num_len-1; i++) {
         // iterate the num2 set in reverse order to avoid cross-multiplication of the same set
         int sum = 0;
-
-        for(int j = 0; j < numset1_col_size[i]; j++)
+        // printf("Multiplying set %d\n", i);
+        int num1_index = 0;
+        int num2_index = numset2_col_size[i] - 1;
+        while (num1_index < numset1_col_size[i] && num2_index >= 0)
         {
-            sum += numset1[i][j] * numset2[i][j];
+            sum += numset1[i][num1_index] * numset2[i][num2_index];
+            num1_index++;
+            num2_index--;
         }
         // store the sums into result_set
         result_set[i] = sum;
@@ -343,18 +330,18 @@ void main()
     // make the two numbers equidistant
     make_equidistant(&num1, &num2, &n1, &n2);
 
-    printf("Num1\n");
-    for (int i = 0; i < n1; i++)
-    {
-        printf("%d", num1[i]);
-    }
-    printf("\n");
-    printf("Num2\n");
-    for (int i = 0; i < n2; i++)
-    {
-        printf("%d", num2[i]);
-    }
-    printf("\n");
+    // printf("Num1\n");
+    // for (int i = 0; i < n1; i++)
+    // {
+    //     printf("%d", num1[i]);
+    // }
+    // printf("\n");
+    // printf("Num2\n");
+    // for (int i = 0; i < n2; i++)
+    // {
+    //     printf("%d", num2[i]);
+    // }
+    // printf("\n");
 
     int n = (n1 > n2) ? n1 : n2;
     // measure elapsed time with high precision
@@ -362,11 +349,11 @@ void main()
     clock_gettime(CLOCK_REALTIME, &start);
     int *result = urdhva_tiryakbhyam(num1, num2, n);
     clock_gettime(CLOCK_REALTIME, &end);
-    printf("Result: ");
-    for (int i = 0; i < 2*n-1; i++)
-    {
-        printf("%d", result[i]);
-    }
+    // printf("Result: ");
+    // for (int i = 0; i < 2*n-1; i++)
+    // {
+    //     printf("%d", result[i]);
+    // }
     printf("\n");
     printf("Time taken: %lf\n", (end.tv_sec - start.tv_sec) + 1e-9 * (end.tv_nsec - start.tv_nsec));
 
