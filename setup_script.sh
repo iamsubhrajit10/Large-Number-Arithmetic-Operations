@@ -37,3 +37,4 @@ sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -
 git config --global credential.helper 'cache --timeout=3600'
 chmod +x git_push.sh
 nohup ./git_push.sh > ~/nohup.out 2>&1 &
+sudo chmod -R 777 .
