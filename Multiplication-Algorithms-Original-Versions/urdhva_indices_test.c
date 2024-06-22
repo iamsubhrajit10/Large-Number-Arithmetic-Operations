@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include <gmp.h>
 #include <float.h>
 #include <fcntl.h> // For file opening
 #include <sys/ioctl.h>
@@ -17,11 +16,14 @@
 #include <asm/unistd.h>  // For __NR_perf_event_open
 #define _GNU_SOURCE
 #include <x86intrin.h>
+#include <gmp.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
-#define NUM_DIGITS 100000
-#define NUM_MULTIPLICATIONS 10000
-#define NUM_ITERATIONS 1
-#define NUMBER_OF_BITS 512
+#define NUM_ITERATIONS 1000
+#define NUMBER_OF_BITS 8192
 #define MAX_EVENTS 7 // Maximum number of events to monitor
 uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
 
@@ -41,68 +43,62 @@ static inline uint64_t rdtsc(void)
     return ((uint64_t)hi << 32) | lo;
 }
 
-int *urdhva(int *number1, int *number2, int n)
+// Function to perform grade-school multiplication on two numbers represented as arrays of digits
+void gradeSchoolMultiplication(int *num1, int len1, int *num2, int len2, int *result)
 {
-    int *product = (int *)calloc(2 * n - 1, sizeof(int));
-    int *carry = (int *)calloc(2 * n - 1, sizeof(int));
-    int i, j, n1_index, n2_index;
-    int p, c;
 
-    // Compute Prefixes
-    for (i = 0, j = n - 1; j >= 0; j--)
+    // Multiply each digit of num2 with num1
+    for (int i = len2 - 1; i >= 0; i--)
     {
-        p = 0;
-        for (n1_index = i, n2_index = j; n2_index >= 0 && n1_index <= n - 1; n1_index++, n2_index--)
+        for (int j = len1 - 1; j >= 0; j--)
         {
-            p += number1[n1_index] * number2[n2_index];
-            // printf("i: %d, j:%d, n1_index: %d, n2_index: %d, p: %d \n",i,j,n1_index,n2_index,p);
-        }
-        if ((j + i) != 0)
-        {
-            carry[j + i - 1] = p / 10;
-            product[j + i] = p % 10;
-        }
-        else
-        {
-            product[j + i] = p;
+            int product = num2[i] * num1[j] + result[i + j + 1];
+            result[i + j + 1] = product % 10;
+            result[i + j] += product / 10;
         }
     }
-
-    // Compute Suffixes
-    for (j = n - 1, i++; i <= n - 1; i++)
-    {
-        p = 0;
-        for (n1_index = i, n2_index = j; n2_index >= 0 && n1_index <= n - 1; n1_index++, n2_index--)
-        {
-            p += number1[n1_index] * number2[n2_index];
-            // printf("i: %d, j:%d, n1_index: %d, n2_index: %d, p: %d \n", i, j, n1_index, n2_index, p);
-        }
-        if ((j + i) != 0)
-        {
-            carry[j + i - 1] = p / 10;
-            product[j + i] = p % 10;
-        }
-        else
-        {
-            product[j + i] = p;
-        }
-    }
-
-    // Adjust Carries
-    for (c = 0, i = 2 * n - 2; i >= 0; i--)
-    {
-        p = product[i] + carry[i] + c;
-        c = p / 10;
-        if (i != 0)
-            product[i] = p % 10;
-        else
-            product[i] = p;
-    }
-
-    free(carry);
-    return product;
 }
 
+// Helper functions for min and max if not included already
+static inline int max(int a, int b) { return (a > b) ? a : b; }
+static inline int min(int a, int b) { return (a < b) ? a : b; }
+
+// Function to perform Urdhva-Tiryagbhyam multiplication using memoization
+void urdhva(int *number1, int *number2, int n, int *product, int *carry, const int memo[10][10])
+{
+    int max_index = 2 * n;
+
+    for (int sum = 0; sum < max_index; sum++)
+    {
+        int p = 0;
+        int start = (sum - (n - 1) > 0) ? sum - (n - 1) : 0;
+        int end = (sum < n) ? sum : n - 1;
+
+        int n2_index = sum - start; // Initialize n2_index based on the starting value
+        for (int n1_index = start; n1_index <= end; n1_index++, n2_index--)
+        {
+            p += number1[n1_index] * number2[n2_index];
+        }
+        if (sum != 0)
+        {
+            carry[sum - 1] = p / 10;
+            product[sum] = p % 10;
+        }
+        else
+        {
+            product[sum] = p; // For the very first digit, there's no carry to consider
+        }
+    }
+
+    for (int c = 0, i = max_index - 2; i >= 0; i--)
+    {
+        if (carry[i] == 0 && c == 0)
+            continue;
+        int p = product[i] + carry[i] + c;
+        c = p / 10;
+        product[i] = (i != 0) ? p % 10 : p;
+    }
+}
 // Function to make the two number strings equidistant by adding zeroes in front of the smaller number, and reallocate space for the smaller number
 void make_equidistant(int **num1_base, int **num2_base, int *n_1, int *n_2)
 {
@@ -277,7 +273,7 @@ int *extract_MSB_digits(int *number, int length)
     return result;
 }
 
-void main()
+int main()
 {
     // Initialize GMP variables
     mpz_t num1_gmp, num2_gmp, product_gmp;
@@ -355,6 +351,26 @@ void main()
         "PERF_COUNT_HW_CACHE_L1D_MISS",
         "PERF_COUNT_HW_CACHE_LLC_MISS"};
 
+    // Open a file for writing for grade school
+    char binary_name_grade_school[] = "perf_peo_grade_school"; // replace with actual binary name
+    char filename_grade_school[100];
+
+    snprintf(filename_grade_school, sizeof(filename_grade_school), "%s_%d.csv", binary_name_grade_school, NUMBER_OF_BITS);
+    FILE *file_grade_school = fopen(filename_grade_school, "w");
+
+    if (file_grade_school == NULL)
+    {
+        perror("Error opening file for writing for grade school\n");
+        return -1;
+    }
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++)
+    {
+        fprintf(file_grade_school, "%s,", event_names[j]);
+    }
+    fprintf(file_grade_school, "\n");
+
     // Open a file for writing for urdhva
     char binary_name_urdhva[] = "perf_peo_urdhva"; // replace with actual binary name
     int input_size = 100;                          // replace with actual input size
@@ -394,8 +410,20 @@ void main()
         fprintf(file_gmp, "%s,", event_names[j]);
     }
     fprintf(file_gmp, "\n");
+    // As, urdhva only multiplies single digits, we can always precompute the multiplication of all possible pairs of digits
+    const int memo[10][10] = {
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        {0, 2, 4, 6, 8, 10, 12, 14, 16, 18},
+        {0, 3, 6, 9, 12, 15, 18, 21, 24, 27},
+        {0, 4, 8, 12, 16, 20, 24, 28, 32, 36},
+        {0, 5, 10, 15, 20, 25, 30, 35, 40, 45},
+        {0, 6, 12, 18, 24, 30, 36, 42, 48, 54},
+        {0, 7, 14, 21, 28, 35, 42, 49, 56, 63},
+        {0, 8, 16, 24, 32, 40, 48, 56, 64, 72},
+        {0, 9, 18, 27, 36, 45, 54, 63, 72, 81}};
 
-    for (int iter = 0; iter < 1000; iter++)
+    for (int iter = 0; iter < NUM_ITERATIONS; iter++)
     {
         // Generate two random numbers and convert them to integer arrays
         generate_seed();
@@ -420,6 +448,8 @@ void main()
 
         // Compute product using urdhva
         int n = (n1 > n2) ? n1 : n2;
+        int *urdhva_product = (int *)calloc(2 * n - 1, sizeof(int));
+        int *carry = (int *)calloc(2 * n - 1, sizeof(int));
 
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++)
@@ -428,8 +458,7 @@ void main()
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
 
-        int *urdhva_product = urdhva(num1, num2, n);
-
+        urdhva(num1, num2, n, urdhva_product, carry, memo);
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++)
         {
@@ -455,9 +484,47 @@ void main()
         {
             fprintf(file_urdhva, "%lu,", values[j]);
         }
-        fprintf(file, "\n");
+        fprintf(file_urdhva, "\n");
 
         int urdhva_product_len = 2 * n - 1;
+
+        // Compute product using grade school
+        int *grade_school_product = (int *)calloc(n1 + n2, sizeof(int));
+
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+
+        gradeSchoolMultiplication(num1, n1, num2, n2, grade_school_product);
+
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
+            {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+        // Read and print the counter values
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
+            {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            fprintf(file_grade_school, "%lu,", values[j]);
+        }
+        fprintf(file_grade_school, "\n");
 
         // Compute product using GMP
         mpz_set_str(num1_gmp, num1_str, 10);
@@ -496,7 +563,7 @@ void main()
         {
             fprintf(file_gmp, "%lu,", values[j]);
         }
-        fprintf(file, "\n");
+        fprintf(file_gmp, "\n");
 
         char *gmp_product_str = mpz_get_str(NULL, 10, product_gmp);
         int gmp_product_len = strlen(gmp_product_str);
@@ -506,33 +573,38 @@ void main()
         urdhva_product = extract_MSB_digits(urdhva_product, urdhva_product_len);
         urdhva_product = remove_leading_zeros(urdhva_product, &urdhva_product_len);
         gmp_product = remove_leading_zeros(gmp_product, &gmp_product_len);
-        for (int i = 0; i < urdhva_product_len; i++)
+        int n1_plus_n2 = n1 + n2;
+        grade_school_product = remove_leading_zeros(grade_school_product, &n1_plus_n2);
+        for (int i = 0; i < n1_plus_n2; i++)
         {
-            if (urdhva_product[i] != gmp_product[i])
+            if (grade_school_product[i] != urdhva_product[i] || grade_school_product[i] != gmp_product[i])
             {
-                printf("Not matching for index %d, value at urdhva: %d, value at gmp: %d\n", i, urdhva_product[i], gmp_product[i]);
+                printf("Not matching for index %d, value at urdhva: %d, value at grade school: %d, value at gmp: %d\n", i, urdhva_product[i], grade_school_product[i], gmp_product[i]);
                 printf("urdhva_product: ");
                 for (int i = 0; i < urdhva_product_len; i++)
                     printf("%d", urdhva_product[i]);
                 printf("\n");
+                printf("grade_school_product: \n");
+                for (int i = 0; i < n1 + n2; i++)
+                    printf("%d", grade_school_product[i]);
+                printf("\n");
                 printf("gmp_product: \n");
                 for (int i = 0; i < gmp_product_len; i++)
                     printf("%d", gmp_product[i]);
-                printf("\n");
                 printf("ABORT!, result does not match\n");
                 break;
             }
         }
         printf("PASS: %d\n", iter);
 
-        // // Clean up
-        // free(num1);
-        // free(num2);
-        // free(urdhva_product);
-        // free(gmp_product);
-        // free(num1_str);
-        // free(num2_str);
-        // free(gmp_product_str);
+        // // // Clean up
+        // // free(num1);
+        // // free(num2);
+        // // free(urdhva_product);
+        // // free(gmp_product);
+        // // free(num1_str);
+        // // free(num2_str);
+        // // free(gmp_product_str);
     }
     // Close the files
     fclose(file_urdhva);
@@ -543,8 +615,9 @@ void main()
     {
         close(fd[i]);
     }
-    // Clean up GMP variables
-    mpz_clear(num1_gmp);
-    mpz_clear(num2_gmp);
-    mpz_clear(product_gmp);
+    // // Clean up GMP variables
+    // mpz_clear(num1_gmp);
+    // mpz_clear(num2_gmp);
+    // mpz_clear(product_gmp);
+    return 0;
 }
