@@ -21,6 +21,7 @@
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <omp.h>
 
 #define NUM_ITERATIONS 1000
 #define NUMBER_OF_BITS 8192
@@ -63,21 +64,46 @@ void gradeSchoolMultiplication(int *num1, int len1, int *num2, int len2, int *re
 static inline int max(int a, int b) { return (a > b) ? a : b; }
 static inline int min(int a, int b) { return (a < b) ? a : b; }
 
-// Function to perform Urdhva-Tiryagbhyam multiplication using memoization
-void urdhva(int *number1, int *number2, int n, int *product, int *carry, const int memo[10][10])
-{
-    int max_index = 2 * n;
+// Declare the helper functions for Urdhva-Tiryagbhyam multiplication
+uint16_t *extract_MSB_digits(uint16_t *number, int *length);
+uint16_t *remove_leading_zeros_16_t(uint16_t *number, int *length);
 
+// // As, urdhva only multiplies single digits, we can always precompute the multiplication of all possible pairs of digits
+// const int memo[10][10] = {
+//     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+//     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+//     {0, 2, 4, 6, 8, 10, 12, 14, 16, 18},
+//     {0, 3, 6, 9, 12, 15, 18, 21, 24, 27},
+//     {0, 4, 8, 12, 16, 20, 24, 28, 32, 36},
+//     {0, 5, 10, 15, 20, 25, 30, 35, 40, 45},
+//     {0, 6, 12, 18, 24, 30, 36, 42, 48, 54},
+//     {0, 7, 14, 21, 28, 35, 42, 49, 56, 63},
+//     {0, 8, 16, 24, 32, 40, 48, 56, 64, 72},
+//     {0, 9, 18, 27, 36, 45, 54, 63, 72, 81}};
+
+// Refactored function to perform Urdhva-Tiryagbhyam multiplication on two numbers represented as arrays of digits
+uint16_t *urdhva(uint16_t *number1, uint16_t *number2, int n, uint16_t *product, uint16_t *carry, int *result_length)
+{
+    // printf("Performing Urdhva-Tiryagbhyam multiplication\n");
+    int max_index = n << 1;
+    memset(product, 0, max_index * sizeof(uint16_t));
+    memset(carry, 0, max_index * sizeof(uint16_t));
+    // #pragma omp parallel for shared(product, carry) num_threads(8)
     for (int sum = 0; sum < max_index; sum++)
     {
-        int p = 0;
+        register uint16_t p = 0; // Use uint16_t for intermediate product calculation
         int start = (sum - (n - 1) > 0) ? sum - (n - 1) : 0;
         int end = (sum < n) ? sum : n - 1;
 
         int n2_index = sum - start; // Initialize n2_index based on the starting value
-        for (int n1_index = start; n1_index <= end; n1_index++, n2_index--)
+        uint16_t *ptr1 = &number1[start];
+        uint16_t *ptr2 = &number2[end];
+        // Calculate the number of iterations outside the loop
+        int iterations = &number1[end] - ptr1 + 1;
+
+        for (int i = 0; i < iterations; ++ptr1, --ptr2, ++i)
         {
-            p += number1[n1_index] * number2[n2_index];
+            p += (*ptr1) * (*ptr2);
         }
         if (sum != 0)
         {
@@ -89,15 +115,26 @@ void urdhva(int *number1, int *number2, int n, int *product, int *carry, const i
             product[sum] = p; // For the very first digit, there's no carry to consider
         }
     }
+    // #pragma omp barrier
 
-    for (int c = 0, i = max_index - 2; i >= 0; i--)
+    // Adjust the carry and product in the second loop
+    uint16_t c = 0; // Initialize c for carry
+    for (int i = max_index - 2; i >= 0; i--)
     {
         if (carry[i] == 0 && c == 0)
             continue;
-        int p = product[i] + carry[i] + c;
+        uint16_t p = product[i] + carry[i] + c;
         c = p / 10;
         product[i] = (i != 0) ? p % 10 : p;
     }
+    // printf("Performed Urdhva-Tiryagbhyam multiplication\n");
+    // Call extract_MSB_digits to extract the most significant digits
+    int urdhva_product_len = max_index - 1;
+    product = extract_MSB_digits(product, &urdhva_product_len);
+    // Remove leading zeros
+    product = remove_leading_zeros_16_t(product, &urdhva_product_len);
+    *result_length = urdhva_product_len;
+    return product;
 }
 // Function to make the two number strings equidistant by adding zeroes in front of the smaller number, and reallocate space for the smaller number
 void make_equidistant(int **num1_base, int **num2_base, int *n_1, int *n_2)
@@ -228,7 +265,6 @@ void generate_seed()
     // Set the seed for the rand() function
     srand(seed);
 }
-
 int *remove_leading_zeros(int *number, int *length)
 {
     int i = 0;
@@ -240,10 +276,22 @@ int *remove_leading_zeros(int *number, int *length)
     return number + i;
 }
 
-// helper function to extract the most significant digits seperately for urdhva MSB
-int *extract_MSB_digits(int *number, int length)
+uint16_t *remove_leading_zeros_16_t(uint16_t *number, int *length)
 {
-    int result_length = length;
+    int i = 0;
+    while (i < *length && number[i] == 0)
+    {
+        i++;
+    }
+    *length = *length - i;
+    return number + i;
+}
+
+uint16_t *msb_result;
+// helper function to extract the most significant digits seperately for urdhva MSB
+uint16_t *extract_MSB_digits(uint16_t *number, int *length)
+{
+    int result_length = *length;
     if (number[0] > 9)
     {
         // find the number of digits in the most significant digit
@@ -256,21 +304,23 @@ int *extract_MSB_digits(int *number, int length)
     }
     else
         return number;
-    int *result = (int *)calloc(result_length, sizeof(int));
     // extract the most significant digits and store in result
-    int i = result_length - length;
+    // adjust msb_result to store the most significant digits
+    msb_result = realloc(msb_result, result_length * sizeof(uint16_t));
+    int i = result_length - *length;
     while (number[0] > 0)
     {
-        result[i--] = number[0] % 10;
+        msb_result[i--] = number[0] % 10;
         number[0] = number[0] / 10;
     }
     // Copy the remaining digits of number to result
     int j;
-    for (i = result_length - length + 1, j = 1; j < length; j++, i++)
+    for (i = result_length - *length + 1, j = 1; j < *length; j++, i++)
     {
-        result[i] = number[j];
+        msb_result[i] = number[j];
     }
-    return result;
+    *length = result_length;
+    return msb_result;
 }
 
 int main()
@@ -410,18 +460,6 @@ int main()
         fprintf(file_gmp, "%s,", event_names[j]);
     }
     fprintf(file_gmp, "\n");
-    // As, urdhva only multiplies single digits, we can always precompute the multiplication of all possible pairs of digits
-    const int memo[10][10] = {
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-        {0, 2, 4, 6, 8, 10, 12, 14, 16, 18},
-        {0, 3, 6, 9, 12, 15, 18, 21, 24, 27},
-        {0, 4, 8, 12, 16, 20, 24, 28, 32, 36},
-        {0, 5, 10, 15, 20, 25, 30, 35, 40, 45},
-        {0, 6, 12, 18, 24, 30, 36, 42, 48, 54},
-        {0, 7, 14, 21, 28, 35, 42, 49, 56, 63},
-        {0, 8, 16, 24, 32, 40, 48, 56, 64, 72},
-        {0, 9, 18, 27, 36, 45, 54, 63, 72, 81}};
 
     for (int iter = 0; iter < NUM_ITERATIONS; iter++)
     {
@@ -448,8 +486,21 @@ int main()
 
         // Compute product using urdhva
         int n = (n1 > n2) ? n1 : n2;
-        int *urdhva_product = (int *)calloc(2 * n - 1, sizeof(int));
-        int *carry = (int *)calloc(2 * n - 1, sizeof(int));
+        uint16_t *urdhva_product = (uint16_t *)calloc(2 * n - 1, sizeof(uint16_t));
+        uint16_t *carry = (uint16_t *)calloc(2 * n - 1, sizeof(uint16_t));
+
+        // Create uint8_t arrays for num1 and num2
+        uint16_t *num1_uint16 = (uint16_t *)calloc(n, sizeof(uint16_t));
+        uint16_t *num2_uint16 = (uint16_t *)calloc(n, sizeof(uint16_t));
+        for (int i = n - 1; i >= 0; i--)
+        {
+            num1_uint16[i] = (uint16_t)num1[i];
+            num2_uint16[i] = (uint16_t)num2[i];
+        }
+
+        int urdhva_product_len = 2 * n - 1;
+
+        msb_result = (uint16_t *)calloc(urdhva_product_len, sizeof(uint16_t));
 
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++)
@@ -458,7 +509,8 @@ int main()
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
 
-        urdhva(num1, num2, n, urdhva_product, carry, memo);
+        urdhva_product = urdhva(num1_uint16, num2_uint16, n, urdhva_product, carry, &urdhva_product_len);
+
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++)
         {
@@ -468,6 +520,7 @@ int main()
                 exit(EXIT_FAILURE);
             }
         }
+        printf("\n");
         // Read and print the counter values
         uint64_t values[MAX_EVENTS];
         for (int j = 0; j < MAX_EVENTS; j++)
@@ -485,8 +538,6 @@ int main()
             fprintf(file_urdhva, "%lu,", values[j]);
         }
         fprintf(file_urdhva, "\n");
-
-        int urdhva_product_len = 2 * n - 1;
 
         // Compute product using grade school
         int *grade_school_product = (int *)calloc(n1 + n2, sizeof(int));
@@ -570,8 +621,7 @@ int main()
         int *gmp_product = (int *)calloc(gmp_product_len, sizeof(int));
         for (int i = 0; i < gmp_product_len; i++)
             gmp_product[i] = gmp_product_str[i] - '0';
-        urdhva_product = extract_MSB_digits(urdhva_product, urdhva_product_len);
-        urdhva_product = remove_leading_zeros(urdhva_product, &urdhva_product_len);
+
         gmp_product = remove_leading_zeros(gmp_product, &gmp_product_len);
         int n1_plus_n2 = n1 + n2;
         grade_school_product = remove_leading_zeros(grade_school_product, &n1_plus_n2);
@@ -592,7 +642,7 @@ int main()
                 for (int i = 0; i < gmp_product_len; i++)
                     printf("%d", gmp_product[i]);
                 printf("ABORT!, result does not match\n");
-                break;
+                return 1;
             }
         }
         printf("PASS: %d\n", iter);
