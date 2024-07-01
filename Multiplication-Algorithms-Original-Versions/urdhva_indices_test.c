@@ -23,9 +23,11 @@
 #include <sys/wait.h>
 #include <omp.h>
 #include <immintrin.h>
+#include <errno.h>
+#include <pthread.h>
 
 #define NUM_ITERATIONS 1000
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 128
 #define MAX_EVENTS 9 // Maximum number of events to monitor
 #define PERF_SAMPLE_SIZE 1000000
 uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
@@ -420,103 +422,74 @@ int main()
     long long count[MAX_EVENTS];
     int i;
 
-    memset(&pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
-
-    // Initialize the perf_event_attr structure for each event
-    memset(pe, 0, sizeof(struct perf_event_attr) * 9);
+    memset(pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+    for (i = 0; i < MAX_EVENTS; i++)
+    {
+        pe[i].size = sizeof(struct perf_event_attr);
+        pe[i].disabled = 1;
+        pe[i].exclude_kernel = 0;
+        pe[i].exclude_hv = 1;
+        pe[i].exclude_idle = 1;
+        pe[i].exclude_user = 0; // Initialize exclude_user explicitly
+        pe[i].pinned = 1;       // Ensure counter stays on the specific CPU
+    }
 
     // CPU cycles
     pe[0].type = PERF_TYPE_HARDWARE;
     pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
-    pe[0].size = sizeof(struct perf_event_attr);
-    pe[0].sample_period = 1; // Highly precise sampling
-    pe[0].precise_ip = 3;    // Maximum precision
-    pe[0].disabled = 1;      // Start disabled
 
     // User-level instructions
     pe[1].type = PERF_TYPE_HARDWARE;
     pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
-    pe[1].size = sizeof(struct perf_event_attr);
-    pe[1].sample_period = 1;
-    pe[1].precise_ip = 3;
     pe[1].exclude_kernel = 1;
     pe[1].exclude_user = 0;
-    pe[1].disabled = 1;
 
     // Kernel-level instructions
     pe[2].type = PERF_TYPE_HARDWARE;
     pe[2].config = PERF_COUNT_HW_INSTRUCTIONS;
-    pe[2].size = sizeof(struct perf_event_attr);
-    pe[2].sample_period = 1;
-    pe[2].precise_ip = 3;
     pe[2].exclude_kernel = 0;
     pe[2].exclude_user = 1;
-    pe[2].disabled = 1;
 
     // Page faults
     pe[3].type = PERF_TYPE_SOFTWARE;
     pe[3].config = PERF_COUNT_SW_PAGE_FAULTS;
-    pe[3].size = sizeof(struct perf_event_attr);
-    pe[3].sample_period = 1;
-    pe[3].precise_ip = 3;
-    pe[3].disabled = 1;
 
     // DTLB Misses
     pe[4].type = PERF_TYPE_HW_CACHE;
     pe[4].config = (PERF_COUNT_HW_CACHE_DTLB |
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) |
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-    pe[4].size = sizeof(struct perf_event_attr);
-    pe[4].sample_period = 1;
-    pe[4].precise_ip = 3;
-    pe[4].disabled = 1;
 
     // L1d Cache Accesses
     pe[5].type = PERF_TYPE_HW_CACHE;
     pe[5].config = (PERF_COUNT_HW_CACHE_L1D |
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) |
                     (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
-    pe[5].size = sizeof(struct perf_event_attr);
-    pe[5].sample_period = 1;
-    pe[5].precise_ip = 3;
-    pe[5].disabled = 1;
 
     // L1d Cache Misses
     pe[6].type = PERF_TYPE_HW_CACHE;
     pe[6].config = (PERF_COUNT_HW_CACHE_L1D |
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) |
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-    pe[6].size = sizeof(struct perf_event_attr);
-    pe[6].sample_period = 1;
-    pe[6].precise_ip = 3;
-    pe[6].disabled = 1;
 
     // LL Cache Accesses
     pe[7].type = PERF_TYPE_HW_CACHE;
     pe[7].config = (PERF_COUNT_HW_CACHE_LL |
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) |
                     (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
-    pe[7].size = sizeof(struct perf_event_attr);
-    pe[7].sample_period = 1;
-    pe[7].precise_ip = 3;
-    pe[7].disabled = 1;
 
     // LL Cache Misses
     pe[8].type = PERF_TYPE_HW_CACHE;
     pe[8].config = (PERF_COUNT_HW_CACHE_LL |
                     (PERF_COUNT_HW_CACHE_OP_READ << 8) |
                     (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-    pe[8].size = sizeof(struct perf_event_attr);
-    pe[8].sample_period = 1;
-    pe[8].precise_ip = 3;
-    pe[8].disabled = 1;
     // Open the events
     for (i = 0; i < MAX_EVENTS; i++)
     {
         fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
         if (fd[i] == -1)
         {
-            fprintf(stderr, "Error opening event %d\n", i);
+            fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
