@@ -25,11 +25,13 @@
 #include <immintrin.h>
 #include <errno.h>
 #include <pthread.h>
+#include <xmmintrin.h>
 
-#define NUM_ITERATIONS 1000
-#define NUMBER_OF_BITS 128
-#define MAX_EVENTS 9 // Maximum number of events to monitor
+#define NUM_ITERATIONS 1
+#define NUMBER_OF_BITS 8192
+#define MAX_EVENTS 6 // Maximum number of events to monitor
 #define PERF_SAMPLE_SIZE 1000000
+#define PREFETCH_SIZE 32
 uint64_t start_ticks, end_ticks, total_ticks, min_ticks = UINT64_MAX;
 
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags)
@@ -65,8 +67,8 @@ void gradeSchoolMultiplication(int *num1, int len1, int *num2, int len2, int *re
 }
 
 // Helper functions for min and max if not included already
-static inline int max(int a, int b) { return (a > b) ? a : b; }
-static inline int min(int a, int b) { return (a < b) ? a : b; }
+// static inline int max(int a, int b) { return (a > b) ? a : b; }
+// static inline int min(int a, int b) { return (a < b) ? a : b; }
 
 // Declare the helper functions for Urdhva-Tiryagbhyam multiplication
 uint16_t *extract_MSB_digits(uint16_t *number, int *length);
@@ -75,89 +77,106 @@ uint16_t *remove_leading_zeros_16_t(uint16_t *number, int *length);
 // As, urdhva only multiplies single digits, we can always precompute the multiplication of all possible pairs of digits
 // Precompute in two different arrays, one for the product and the other for the carry
 // The product of two digits will be at product_memory[digit1][digit2] and the carry will be at carry_memory[digit1][digit2]
-// const uint16_t product_memory[10][10] = {
-//     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-//     {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-//     {0, 2, 4, 6, 8, 0, 2, 4, 6, 8},
-//     {0, 3, 6, 9, 2, 5, 8, 1, 4, 7},
-//     {0, 4, 8, 2, 6, 0, 4, 8, 2, 6},
-//     {0, 5, 0, 5, 0, 5, 0, 5, 0, 5},
-//     {0, 6, 2, 8, 4, 0, 6, 2, 8, 4},
-//     {0, 7, 4, 1, 8, 5, 2, 9, 6, 3},
-//     {0, 8, 6, 4, 2, 0, 8, 6, 4, 2},
-//     {0, 9, 8, 7, 6, 5, 4, 3, 2, 1}};
-// // carry_memory[digit1][digit2] stores the most significant digit of the product of digit1 and digit2
-// const uint16_t carry_memory[10][10] = {
-//     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-//     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-//     {0, 0, 0, 0, 0, 1, 1, 1, 1, 1},
-//     {0, 0, 0, 0, 1, 1, 1, 2, 2, 2},
-//     {0, 0, 0, 1, 1, 2, 2, 2, 3, 3},
-//     {0, 0, 1, 1, 2, 2, 3, 3, 4, 4},
-//     {0, 0, 1, 1, 2, 3, 3, 4, 4, 5},
-//     {0, 0, 1, 2, 2, 3, 4, 4, 5, 6},
-//     {0, 0, 1, 2, 3, 4, 4, 5, 6, 7},
-//     {0, 0, 1, 2, 3, 4, 5, 6, 7, 8}};
+const uint16_t product_memory[10][10] __attribute__((aligned(64))) = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+    {0, 2, 4, 6, 8, 0, 2, 4, 6, 8},
+    {0, 3, 6, 9, 2, 5, 8, 1, 4, 7},
+    {0, 4, 8, 2, 6, 0, 4, 8, 2, 6},
+    {0, 5, 0, 5, 0, 5, 0, 5, 0, 5},
+    {0, 6, 2, 8, 4, 0, 6, 2, 8, 4},
+    {0, 7, 4, 1, 8, 5, 2, 9, 6, 3},
+    {0, 8, 6, 4, 2, 0, 8, 6, 4, 2},
+    {0, 9, 8, 7, 6, 5, 4, 3, 2, 1}};
+
+const uint16_t carry_memory[10][10] __attribute__((aligned(64))) = {
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 1, 1, 1, 2, 2, 2},
+    {0, 0, 0, 1, 1, 2, 2, 2, 3, 3},
+    {0, 0, 1, 1, 2, 2, 3, 3, 4, 4},
+    {0, 0, 1, 1, 2, 3, 3, 4, 4, 5},
+    {0, 0, 1, 2, 2, 3, 4, 4, 5, 6},
+    {0, 0, 1, 2, 3, 4, 4, 5, 6, 7},
+    {0, 0, 1, 2, 3, 4, 5, 6, 7, 8}};
 
 // Function to perform Urdhva-Tiryagbhyam multiplication on two numbers represented as arrays of digits
-// uint16_t *urdhva_precompute(uint16_t *number1, uint16_t *number2, int n, uint16_t *product, uint16_t *carry, int *result_length)
-// {
-//     int max_index = n << 1; // max 2n sets for n-digit numbers
-//     memset(product, 0, max_index * sizeof(uint16_t));
-//     memset(carry, 0, max_index * sizeof(uint16_t));
+uint16_t *urdhva_precompute(uint16_t *number1, uint16_t *number2, int n, uint16_t *product, uint16_t *carry, int *result_length)
+{
+    int max_index = n << 1; // max 2n sets for n-digit numbers
+    memset(product, 0, max_index * sizeof(uint16_t));
+    memset(carry, 0, max_index * sizeof(uint16_t));
 
-//     // Parallelize the outer loop
-//     // #pragma omp parallel for num_threads(8) schedule(static)
-//     for (int set_index = 0; set_index < max_index; set_index++)
-//     {
-//         register uint16_t p = 0; // Use uint16_t for intermediate product calculation
-//         register uint16_t c = 0; // Use uint16_t for intermediate carry calculation
-//         int start = (set_index - (n - 1) > 0) ? set_index - (n - 1) : 0;
-//         int end = (set_index < n) ? set_index : n - 1;
+    int start_threshold = n - 1;
+    int end_max = n - 1;
+    uint16_t *product_ptr = product;
+    uint16_t *carry_ptr = carry;
 
-//         uint16_t *ptr1 = &number1[start];
-//         uint16_t *ptr2 = &number2[end];
-//         int iterations = end - start + 1;
+    // Parallelize the outer loop
+    // #pragma omp parallel for num_threads(8) schedule(static)
+    for (int set_index = 0; set_index < max_index; set_index++)
+    {
+        register uint16_t p = 0; // Use uint16_t for intermediate product calculation
+        register uint16_t c = 0; // Use uint16_t for intermediate carry calculation
+        int start = (set_index > start_threshold) ? set_index - start_threshold : 0;
+        int end = (set_index < n) ? set_index : end_max;
 
-//         // Loop to calculate product and carry on the fly
-//         for (int i = 0; i < iterations; ++ptr1, --ptr2, ++i)
-//         {
-//             uint16_t prod = (*ptr1) * (*ptr2);
-//             p += prod % 10; // Extract the least significant digit
-//             c += prod / 10; // Extract the most significant digit
-//             c += (p > 9) ? 1 : 0;
-//             p = (p > 9) ? p - 10 : p;
-//         }
+        uint16_t *ptr1 = number1 + start;
+        uint16_t *ptr2 = number2 + end;
+        // Calculate the number of iterations outside the loop
+        int iterations = (number1 + end) - ptr1 + 1;
 
-//         (set_index != 0) ? (product[set_index] = p, carry[set_index - 1] = c) : (product[0] = (c != 0) ? c * 10 + p : p);
-//     }
+        // Loop to calculate product and carry on the fly
+        // prefetch product and carry memory
+        __builtin_prefetch(product_memory, 0, 3);
+        __builtin_prefetch(carry_memory, 0, 3);
+        for (int i = 0; i < iterations; ++ptr1, --ptr2, ++i)
+        {
+            p += product_memory[*ptr1][*ptr2]; // Add the product of the digits to p
+            c += carry_memory[*ptr1][*ptr2];   // Add the carry to c
+            c += (p > 9) ? 1 : 0;
+            p = (p > 9) ? p - 10 : p;
+        }
+        *product_ptr = (set_index != 0) ? p : 10 * c + p;
+        *(carry_ptr - 1) = (set_index != 0) ? c : 0;
 
-//     // Adjust the carry and product in the second loop
-//     uint16_t c = 0; // Initialize c for carry
-//     for (int i = max_index - 2; i >= 0; i--)
-//     {
-//         if (carry[i] == 0 && c == 0)
-//             continue;
-//         uint16_t p = product[i] + carry[i] + c;
-//         c = p / 10;
-//         product[i] = (i != 0) ? p % 10 : p;
-//     }
+        // Increment pointers for the next iteration
+        product_ptr++;
+        carry_ptr++;
+    }
 
-//     // Call extract_MSB_digits to extract the most significant digits
-//     int urdhva_product_len = max_index - 1;
-//     product = extract_MSB_digits(product, &urdhva_product_len);
-//     // Remove leading zeros
-//     product = remove_leading_zeros_16_t(product, &urdhva_product_len);
-//     *result_length = urdhva_product_len;
-//     return product;
-// }
+    // Adjust the carry and product in the second loop
+    uint16_t c = 0; // Initialize c for carry
+    product_ptr = product + max_index - 2;
+    carry_ptr = carry + max_index - 2;
+    for (int i = max_index - 2; i >= 0; i--, product_ptr--, carry_ptr--)
+    {
+        if (*carry_ptr == 0 && c == 0)
+            continue;
+
+        uint16_t p = *product_ptr + *carry_ptr + c;
+        c = p / 10;
+        *product_ptr = (i != 0) ? p % 10 : p;
+    }
+
+    // Call extract_MSB_digits to extract the most significant digits
+    int urdhva_product_len = max_index - 1;
+    product = extract_MSB_digits(product, &urdhva_product_len);
+    // Remove leading zeros
+    product = remove_leading_zeros_16_t(product, &urdhva_product_len);
+    *result_length = urdhva_product_len;
+    return product;
+}
+
 // Refactored function to perform Urdhva-Tiryagbhyam multiplication on two numbers represented as arrays of digits
 uint16_t *urdhva(uint16_t *number1, uint16_t *number2, int n, uint16_t *product, uint16_t *carry, int *result_length)
 {
     // printf("Performing Urdhva-Tiryagbhyam multiplication\n");
     int max_index = n << 1;
-    memset(product, 0, max_index * sizeof(uint16_t));
-    memset(carry, 0, max_index * sizeof(uint16_t));
+    // memset(product, 0, max_index * sizeof(uint16_t));
+    // memset(carry, 0, max_index * sizeof(uint16_t));
+
     // #pragma omp parallel for shared(product, carry) num_threads(64) schedule(static)
     int start_threshold = n - 1;
     int end_max = n - 1;
@@ -165,12 +184,11 @@ uint16_t *urdhva(uint16_t *number1, uint16_t *number2, int n, uint16_t *product,
     uint16_t *carry_ptr = carry;
     for (int set_index = 0; set_index < max_index; set_index++)
     {
-        register uint16_t p = 0; // Use uint16_t for intermediate product calculation
-                                 // Use precomputed values to simplify calculations
+        uint16_t p = 0; // Use uint16_t for intermediate product calculation
+                        // Use precomputed values to simplify calculations
         int start = (set_index > start_threshold) ? set_index - start_threshold : 0;
         int end = (set_index < n) ? set_index : end_max;
 
-        int n2_index = set_index - start; // Initialize n2_index based on the starting value
         uint16_t *ptr1 = number1 + start;
         uint16_t *ptr2 = number2 + end;
         // Calculate the number of iterations outside the loop
@@ -180,8 +198,6 @@ uint16_t *urdhva(uint16_t *number1, uint16_t *number2, int n, uint16_t *product,
         {
             p += (*ptr1) * (*ptr2);
         }
-        // product[set_index] = (set_index != 0) ? p % 10 : p;
-        // carry[set_index - 1] = (set_index != 0) ? p / 10 : 0;
         *product_ptr = (set_index != 0) ? p % 10 : p;
         *(carry_ptr - 1) = (set_index != 0) ? p / 10 : 0;
         // Increment pointers for the next iteration
@@ -454,39 +470,18 @@ int main()
     pe[3].type = PERF_TYPE_SOFTWARE;
     pe[3].config = PERF_COUNT_SW_PAGE_FAULTS;
 
-    // DTLB Misses
+    // L1D Cache Reads
     pe[4].type = PERF_TYPE_HW_CACHE;
-    pe[4].config = (PERF_COUNT_HW_CACHE_DTLB |
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) |
-                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+    pe[4].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
 
-    // L1d Cache Accesses
+    // L1D Cache Read Misses
     pe[5].type = PERF_TYPE_HW_CACHE;
-    pe[5].config = (PERF_COUNT_HW_CACHE_L1D |
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) |
-                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+    pe[5].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
 
-    // L1d Cache Misses
-    pe[6].type = PERF_TYPE_HW_CACHE;
-    pe[6].config = (PERF_COUNT_HW_CACHE_L1D |
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) |
-                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-
-    // LL Cache Accesses
-    pe[7].type = PERF_TYPE_HW_CACHE;
-    pe[7].config = (PERF_COUNT_HW_CACHE_LL |
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) |
-                    (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
-
-    // LL Cache Misses
-    pe[8].type = PERF_TYPE_HW_CACHE;
-    pe[8].config = (PERF_COUNT_HW_CACHE_LL |
-                    (PERF_COUNT_HW_CACHE_OP_READ << 8) |
-                    (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
     // Open the events
     for (i = 0; i < MAX_EVENTS; i++)
     {
-        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        fd[i] = perf_event_open(&pe[i], 0, 0, -1, 0);
         if (fd[i] == -1)
         {
             fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
@@ -501,18 +496,15 @@ int main()
         "PERF_COUNT_HW_USER_INSTRUCTIONS",   // User Instructions
         "PERF_COUNT_HW_KERNEL_INSTRUCTIONS", // Kernel Instructions
         "PERF_COUNT_SW_PAGE_FAULTS",         // Page Faults
-        "PERF_COUNT_HW_CACHE_DTLB_MISS",     // DTLB Misses
-        "PERF_COUNT_HW_CACHE_L1D_ACCESS",    // L1 Data Cache Accesses
-        "PERF_COUNT_HW_CACHE_L1D_MISS",      // L1 Data Cache Misses (already included)
-        "PERF_COUNT_HW_CACHE_L3_ACCESS",     // L3 Cache Accesses
-        "PERF_COUNT_HW_CACHE_L3_MISS"        // L3 Cache Misses
+        "PERF_COUNT_L1D_CACHE_READS",        // L1D Cache Reads
+        "PERF_COUNT_L1D_CACHE_READ_MISSES"   // L1D Cache Read Misses
     };
 
     // Open a file for writing for grade school
     char binary_name_grade_school[] = "perf_peo_grade_school"; // replace with actual binary name
     char filename_grade_school[100];
 
-    snprintf(filename_grade_school, sizeof(filename_grade_school), "%s_%d.csv", binary_name_grade_school, NUMBER_OF_BITS);
+    snprintf(filename_grade_school, sizeof(filename_grade_school), "experiments/%s_%d.csv", binary_name_grade_school, NUMBER_OF_BITS);
     FILE *file_grade_school = fopen(filename_grade_school, "w");
 
     if (file_grade_school == NULL)
@@ -533,7 +525,7 @@ int main()
     int input_size = 100;                          // replace with actual input size
 
     char filename_urdhva[100];
-    snprintf(filename_urdhva, sizeof(filename_urdhva), "%s_%d.csv", binary_name_urdhva, NUMBER_OF_BITS);
+    snprintf(filename_urdhva, sizeof(filename_urdhva), "experiments/%s_%d.csv", binary_name_urdhva, NUMBER_OF_BITS);
     FILE *file_urdhva = fopen(filename_urdhva, "w");
 
     if (file_urdhva == NULL)
@@ -552,7 +544,7 @@ int main()
     // Open a file for writing for gmp
     char binary_name_gmp[] = "perf_peo_gmp"; // replace with actual binary name
     char filename_gmp[100];
-    snprintf(filename_gmp, sizeof(filename_gmp), "%s_%d.csv", binary_name_gmp, NUMBER_OF_BITS);
+    snprintf(filename_gmp, sizeof(filename_gmp), "experiments/%s_%d.csv", binary_name_gmp, NUMBER_OF_BITS);
     FILE *file_gmp = fopen(filename_gmp, "w");
 
     if (file_gmp == NULL)
@@ -673,6 +665,7 @@ int main()
         // sleep(0.01); // Delay for 10 milliseconds before starting the function call
 
         urdhva_product = urdhva(num1_uint16, num2_uint16, n, urdhva_product, carry, &urdhva_product_len);
+        // urdhva_product = urdhva_precompute(num1_uint16, num2_uint16, n, urdhva_product, carry, &urdhva_product_len);
 
         // // short delay after stopping the function call, 10ms
         // sleep(0.01); // Delay for 10 milliseconds after stopping the function call
