@@ -27,53 +27,80 @@
 #include <pthread.h>
 #include <math.h>
 
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 128
 #define NUM_ITERATIONS 1000
 #define MAX_EVENTS 6
 
 #define LIMB_SIZE 4
 #define LIMB_DIGITS 10000 // 10^LIMB_SIZE
 
-uint32_t *extract_MSB_digits(uint32_t *number, int *length);
 uint32_t *returnLimbs(uint32_t *number, int *length);
 uint32_t *returnDigits(uint32_t *limbs, int num_limbs, int *length);
-uint32_t *remove_leading_zeros_32_t(uint32_t *number, int *length);
+
 void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int *n_2);
-char *generateRandomNumber(int seed);
 char *generateRandomNumber(int seed);
 void generate_seed();
 char *formatUrdhvaResult(uint32_t *result, int result_length);
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags);
 
-uint32_t *msb_result;
+uint64_t returnArraySum(uint32_t *array, int length)
+{
+    uint64_t sum = 0;
+    for (int i = 0; i < length; i++)
+    {
+        sum += array[i];
+    }
+    return sum;
+}
 
-// Refactored function to perform Urdhva-Tiryagbhyam multiplication on two numbers represented as arrays of digits
+void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
+{
+    __m512i va = _mm512_loadu_si512((__m512i *)(a));
+    __m512i vb = _mm512_loadu_si512((__m512i *)(b));
+    vb = _mm512_permutexvar_epi32(_mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), vb);
+    // Perform multiplication only on elements specified by the mask
+    __m512i vresult = _mm512_mullo_epi32(va, vb);
+    _mm512_storeu_si512((__m512i *)(result), vresult);
+}
+
 uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product, uint32_t *carry, int *result_length)
 {
-    // printf("Performing Urdhva-Tiryagbhyam multiplication\n");
     int max_index = n << 1;
     int start_threshold = n - 1;
     int end_max = n - 1;
     uint32_t *product_ptr = product;
     uint32_t *carry_ptr = carry;
+    uint32_t temp_product[n] __attribute__((aligned(64)));
+
     for (int set_index = 0; set_index < max_index - 1; set_index++)
     {
         uint64_t p = 0; // Use uint32_t for intermediate product calculation
-                        // Use precomputed values to simplify calculations
         int start = (set_index > start_threshold) ? set_index - start_threshold : 0;
         int end = (set_index < n) ? set_index : end_max;
 
         uint32_t *ptr1 = number1 + start;
         uint32_t *ptr2 = number2 + end;
-        // Calculate the number of iterations outside the loop
-        int iterations = (number1 + end) - ptr1 + 1;
-        for (int i = 0; i < iterations; ++ptr1, --ptr2, ++i)
+
+        int iterations = end - start + 1;
+        int avx_iterations = iterations >> 4;
+        int avx_remainder = iterations & 15;
+
+        uint32_t *tmp_ptr = temp_product;
+        // printf("Iterations: %d, AVX Iterations: %d, AVX Remainder: %d\n", iterations, avx_iterations, avx_remainder);
+        for (int i = 0; i < avx_iterations; i++)
         {
-            p += (*ptr1) * (*ptr2);
+            mul_int_array_avx512(ptr1, ptr2 - 15, tmp_ptr);
+            ptr1 += 16;
+            ptr2 -= 16;
+            tmp_ptr += 16;
         }
+        // multiply remaining elements using avx too, but only consider upto avx_remainder elements
+        mul_int_array_avx512(ptr1, ptr2 - 15, tmp_ptr);
+        tmp_ptr = temp_product;
+        p = returnArraySum(tmp_ptr, iterations);
+
         *product_ptr = (set_index != 0) ? p % LIMB_DIGITS : p;
         *(carry_ptr - 1) = (set_index != 0) ? p / LIMB_DIGITS : 0;
-        // Increment pointers for the next iteration
         product_ptr++;
         carry_ptr++;
     }
@@ -81,7 +108,7 @@ uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product,
     // print values of product and carry
 
     // Adjust the carry and product in the second loop
-    uint64_t c = 0; // Initialize c for carry
+    uint32_t c = 0; // Initialize c for carry
     product_ptr = product + max_index - 2;
     carry_ptr = carry + max_index - 2;
     for (int i = max_index - 2; i >= 0; i--, product_ptr--, carry_ptr--)
@@ -89,7 +116,7 @@ uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product,
         if (*carry_ptr == 0 && c == 0)
             continue;
 
-        uint64_t p = *product_ptr + *carry_ptr + c;
+        uint32_t p = *product_ptr + *carry_ptr + c;
         c = p / LIMB_DIGITS;
 
         *product_ptr = (i != 0) ? p % LIMB_DIGITS : p;
@@ -251,7 +278,8 @@ int main()
 
         uint32_t *urdhva_product = (uint32_t *)calloc(2 * n - 1, sizeof(uint32_t));
         uint32_t *carry = (uint32_t *)calloc(2 * n - 1, sizeof(uint32_t));
-
+        memset(urdhva_product, 0, 2 * n - 1);
+        memset(carry, 0, 2 * n - 1);
         // Create uint32_t arrays for num1 and num2
         uint32_t *num1_uint32_t = (uint32_t *)calloc(n, sizeof(uint32_t));
         uint32_t *num2_uint32_t = (uint32_t *)calloc(n, sizeof(uint32_t));
@@ -264,30 +292,31 @@ int main()
         int urdhva_product_len = 2 * n - 1;
         uint32_t *limbs1 = returnLimbs(num1_uint32_t, &n1);
         uint32_t *limbs2 = returnLimbs(num2_uint32_t, &n2);
+
         n = (n1 > n2) ? n1 : n2;
         // printf("Number 1: ");
         // for (int i = 0; i < n1; i++)
         // {
-        //     printf("%d", limbs1[i]);
+        //     printf("%d ", limbs1[i]);
         // }
 
         // printf("\n");
         // printf("Number 2: ");
         // for (int i = 0; i < n2; i++)
         // {
-        //     printf("%d", limbs2[i]);
+        //     printf("%d ", limbs2[i]);
         // }
         // printf("\n");
 
         int result_length = 2 * n - 1;
-        msb_result = (uint32_t *)calloc(result_length, sizeof(uint32_t));
-        if (msb_result == NULL)
-        {
-            perror("Memory allocation failed for msb_result\n");
-            exit(0);
-        }
 
         uint64_t values[MAX_EVENTS];
+        // flash out all the cache contents
+
+        // prefetch the arrays
+        __builtin_prefetch(limbs1, 0, 3);
+        __builtin_prefetch(limbs2, 0, 3);
+
         // Start the events
         for (int j = 0; j < MAX_EVENTS; j++)
         {
@@ -405,6 +434,17 @@ int main()
             }
         }
         printf("Results match, continuing, iteration: %d\n", iter);
+        // free the allocated memories
+        // free(result_str_no_leading_zeros);
+        // free(num1);
+        // free(num2);
+        // free(urdhva_product);
+        // free(carry);
+        // free(num1_uint32_t);
+        // free(num2_uint32_t);
+        // free(limbs1);
+        // free(limbs2);
+        // free(product_gmp_str);
     }
 }
 
@@ -436,17 +476,24 @@ char *formatUrdhvaResult(uint32_t *result, int result_length)
         {
             // Append '0' before the number if it's less than 1000 and not the first element
             int num_zeros = 0;
-            if (result[i] < 10)
+            // if (result[i] < 10)
+            // {
+            //     num_zeros = 3;
+            // }
+            // else if (result[i] < 100)
+            // {
+            //     num_zeros = 2;
+            // }
+            // else
+            // {
+            //     num_zeros = 1;
+            // }
+            int temp = result[i];
+            int threshold = LIMB_DIGITS / 10;
+            while (threshold > 9 && temp < threshold)
             {
-                num_zeros = 3;
-            }
-            else if (result[i] < 100)
-            {
-                num_zeros = 2;
-            }
-            else
-            {
-                num_zeros = 1;
+                num_zeros++;
+                threshold /= 10;
             }
 
             for (int j = 0; j < num_zeros; j++)
@@ -479,7 +526,7 @@ char *formatUrdhvaResult(uint32_t *result, int result_length)
 // Starts grouping from the least significant digit, and also appends zeros to the number if the number of digits is not a multiple of 4
 uint32_t *returnLimbs(uint32_t *number, int *length)
 {
-    uint32_t *limbs;
+    uint32_t *limbs __attribute__((aligned(64)));
     int n = *length;
     int num_limbs = n / LIMB_SIZE;
     int multiple = (n % LIMB_SIZE == 0) ? 0 : 1;
@@ -487,7 +534,7 @@ uint32_t *returnLimbs(uint32_t *number, int *length)
     {
         num_limbs++;
     }
-    limbs = (uint32_t *)malloc(num_limbs * sizeof(uint32_t));
+    limbs = (uint32_t *)_mm_malloc(num_limbs * sizeof(uint32_t), 64);
     if (limbs == NULL)
     {
         printf("Memory could not be allocated for limbs\n");
@@ -642,19 +689,6 @@ void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int 
         *num1_base = num1;
         free(temp);
     }
-}
-
-uint32_t *remove_leading_zeros_32_t(uint32_t *number, int *length)
-{
-    int i = 0;
-    uint32_t *number_ptr = number;
-    while (i < *length && *number_ptr == 0)
-    {
-        i++;
-        number_ptr++;
-    }
-    *length = *length - i;
-    return number + i;
 }
 
 char *generateRandomNumber(int seed)
