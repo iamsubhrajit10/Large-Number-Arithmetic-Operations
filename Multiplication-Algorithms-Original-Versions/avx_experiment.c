@@ -1,50 +1,47 @@
+#include <immintrin.h>
+#include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
+
 #include <immintrin.h>
 #include <stdint.h>
 
-void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result, int iterations, int remainder)
+uint64_t returnArraySum(uint32_t *array, int length)
 {
-    const __m512i permute_index = _mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+    __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
+    int i = 0;
 
-    for (int i = 0; i < iterations; i++)
+    // Process chunks of 16 elements at a time
+    for (; i + 16 <= length; i += 16)
     {
-        __m512i va = _mm512_loadu_si512((__m512i *)(a + i * 16));
-        __m512i vb = _mm512_loadu_si512((__m512i *)(b + i * 16));
-        vb = _mm512_permutexvar_epi32(permute_index, vb);
-        __m512i vresult = _mm512_mullo_epi32(va, vb);
-        _mm512_storeu_si512((__m512i *)(result + i * 16), vresult);
+        __m512i vdata = _mm512_loadu_si512((__m512i *)(array + i));
+        vsum = _mm512_add_epi32(vsum, vdata);
     }
 
-    if (remainder > 0)
+    // Extract elements from the vector sum and accumulate them in a 64-bit integer
+    uint32_t temp[16];
+    _mm512_storeu_si512((__m512i *)temp, vsum);
+
+    uint64_t sum = 0;
+    for (int j = 0; j < 16; ++j)
     {
-        __mmask16 mask = (1 << remainder) - 1;
-        __m512i va = _mm512_maskz_loadu_epi32(mask, a + iterations * 16);
-        __m512i vb = _mm512_maskz_loadu_epi32(mask, b + iterations * 16);
-        vb = _mm512_mask_permutexvar_epi32(mask, permute_index, vb);
-        __m512i vresult = _mm512_maskz_mullo_epi32(mask, va, vb);
-        _mm512_mask_storeu_epi32((result + iterations * 16), mask, vresult);
+        sum += temp[j];
     }
+
+    // Sum any remaining elements
+    for (; i < length; ++i)
+    {
+        sum += array[i];
+    }
+
+    return sum;
 }
 
 int main()
 {
-    uint32_t a[48] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-                      17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-                      33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48};
-    uint32_t b[48] = {48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
-                      32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
-                      16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
-    uint32_t result[48] = {0};
-
-    int iterations = 48 / 16;
-    int remainder = 48 % 16;
-
-    mul_int_array_avx512(a, b, result, iterations, remainder);
-
-    for (size_t i = 0; i < 48; i++)
-    {
-        printf("result[%zu] = %u\n", i, result[i]);
-    }
-
+    uint32_t array[33] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                          17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33};
+    uint64_t sum = returnArraySum(array, 33);
+    printf("Sum: %lu\n", sum);
     return 0;
 }

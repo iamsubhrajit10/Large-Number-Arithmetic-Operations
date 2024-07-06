@@ -27,7 +27,7 @@
 #include <pthread.h>
 #include <math.h>
 
-#define NUMBER_OF_BITS 128
+#define NUMBER_OF_BITS 8192
 #define NUM_ITERATIONS 1000
 #define MAX_EVENTS 6
 
@@ -43,13 +43,46 @@ void generate_seed();
 char *formatUrdhvaResult(uint32_t *result, int result_length);
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags);
 
+// uint64_t returnArraySum(uint32_t *array, int length)
+// {
+//     uint64_t sum = 0;
+//     for (int i = 0; i < length; i++)
+//     {
+//         sum += array[i];
+//     }
+//     return sum;
+// }
+#include <immintrin.h>
+#include <stdint.h>
+
 uint64_t returnArraySum(uint32_t *array, int length)
 {
+    __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
+    int i = 0;
+
+    // Process chunks of 16 elements at a time
+    for (; i + 16 <= length; i += 16)
+    {
+        __m512i vdata = _mm512_loadu_si512((__m512i *)(array + i));
+        vsum = _mm512_add_epi32(vsum, vdata);
+    }
+
+    // Extract elements from the vector sum and accumulate them in a 64-bit integer
+    uint32_t temp[16];
+    _mm512_storeu_si512((__m512i *)temp, vsum);
+
     uint64_t sum = 0;
-    for (int i = 0; i < length; i++)
+    for (int j = 0; j < 16; ++j)
+    {
+        sum += temp[j];
+    }
+
+    // Sum any remaining elements
+    for (; i < length; ++i)
     {
         sum += array[i];
     }
+
     return sum;
 }
 
@@ -58,7 +91,6 @@ void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
     __m512i va = _mm512_loadu_si512((__m512i *)(a));
     __m512i vb = _mm512_loadu_si512((__m512i *)(b));
     vb = _mm512_permutexvar_epi32(_mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), vb);
-    // Perform multiplication only on elements specified by the mask
     __m512i vresult = _mm512_mullo_epi32(va, vb);
     _mm512_storeu_si512((__m512i *)(result), vresult);
 }
