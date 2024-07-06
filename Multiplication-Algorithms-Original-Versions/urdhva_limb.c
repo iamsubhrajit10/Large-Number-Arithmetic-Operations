@@ -43,18 +43,6 @@ void generate_seed();
 char *formatUrdhvaResult(uint32_t *result, int result_length);
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags);
 
-// uint64_t returnArraySum(uint32_t *array, int length)
-// {
-//     uint64_t sum = 0;
-//     for (int i = 0; i < length; i++)
-//     {
-//         sum += array[i];
-//     }
-//     return sum;
-// }
-#include <immintrin.h>
-#include <stdint.h>
-
 uint64_t returnArraySum(uint32_t *array, int length)
 {
     __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
@@ -106,7 +94,7 @@ uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product,
 
     for (int set_index = 0; set_index < max_index - 1; set_index++)
     {
-        uint64_t p = 0; // Use uint32_t for intermediate product calculation
+        uint64_t p = 0; // Use uint64_t for intermediate product calculation
         int start = (set_index > start_threshold) ? set_index - start_threshold : 0;
         int end = (set_index < n) ? set_index : end_max;
 
@@ -118,7 +106,7 @@ uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product,
         int avx_remainder = iterations & 15;
 
         uint32_t *tmp_ptr = temp_product;
-        // printf("Iterations: %d, AVX Iterations: %d, AVX Remainder: %d\n", iterations, avx_iterations, avx_remainder);
+
         for (int i = 0; i < avx_iterations; i++)
         {
             mul_int_array_avx512(ptr1, ptr2 - 15, tmp_ptr);
