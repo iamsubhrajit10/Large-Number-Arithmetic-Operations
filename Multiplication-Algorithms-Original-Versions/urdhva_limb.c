@@ -26,8 +26,9 @@
 #include <errno.h>
 #include <pthread.h>
 #include <math.h>
+#include <assert.h>
 
-#define NUMBER_OF_BITS 1024
+#define NUMBER_OF_BITS 8192
 #define NUM_ITERATIONS 1000
 #define MAX_EVENTS 6
 
@@ -40,7 +41,7 @@ uint32_t *returnDigits(uint32_t *limbs, int num_limbs, int *length);
 void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int *n_2);
 char *generateRandomNumber(int seed);
 void generate_seed();
-char *formatUrdhvaResult(uint32_t *result, int result_length);
+char *formatUrdhvaResult(uint64_t *result, int result_length);
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags);
 
 // uint64_t returnArraySum(uint32_t *array, int length)
@@ -57,12 +58,14 @@ uint64_t returnArraySum(uint32_t *array, int length)
 {
     __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
     int i = 0;
-
-    // Process chunks of 16 elements at a time
-    for (; i + 16 <= length; i += 16)
+    int iterations = length >> 4;
+    int remainder = length & 15;
+    uint32_t *array_ptr = array;
+    for (int j = 0; j < iterations; j++)
     {
-        __m512i vdata = _mm512_loadu_si512((__m512i *)(array + i));
+        __m512i vdata = _mm512_loadu_si512((__m512i *)array_ptr);
         vsum = _mm512_add_epi32(vsum, vdata);
+        array_ptr += 16;
     }
 
     // Extract elements from the vector sum and accumulate them in a 64-bit integer
@@ -70,15 +73,16 @@ uint64_t returnArraySum(uint32_t *array, int length)
     _mm512_storeu_si512((__m512i *)temp, vsum);
 
     uint64_t sum = 0;
+    uint32_t *tmp_ptr = temp;
     for (int j = 0; j < 16; ++j)
     {
-        sum += temp[j];
+        sum += *tmp_ptr++;
     }
-
+    // array_ptr = array + i;
     // Sum any remaining elements
-    for (; i < length; ++i)
+    for (int j = 0; j < remainder; j++)
     {
-        sum += array[i];
+        sum += *array_ptr++;
     }
 
     return sum;
@@ -86,6 +90,7 @@ uint64_t returnArraySum(uint32_t *array, int length)
 
 void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
 {
+
     __m512i va = _mm512_loadu_si512((__m512i *)(a));
     __m512i vb = _mm512_loadu_si512((__m512i *)(b));
     vb = _mm512_permutexvar_epi32(_mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), vb);
@@ -93,20 +98,21 @@ void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
     _mm512_storeu_si512((__m512i *)(result), vresult);
 }
 
-uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product, uint32_t *carry, int *result_length)
+uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product, uint64_t *carry, int *result_length)
 {
-    int max_index = n << 1;
-    int start_threshold = n - 1;
-    int end_max = n - 1;
-    uint32_t *product_ptr = product;
-    uint32_t *carry_ptr = carry;
-    uint32_t temp_product[n] __attribute__((aligned(64)));
+    // Assert that the numbers are allocated in memory, and that the product and carry arrays are also allocated
+    assert(number1 != NULL && number2 != NULL && product != NULL && carry != NULL && result_length != NULL);
+    int max_index = *result_length;
+    int threshold = n - 1;
 
-    for (int set_index = 0; set_index < max_index - 1; set_index++)
+    uint64_t *product_ptr = product;
+    uint64_t *carry_ptr = carry;
+    uint32_t temp_product[n] __attribute__((aligned(32)));
+    for (int set_index = 0; set_index < max_index; set_index++)
     {
         uint64_t p = 0; // Use uint32_t for intermediate product calculation
-        int start = (set_index > start_threshold) ? set_index - start_threshold : 0;
-        int end = (set_index < n) ? set_index : end_max;
+        int start = (set_index > threshold) ? set_index - threshold : 0;
+        int end = (set_index < n) ? set_index : threshold;
 
         uint32_t *ptr1 = number1 + start;
         uint32_t *ptr2 = number2 + end;
@@ -127,21 +133,22 @@ uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product,
         // multiply remaining elements using avx too, but only consider upto avx_remainder elements
         mul_int_array_avx512(ptr1, ptr2 - 15, tmp_ptr);
         tmp_ptr = temp_product;
+        // prefetch the array
+
         p = returnArraySum(tmp_ptr, iterations);
 
-        *product_ptr = (set_index != 0) ? p % LIMB_DIGITS : p;
-        *(carry_ptr - 1) = (set_index != 0) ? p / LIMB_DIGITS : 0;
+        *product_ptr = (uint64_t)(set_index != 0) ? p % LIMB_DIGITS : p;
+        *(carry_ptr - 1) = (uint64_t)(set_index != 0) ? p / LIMB_DIGITS : 0;
         product_ptr++;
         carry_ptr++;
     }
 
-    // print values of product and carry
-
     // Adjust the carry and product in the second loop
     uint32_t c = 0; // Initialize c for carry
-    product_ptr = product + max_index - 2;
-    carry_ptr = carry + max_index - 2;
-    for (int i = max_index - 2; i >= 0; i--, product_ptr--, carry_ptr--)
+    int last_index = max_index - 1;
+    product_ptr = product + last_index;
+    carry_ptr = carry + last_index;
+    for (int i = last_index; i >= 0; i--, product_ptr--, carry_ptr--)
     {
         if (*carry_ptr == 0 && c == 0)
             continue;
@@ -150,9 +157,7 @@ uint32_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint32_t *product,
         c = p / LIMB_DIGITS;
 
         *product_ptr = (i != 0) ? p % LIMB_DIGITS : p;
-        *result_length = i + 1;
     }
-    *result_length = max_index - 1;
     return product;
 }
 
@@ -306,8 +311,8 @@ int main()
         // }
         // printf("\n");
 
-        uint32_t *urdhva_product = (uint32_t *)calloc(2 * n - 1, sizeof(uint32_t));
-        uint32_t *carry = (uint32_t *)calloc(2 * n - 1, sizeof(uint32_t));
+        uint64_t *urdhva_product = (uint64_t *)calloc(2 * n - 1, sizeof(uint64_t));
+        uint64_t *carry = (uint64_t *)calloc(2 * n - 1, sizeof(uint64_t));
         memset(urdhva_product, 0, 2 * n - 1);
         memset(carry, 0, 2 * n - 1);
         // Create uint32_t arrays for num1 and num2
@@ -354,7 +359,7 @@ int main()
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
 
-        uint32_t *result = urdhva(limbs1, limbs2, n, urdhva_product, carry, &result_length);
+        uint64_t *result = urdhva(limbs1, limbs2, n, urdhva_product, carry, &result_length);
 
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++)
@@ -445,6 +450,7 @@ int main()
         char *product_gmp_str = mpz_get_str(NULL, 10, product_gmp);
         // printf("GMP Result:    %s\n", product_gmp_str);
         int length_gmp = strlen(product_gmp_str);
+        // bool not_matching = true;
         // Compare the results
         for (int i = 0; i < length_gmp; i++)
         {
@@ -454,15 +460,16 @@ int main()
                 printf("Urdhva Product Arr: ");
                 for (int i = 0; i < result_length; i++)
                 {
-                    printf("%d ", result[i]);
+                    printf("%ld ", result[i]);
                 }
                 printf("\n");
                 printf("Urdhva Product Str: %s\n", result_str_no_leading_zeros);
                 printf("GMP Product Str:    %s\n", product_gmp_str);
                 printf("index: %d, urdhva: %c, gmp: %c\n", i, result_str_no_leading_zeros[i], product_gmp_str[i]);
-                return 1;
+                return -1;
             }
         }
+
         printf("Results match, continuing, iteration: %d\n", iter);
         // free the allocated memories
         // free(result_str_no_leading_zeros);
@@ -486,7 +493,7 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
     return ret;
 }
 
-char *formatUrdhvaResult(uint32_t *result, int result_length)
+char *formatUrdhvaResult(uint64_t *result, int result_length)
 {
     char *result_str = (char *)calloc(result_length * 11 + 1, sizeof(char)); // 10 digits + null terminator per number
     if (result_str == NULL)
@@ -502,7 +509,7 @@ char *formatUrdhvaResult(uint32_t *result, int result_length)
         {
             continue;
         }
-        else if (i != 0 && result[i] < 1000)
+        else if (i != 0 && result[i] < LIMB_DIGITS / 10)
         {
             // Append '0' before the number if it's less than 1000 and not the first element
             int num_zeros = 0;
@@ -530,12 +537,12 @@ char *formatUrdhvaResult(uint32_t *result, int result_length)
             {
                 temp_ptr += sprintf(temp_ptr, "0");
             }
-            temp_ptr += sprintf(temp_ptr, "%u", result[i]);
+            temp_ptr += sprintf(temp_ptr, "%lu", result[i]);
         }
         else
         {
             // Use sprintf to append each number to the string normally
-            temp_ptr += sprintf(temp_ptr, "%u", result[i]);
+            temp_ptr += sprintf(temp_ptr, "%lu", result[i]);
         }
     }
     // remove leading zeros
