@@ -28,7 +28,7 @@
 #include <math.h>
 #include <assert.h>
 
-#define NUMBER_OF_BITS 8192
+#define NUMBER_OF_BITS 4096
 #define NUM_ITERATIONS 1000
 #define MAX_EVENTS 6
 
@@ -46,106 +46,137 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
 
 // uint64_t returnArraySum(uint32_t *array, int length)
 // {
-//     uint64_t sum = 0;
-//     for (int i = 0; i < length; i++)
+//     __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
+//     int i = 0;
+//     int iterations = length >> 4;
+//     int remainder = length & 15;
+//     uint32_t *array_ptr = array;
+//     for (int j = 0; j < iterations; j++)
 //     {
-//         sum += array[i];
+//         __m512i vdata = _mm512_loadu_si512((__m512i *)array_ptr);
+//         vsum = _mm512_add_epi32(vsum, vdata);
+//         array_ptr += 16;
 //     }
+
+//     // Extract elements from the vector sum and accumulate them in a 64-bit integer
+//     uint32_t temp[16];
+//     _mm512_storeu_si512((__m512i *)temp, vsum);
+
+//     uint64_t sum = 0;
+//     uint32_t *tmp_ptr = temp;
+//     for (int j = 0; j < 16; ++j)
+//     {
+//         sum += *tmp_ptr++;
+//     }
+//     // array_ptr = array + i;
+//     // Sum any remaining elements
+//     for (int j = 0; j < remainder; j++)
+//     {
+//         sum += *array_ptr++;
+//     }
+
 //     return sum;
 // }
 
-uint64_t returnArraySum(uint32_t *array, int length)
+// void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
+// {
+
+//     __m512i va = _mm512_loadu_si512((__m512i *)(a));
+//     __m512i vb = _mm512_loadu_si512((__m512i *)(b));
+//     vb = _mm512_permutexvar_epi32(_mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), vb);
+//     __m512i vresult = _mm512_mullo_epi32(va, vb);
+//     _mm512_storeu_si512((__m512i *)(result), vresult);
+// }
+
+// this function multiplies two arrays of integers, and returns the sum of the resulting array using AVX-512 instructions
+uint64_t mul_int_array_avx512(uint32_t *a, uint32_t *b, int num_multiplications)
 {
+    int avx_iterations = num_multiplications >> 4;
+    int avx_remainder = num_multiplications & 15;
+    uint32_t result[16];
     __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
-    int i = 0;
-    int iterations = length >> 4;
-    int remainder = length & 15;
-    uint32_t *array_ptr = array;
-    for (int j = 0; j < iterations; j++)
+
+    __m512i permute_indices = _mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+
+    __m512i va, vb, vresult;
+
+    for (int i = 0; i < avx_iterations; i++)
     {
-        __m512i vdata = _mm512_loadu_si512((__m512i *)array_ptr);
-        vsum = _mm512_add_epi32(vsum, vdata);
-        array_ptr += 16;
+        // Load a and b
+        va = _mm512_loadu_si512((__m512i *)(a));
+        vb = _mm512_loadu_si512((__m512i *)(b));
+
+        // Permute vb to reverse the order of elements
+        vb = _mm512_permutexvar_epi32(permute_indices, vb);
+        // Multiply
+        vresult = _mm512_mullo_epi32(va, vb);
+        // Sum up the partial results
+        vsum = _mm512_add_epi32(vsum, vresult);
+
+        // Adjust pointers
+        a += 16;
+        b -= 16;
     }
+
+    // multiply remaining elements using avx too, but only consider upto avx_remainder elements
+    va = _mm512_loadu_si512((__m512i *)(a));
+    vb = _mm512_loadu_si512((__m512i *)(b));
+    vb = _mm512_permutexvar_epi32(permute_indices, vb);
+    vresult = _mm512_mullo_epi32(va, vb);
+    // temporarily store the result in the result array, as we can't directly add them to the vsum
+    _mm512_storeu_si512((__m512i *)(result), vresult);
 
     // Extract elements from the vector sum and accumulate them in a 64-bit integer
     uint32_t temp[16];
     _mm512_storeu_si512((__m512i *)temp, vsum);
 
     uint64_t sum = 0;
-    uint32_t *tmp_ptr = temp;
     for (int j = 0; j < 16; ++j)
     {
-        sum += *tmp_ptr++;
+        sum += temp[j];
     }
     // array_ptr = array + i;
     // Sum any remaining elements
-    for (int j = 0; j < remainder; j++)
+    for (int j = 0; j < avx_remainder; j++)
     {
-        sum += *array_ptr++;
+        sum += result[j];
     }
 
     return sum;
-}
-
-void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
-{
-
-    __m512i va = _mm512_loadu_si512((__m512i *)(a));
-    __m512i vb = _mm512_loadu_si512((__m512i *)(b));
-    vb = _mm512_permutexvar_epi32(_mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), vb);
-    __m512i vresult = _mm512_mullo_epi32(va, vb);
-    _mm512_storeu_si512((__m512i *)(result), vresult);
 }
 
 uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product, uint64_t *carry, int *result_length)
 {
     // Assert that the numbers are allocated in memory, and that the product and carry arrays are also allocated
     assert(number1 != NULL && number2 != NULL && product != NULL && carry != NULL && result_length != NULL);
-    int max_index = *result_length;
-    int threshold = n - 1;
+    int max_index = *result_length; // Maximum index for the product array, 2n-1
+    int threshold = n - 1;          // Threshold for the number of elements to consider in the AVX-512 loop
 
     uint64_t *product_ptr = product;
     uint64_t *carry_ptr = carry;
-    uint32_t temp_product[n] __attribute__((aligned(32)));
+
     for (int set_index = 0; set_index < max_index; set_index++)
     {
-        uint64_t p = 0; // Use uint32_t for intermediate product calculation
-        int start = (set_index > threshold) ? set_index - threshold : 0;
-        int end = (set_index < n) ? set_index : threshold;
+        uint64_t p = 0;                                                  // Use uint64_t for intermediate product calculation
+        int start = (set_index > threshold) ? set_index - threshold : 0; // Start from the beginning if set_index is greater than threshold
+        int end = (set_index < n) ? set_index : threshold;               // End at the threshold if set_index is less than n
 
-        uint32_t *ptr1 = number1 + start;
-        uint32_t *ptr2 = number2 + end;
+        uint32_t *ptr1 = number1 + start; // Start from the beginning of the number1
+        uint32_t *ptr2 = number2 + end;   // Start from the end of the number2
 
-        int iterations = end - start + 1;
-        int avx_iterations = iterations >> 4;
-        int avx_remainder = iterations & 15;
+        int iterations = end - start + 1; // Number of iterations for the AVX-512 loop
 
-        uint32_t *tmp_ptr = temp_product;
-        // printf("Iterations: %d, AVX Iterations: %d, AVX Remainder: %d\n", iterations, avx_iterations, avx_remainder);
-        for (int i = 0; i < avx_iterations; i++)
-        {
-            mul_int_array_avx512(ptr1, ptr2 - 15, tmp_ptr);
-            ptr1 += 16;
-            ptr2 -= 16;
-            tmp_ptr += 16;
-        }
-        // multiply remaining elements using avx too, but only consider upto avx_remainder elements
-        mul_int_array_avx512(ptr1, ptr2 - 15, tmp_ptr);
-        tmp_ptr = temp_product;
-        // prefetch the array
+        p = mul_int_array_avx512(ptr1, ptr2 - 15, iterations); // Multiply the two arrays using AVX-512 instructions
 
-        p = returnArraySum(tmp_ptr, iterations);
-
-        *product_ptr = (uint64_t)(set_index != 0) ? p % LIMB_DIGITS : p;
-        *(carry_ptr - 1) = (uint64_t)(set_index != 0) ? p / LIMB_DIGITS : 0;
+        *product_ptr = (uint64_t)(set_index != 0) ? p % LIMB_DIGITS : p;     // Store the product in the product array
+        *(carry_ptr - 1) = (uint64_t)(set_index != 0) ? p / LIMB_DIGITS : 0; // Store the carry in the carry array
         product_ptr++;
         carry_ptr++;
     }
 
     // Adjust the carry and product in the second loop
-    uint32_t c = 0; // Initialize c for carry
-    int last_index = max_index - 1;
+    uint32_t c = 0;                 // Initialize c for carry
+    int last_index = max_index - 1; // Begin from the last index set
     product_ptr = product + last_index;
     carry_ptr = carry + last_index;
     for (int i = last_index; i >= 0; i--, product_ptr--, carry_ptr--)
@@ -495,7 +526,7 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
 
 char *formatUrdhvaResult(uint64_t *result, int result_length)
 {
-    char *result_str = (char *)calloc(result_length * 11 + 1, sizeof(char)); // 10 digits + null terminator per number
+    char *result_str = (char *)calloc(result_length * 20 + 1, sizeof(char)); // 10 digits + null terminator per number
     if (result_str == NULL)
     {
         perror("Memory allocation failed for result_str\n");
@@ -563,7 +594,7 @@ char *formatUrdhvaResult(uint64_t *result, int result_length)
 // Starts grouping from the least significant digit, and also appends zeros to the number if the number of digits is not a multiple of 4
 uint32_t *returnLimbs(uint32_t *number, int *length)
 {
-    uint32_t *limbs __attribute__((aligned(64)));
+    uint32_t *limbs __attribute__((aligned(32)));
     int n = *length;
     int num_limbs = n / LIMB_SIZE;
     int multiple = (n % LIMB_SIZE == 0) ? 0 : 1;
@@ -571,7 +602,7 @@ uint32_t *returnLimbs(uint32_t *number, int *length)
     {
         num_limbs++;
     }
-    limbs = (uint32_t *)_mm_malloc(num_limbs * sizeof(uint32_t), 64);
+    limbs = (uint32_t *)_mm_malloc(num_limbs * sizeof(uint32_t), 32);
     if (limbs == NULL)
     {
         printf("Memory could not be allocated for limbs\n");
