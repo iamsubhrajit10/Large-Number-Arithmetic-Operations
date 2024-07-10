@@ -102,6 +102,26 @@ uint64_t mul_int_array_avx512(uint32_t *a, uint32_t *b, int num_multiplications)
     return sum;
 }
 
+/* ALGO: URDHVA-LIMBS
+*** 1. Divide the two numbers into n/4 limbs each, group the limbs into 4 digits each starting from the least significant digit
+*** 2. set_index <- 0, max_index <- 2n-2
+*** 3. for set_index <- 0 to max_index do
+*** 4.      p <- 0
+*** 5.      start <- max(0, set_index - n + 1)
+*** 6.      end <- min(set_index, n-1)
+*** 7.      p <- multiply(num1[start:end], num2[end:start])
+*** 8.      product[set_index] <- p % 10000
+*** 9.     carry[set_index + 1] <- p / 10000
+*** 10. end for
+*** 11. c <- 0
+*** 12. for i <- 2n-2 to 0 do
+*** 13.     p <- product[i] + carry[i] + c
+*** 14.     product[i] <- p % 10000
+*** 15.     c <- p / 10000
+*** 16. end for
+*** 17. return product
+*/
+
 uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product, uint64_t *carry, int *result_length)
 {
     // Assert that the numbers are allocated in memory, and that the product and carry arrays are also allocated
