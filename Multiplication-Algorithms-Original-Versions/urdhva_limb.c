@@ -151,7 +151,11 @@ uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product,
 
 int main(int argc, char *argv[])
 {
-    assert(argc == 2);
+    if (!(argc == 2))
+    {
+        fprintf(stderr, "Usage: ./urdhva_limb <number_of_bits>\n");
+        exit(EXIT_FAILURE);
+    }
     NUMBER_OF_BITS = atoi(argv[1]);
     // Prepare for the performance counter
     // Define the events to monitor
@@ -359,7 +363,9 @@ int main(int argc, char *argv[])
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
 
+        /*******************URDHVA M ULTIPLICATION STARTS*********************************/
         uint64_t *result = urdhva(limbs1, limbs2, n, urdhva_product, carry, &result_length);
+        /*******************URDHVA MULTIPLICATION ENDS*********************************/
 
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++)
@@ -407,7 +413,9 @@ int main(int argc, char *argv[])
             ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
         }
 
+        /**************************GMP MULTIPLICATION STARTS*********************************/
         mpz_mul(product_gmp, num1_gmp, num2_gmp);
+        /**************************GMP MULTIPLICATION ENDS*********************************/
 
         // Stop monitoring
         for (int j = 0; j < MAX_EVENTS; j++)
