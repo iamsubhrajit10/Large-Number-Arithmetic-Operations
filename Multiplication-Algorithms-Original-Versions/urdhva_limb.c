@@ -28,7 +28,6 @@
 #include <math.h>
 #include <assert.h>
 
-#define NUMBER_OF_BITS 4096
 #define NUM_ITERATIONS 1000
 #define MAX_EVENTS 6
 
@@ -44,49 +43,7 @@ void generate_seed();
 char *formatUrdhvaResult(uint64_t *result, int result_length);
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags);
 
-// uint64_t returnArraySum(uint32_t *array, int length)
-// {
-//     __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
-//     int i = 0;
-//     int iterations = length >> 4;
-//     int remainder = length & 15;
-//     uint32_t *array_ptr = array;
-//     for (int j = 0; j < iterations; j++)
-//     {
-//         __m512i vdata = _mm512_loadu_si512((__m512i *)array_ptr);
-//         vsum = _mm512_add_epi32(vsum, vdata);
-//         array_ptr += 16;
-//     }
-
-//     // Extract elements from the vector sum and accumulate them in a 64-bit integer
-//     uint32_t temp[16];
-//     _mm512_storeu_si512((__m512i *)temp, vsum);
-
-//     uint64_t sum = 0;
-//     uint32_t *tmp_ptr = temp;
-//     for (int j = 0; j < 16; ++j)
-//     {
-//         sum += *tmp_ptr++;
-//     }
-//     // array_ptr = array + i;
-//     // Sum any remaining elements
-//     for (int j = 0; j < remainder; j++)
-//     {
-//         sum += *array_ptr++;
-//     }
-
-//     return sum;
-// }
-
-// void mul_int_array_avx512(uint32_t *a, uint32_t *b, uint32_t *result)
-// {
-
-//     __m512i va = _mm512_loadu_si512((__m512i *)(a));
-//     __m512i vb = _mm512_loadu_si512((__m512i *)(b));
-//     vb = _mm512_permutexvar_epi32(_mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), vb);
-//     __m512i vresult = _mm512_mullo_epi32(va, vb);
-//     _mm512_storeu_si512((__m512i *)(result), vresult);
-// }
+static int NUMBER_OF_BITS;
 
 // this function multiplies two arrays of integers, and returns the sum of the resulting array using AVX-512 instructions
 uint64_t mul_int_array_avx512(uint32_t *a, uint32_t *b, int num_multiplications)
@@ -192,8 +149,10 @@ uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product,
     return product;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    assert(argc == 2);
+    NUMBER_OF_BITS = atoi(argv[1]);
     // Prepare for the performance counter
     // Define the events to monitor
     struct perf_event_attr pe[MAX_EVENTS];
@@ -306,6 +265,13 @@ int main()
     for (int iter = 0; iter < NUM_ITERATIONS; iter++)
     {
         // Generate two random numbers and convert them to integer arrays
+        mpz_t num1_gmp, num2_gmp, product_gmp;
+        mpz_init(num1_gmp);
+        mpz_init(num2_gmp);
+        mpz_init(product_gmp);
+        mpz_set_ui(num1_gmp, 0);
+        mpz_set_ui(num2_gmp, 0);
+        mpz_set_ui(product_gmp, 0);
         generate_seed();
         int randomNumber = (rand() % 100) + 1;
         char *randomString = generateRandomNumber(randomNumber);
@@ -316,6 +282,9 @@ int main()
         char *num2_str = randomString;
         int n1 = strlen(num1_str);
         int n2 = strlen(num2_str);
+
+        mpz_set_str(num1_gmp, num1_str, 10);
+        mpz_set_str(num2_gmp, num2_str, 10);
         uint32_t *num1 = (uint32_t *)calloc(n1, sizeof(uint32_t));
         uint32_t *num2 = (uint32_t *)calloc(n2, sizeof(uint32_t));
         for (int i = 0; i < n1; i++)
@@ -430,18 +399,6 @@ int main()
 
         // printf("Urdhva Result: %s\n", result_str_no_leading_zeros);
         // GMP Mul
-        mpz_t num1_gmp, num2_gmp, product_gmp;
-        mpz_init(num1_gmp);
-        mpz_init(num2_gmp);
-        mpz_init(product_gmp);
-        mpz_set_ui(num1_gmp, 0);
-        mpz_set_ui(num2_gmp, 0);
-        mpz_set_ui(product_gmp, 0);
-        n1 = strlen(num1_str);
-        n2 = strlen(num2_str);
-        // Compute product using GMP
-        mpz_set_str(num1_gmp, num1_str, 10);
-        mpz_set_str(num2_gmp, num2_str, 10);
 
         // Start monitoring
         for (int j = 0; j < MAX_EVENTS; j++)
@@ -526,7 +483,7 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
 
 char *formatUrdhvaResult(uint64_t *result, int result_length)
 {
-    char *result_str = (char *)calloc(result_length * 20 + 1, sizeof(char)); // 10 digits + null terminator per number
+    char *result_str = (char *)calloc(result_length * 11 + 1, sizeof(char)); // 10 digits + null terminator per number
     if (result_str == NULL)
     {
         perror("Memory allocation failed for result_str\n");
@@ -594,7 +551,7 @@ char *formatUrdhvaResult(uint64_t *result, int result_length)
 // Starts grouping from the least significant digit, and also appends zeros to the number if the number of digits is not a multiple of 4
 uint32_t *returnLimbs(uint32_t *number, int *length)
 {
-    uint32_t *limbs __attribute__((aligned(32)));
+    uint32_t *limbs __attribute__((aligned(64)));
     int n = *length;
     int num_limbs = n / LIMB_SIZE;
     int multiple = (n % LIMB_SIZE == 0) ? 0 : 1;
@@ -602,7 +559,7 @@ uint32_t *returnLimbs(uint32_t *number, int *length)
     {
         num_limbs++;
     }
-    limbs = (uint32_t *)_mm_malloc(num_limbs * sizeof(uint32_t), 32);
+    limbs = (uint32_t *)_mm_malloc(num_limbs * sizeof(uint32_t), 64);
     if (limbs == NULL)
     {
         printf("Memory could not be allocated for limbs\n");
