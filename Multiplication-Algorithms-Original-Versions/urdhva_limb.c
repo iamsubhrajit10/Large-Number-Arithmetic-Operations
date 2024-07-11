@@ -50,30 +50,45 @@ uint64_t mul_int_array_avx512(uint32_t *a, uint32_t *b, int num_multiplications)
 {
     int avx_iterations = num_multiplications >> 4;
     int avx_remainder = num_multiplications & 15;
-    uint32_t result[16];
+    uint64_t sum = 0;
     __m512i vsum = _mm512_setzero_si512(); // Initialize the vector sum to zero
 
     __m512i permute_indices = _mm512_setr_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
 
     __m512i va, vb, vresult;
-
-    for (int i = 0; i < avx_iterations; i++)
+    if (avx_iterations)
     {
-        // Load a and b
-        va = _mm512_loadu_si512((__m512i *)(a));
-        vb = _mm512_loadu_si512((__m512i *)(b));
+        for (int i = 0; i < avx_iterations; i++)
+        {
+            // Load a and b
+            va = _mm512_loadu_si512((__m512i *)(a));
+            vb = _mm512_loadu_si512((__m512i *)(b));
 
-        // Permute vb to reverse the order of elements
-        vb = _mm512_permutexvar_epi32(permute_indices, vb);
-        // Multiply
-        vresult = _mm512_mullo_epi32(va, vb);
-        // Sum up the partial results
-        vsum = _mm512_add_epi32(vsum, vresult);
+            // Permute vb to reverse the order of elements
+            vb = _mm512_permutexvar_epi32(permute_indices, vb);
+            // Multiply
+            vresult = _mm512_mullo_epi32(va, vb);
+            // Sum up the partial results
+            vsum = _mm512_add_epi32(vsum, vresult);
 
-        // Adjust pointers
-        a += 16;
-        b -= 16;
+            // Adjust pointers
+            a += 16;
+            b -= 16;
+        }
+
+        // Sum up all elements in vsum
+        for (int j = 0; j < 16; ++j)
+        {
+            sum += ((uint32_t *)&vsum)[j]; // Directly add elements from vsum
+        }
     }
+
+    if (avx_remainder == 0)
+    {
+        return sum;
+    }
+    // Directly allocate on the stack for faster access
+    uint32_t result[16] = {0}; // Temporary array to store the result of the multiplication
 
     // multiply remaining elements using avx too, but only consider upto avx_remainder elements
     va = _mm512_loadu_si512((__m512i *)(a));
@@ -83,17 +98,7 @@ uint64_t mul_int_array_avx512(uint32_t *a, uint32_t *b, int num_multiplications)
     // temporarily store the result in the result array, as we can't directly add them to the vsum
     _mm512_storeu_si512((__m512i *)(result), vresult);
 
-    // Extract elements from the vector sum and accumulate them in a 64-bit integer
-    uint32_t temp[16];
-    _mm512_storeu_si512((__m512i *)temp, vsum);
-
-    uint64_t sum = 0;
-    for (int j = 0; j < 16; ++j)
-    {
-        sum += temp[j];
-    }
-    // array_ptr = array + i;
-    // Sum any remaining elements
+    // Sum up the remaining elements
     for (int j = 0; j < avx_remainder; j++)
     {
         sum += result[j];
@@ -126,6 +131,12 @@ uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product,
 {
     // Assert that the numbers are allocated in memory, and that the product and carry arrays are also allocated
     assert(number1 != NULL && number2 != NULL && product != NULL && carry != NULL && result_length != NULL);
+    // make sure product and carry does not overlap
+    assert(&product[0] != &carry[0] && &product[*result_length - 1] != &carry[*result_length - 1]);
+    // make sure number1 and number2 do not overlap with product and carry
+    assert((void *)&number1[0] != (void *)&product[0] && (void *)&number1[n - 1] != (void *)&product[*result_length - 1]);
+    assert((void *)&number2[0] != (void *)&product[0] && (void *)&number2[n - 1] != (void *)&product[*result_length - 1]);
+
     int max_index = *result_length; // Maximum index for the product array, 2n-1
     int threshold = n - 1;          // Threshold for the number of elements to consider in the AVX-512 loop
 
