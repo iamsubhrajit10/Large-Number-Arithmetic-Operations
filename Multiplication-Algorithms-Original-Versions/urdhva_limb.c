@@ -127,23 +127,24 @@ uint64_t mul_int_array_avx512(uint32_t *a, uint32_t *b, int num_multiplications)
 *** 17. return product
 */
 
-uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product, uint64_t *carry, int *result_length)
+uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product, uint64_t *carry, int result_length)
 {
     // Assert that the numbers are allocated in memory, and that the product and carry arrays are also allocated
-    assert(number1 != NULL && number2 != NULL && product != NULL && carry != NULL && result_length != NULL);
+    assert(number1 != NULL && number2 != NULL && product != NULL && carry != NULL && &result_length != NULL);
     // make sure product and carry does not overlap
-    assert(&product[0] != &carry[0] && &product[*result_length - 1] != &carry[*result_length - 1]);
+    assert(&product[0] != &carry[0] && &product[result_length - 1] != &carry[result_length - 1]);
     // make sure number1 and number2 do not overlap with product and carry
-    assert((void *)&number1[0] != (void *)&product[0] && (void *)&number1[n - 1] != (void *)&product[*result_length - 1]);
-    assert((void *)&number2[0] != (void *)&product[0] && (void *)&number2[n - 1] != (void *)&product[*result_length - 1]);
+    assert((void *)&number1[0] != (void *)&product[0] && (void *)&number1[n - 1] != (void *)&product[result_length - 1]);
+    assert((void *)&number2[0] != (void *)&product[0] && (void *)&number2[n - 1] != (void *)&product[result_length - 1]);
 
-    int max_index = *result_length; // Maximum index for the product array, 2n-1
-    int threshold = n - 1;          // Threshold for the number of elements to consider in the AVX-512 loop
+    int max_index = result_length; // Maximum index for the product array, 2n-1
+    int threshold = n - 1;         // Threshold for the number of elements to consider in the AVX-512 loop
 
-    uint64_t *product_ptr = product;
-    uint64_t *carry_ptr = carry;
+    product[0] = number1[0] * number2[0]; // Multiply the first elements of the two numbers
+    uint64_t *product_ptr = product + 1;
+    uint64_t *carry_ptr = carry + 1;
 
-    for (int set_index = 0; set_index < max_index; set_index++)
+    for (int set_index = 1; set_index < max_index; set_index++)
     {
         uint64_t p = 0;                                                  // Use uint64_t for intermediate product calculation
         int start = (set_index > threshold) ? set_index - threshold : 0; // Start from the beginning if set_index is greater than threshold
@@ -156,8 +157,8 @@ uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product,
 
         p = mul_int_array_avx512(ptr1, ptr2 - 15, iterations); // Multiply the two arrays using AVX-512 instructions
 
-        *product_ptr = (uint64_t)(set_index != 0) ? p % LIMB_DIGITS : p;     // Store the product in the product array
-        *(carry_ptr - 1) = (uint64_t)(set_index != 0) ? p / LIMB_DIGITS : 0; // Store the carry in the carry array
+        *product_ptr = p % LIMB_DIGITS;     // Store the product in the product array
+        *(carry_ptr - 1) = p / LIMB_DIGITS; // Store the carry in the carry array
         product_ptr++;
         carry_ptr++;
     }
@@ -167,16 +168,14 @@ uint64_t *urdhva(uint32_t *number1, uint32_t *number2, int n, uint64_t *product,
     int last_index = max_index - 1; // Begin from the last index set
     product_ptr = product + last_index;
     carry_ptr = carry + last_index;
-    for (int i = last_index; i >= 0; i--, product_ptr--, carry_ptr--)
+    for (int i = last_index; i >= 1; i--, product_ptr--, carry_ptr--)
     {
-        if (*carry_ptr == 0 && c == 0)
-            continue;
-
         uint32_t p = *product_ptr + *carry_ptr + c;
         c = p / LIMB_DIGITS;
 
-        *product_ptr = (i != 0) ? p % LIMB_DIGITS : p;
+        *product_ptr = p % LIMB_DIGITS;
     }
+    *product_ptr = *carry_ptr + *product_ptr + c; // Update the first element of the product array
     return product;
 }
 
@@ -395,7 +394,7 @@ int main(int argc, char *argv[])
         }
 
         /*******************URDHVA M ULTIPLICATION STARTS*********************************/
-        uint64_t *result = urdhva(limbs1, limbs2, n, urdhva_product, carry, &result_length);
+        uint64_t *result = urdhva(limbs1, limbs2, n, urdhva_product, carry, result_length);
         /*******************URDHVA MULTIPLICATION ENDS*********************************/
 
         // Stop monitoring
