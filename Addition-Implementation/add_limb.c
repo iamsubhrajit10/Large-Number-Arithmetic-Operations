@@ -26,6 +26,7 @@ Note: For pre-processing, we can use the realloc function to add leading zeros t
 #define NUM_BITS 8192
 #define LIMB_SIZE 8
 #define LIMB_DIGITS 100000000
+#define ITERATIONS 1000
 
 uint32_t *scratch_space;
 int scratch_pointer = 0;
@@ -189,14 +190,14 @@ int main()
     }
     fprintf(file_gmp, "\n");
 
-    // allocate 2MB scratch space
-    scratch_space = (uint32_t *)malloc(2 * 1024 * 1024);
+    // allocate 1GB scratch space
+    scratch_space = (uint32_t *)malloc(1 << 30);
     if (scratch_space == NULL)
     {
         perror("Error allocating scratch space\n");
         return -1;
     }
-    for (int iter = 0; iter < 100; iter++)
+    for (int iter = 0; iter < ITERATIONS; iter++)
     {
 
         // Generate random numbers using  GMP library
@@ -239,7 +240,7 @@ int main()
         uint32_t *sum = scratch_space + scratch_pointer;
         scratch_pointer += (n + 31) & ~31;
         // Clear the sum array
-        memset(sum, 0, (n > m ? n : m) * sizeof(uint32_t));
+        memset(sum, 0, (n + 1) * sizeof(uint32_t));
 
         uint64_t values[MAX_EVENTS];
         assert(n_limb == m_limb);
