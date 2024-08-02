@@ -27,7 +27,7 @@ Note: For pre-processing, we can use the realloc function to add leading zeros t
 #define LIMB_SIZE 8
 #define LIMB_DIGITS 100000000
 
-int *scratch_space;
+uint32_t *scratch_space;
 int scratch_pointer = 0;
 
 uint32_t *returnLimbs(uint32_t *number, int *length);
@@ -77,76 +77,11 @@ void *add_n(uint32_t *a, uint32_t *b, int n, uint32_t *sum, int *sum_size)
         memmove(sum + 1, sum, n * sizeof(uint32_t));
         sum[0] = carry;
         *sum_size = n + 1;
-        // scratch_pointer++;
     }
 }
 
 int main()
 {
-    // allocate 2MB scratch space
-    scratch_space = (int *)malloc(2 * 1024 * 1024);
-    if (scratch_space == NULL)
-    {
-        perror("Error allocating scratch space\n");
-        return -1;
-    }
-
-    // Generate random numbers using  GMP library
-    mpz_t num1_gmp, num2_gmp;
-    mpz_init(num1_gmp);
-    mpz_init(num2_gmp);
-    gmp_randstate_t state;
-    gmp_randinit_default(state);
-    gmp_randseed_ui(state, time(NULL));
-    mpz_urandomb(num1_gmp, state, NUM_BITS);
-    mpz_urandomb(num2_gmp, state, NUM_BITS);
-    char *num1_str = mpz_get_str(NULL, 10, num1_gmp);
-    char *num2_str = mpz_get_str(NULL, 10, num2_gmp);
-    int n = strlen(num1_str);
-    int m = strlen(num2_str);
-    uint32_t *a = (uint32_t *)malloc(n * sizeof(uint32_t));
-    uint32_t *b = (uint32_t *)malloc(m * sizeof(uint32_t));
-    for (int i = 0; i < n; i++)
-    {
-        a[i] = num1_str[i] - '0';
-    }
-    for (int i = 0; i < m; i++)
-    {
-        b[i] = num2_str[i] - '0';
-    }
-
-    // Make the two numbers equidistant
-    make_equidistant(&a, &b, &n, &m);
-
-    // printf("The two numbers are: ");
-    // for (int i = 0; i < n; i++)
-    // {
-    //     printf("%d", a[i]);
-    // }
-    // printf(" ");
-    // for (int i = 0; i < m; i++)
-    // {
-    //     printf("%d", b[i]);
-    // }
-    // printf("\n");
-
-    // Convert array of digits to array of limbs
-    int n_limb = n;
-    int m_limb = m;
-    uint32_t *a_limbs = returnLimbs(a, &n_limb);
-    uint32_t *b_limbs = returnLimbs(b, &m_limb);
-    // printf("The two numbers in limbs are: ");
-    // for (int i = 0; i < n_limb; i++)
-    // {
-    //     printf("%u ", a_limbs[i]);
-    // }
-    // printf("\n");
-    // for (int i = 0; i < m_limb; i++)
-    // {
-    //     printf("%u ", b_limbs[i]);
-    // }
-    // printf("\n");
-
     // Define the events to monitor
     struct perf_event_attr pe[MAX_EVENTS];
     int fd[MAX_EVENTS];
@@ -235,64 +170,6 @@ int main()
     }
     fprintf(file, "\n");
 
-    int sum_size;
-    int *sum = (int *)malloc((n > m ? n : m) * sizeof(int));
-
-    // allocate from scratch space
-    sum = scratch_space + scratch_pointer;
-    scratch_pointer += (n + 31) & ~31;
-
-    // // measure elapsed time with high precision
-    // struct timespec start, end;
-    // clock_gettime(CLOCK_REALTIME, &start);
-    uint64_t values[MAX_EVENTS];
-    assert(n_limb == m_limb);
-    sum_size = n_limb;
-    // Start the events
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-        ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
-    }
-
-    add_n(a_limbs, b_limbs, n_limb, sum, &sum_size);
-
-    // Stop monitoring
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
-        {
-            perror("Error disabling counter");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    // Read and print the counter values
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
-        {
-            perror("Error reading counter value");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    // Write the counter values to the CSV file
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        fprintf(file, "%lu,", values[j]);
-    }
-    fprintf(file, "\n");
-
-    // clock_gettime(CLOCK_REALTIME, &end);
-    // double time_taken = end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) / 1e9;
-    // printf("Time taken to add two numbers: %lf seconds\n", time_taken);
-    // printf("The sum of the two numbers is: ");
-    // for (int i = 0; i < sum_size; i++)
-    // {
-    //     printf("%d ", sum[i]);
-    // }
-    // add with GMP's addition
     // Open a file for writing for gmp
     char binary_name_gmp[] = "GMP_"; // replace with actual binary name
     char filename_gmp[100];
@@ -311,77 +188,182 @@ int main()
         fprintf(file_gmp, "%s,", event_names[j]);
     }
     fprintf(file_gmp, "\n");
-    mpz_t sum_gmp;
 
-    mpz_init(sum_gmp);
-
-    // // measure elapsed time with high precision
-    // clock_gettime(CLOCK_REALTIME, &start);
-
-    // Start the events
-    for (int j = 0; j < MAX_EVENTS; j++)
+    // allocate 2MB scratch space
+    scratch_space = (uint32_t *)malloc(2 * 1024 * 1024);
+    if (scratch_space == NULL)
     {
-        ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-        ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        perror("Error allocating scratch space\n");
+        return -1;
     }
-    mpz_add(sum_gmp, num1_gmp, num2_gmp); // Use mpz_add function to add two numbers
-
-    // Stop monitoring
-    for (int j = 0; j < MAX_EVENTS; j++)
+    for (int iter = 0; iter < 100; iter++)
     {
-        if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
+
+        // Generate random numbers using  GMP library
+        mpz_t num1_gmp, num2_gmp;
+        mpz_init(num1_gmp);
+        mpz_init(num2_gmp);
+        gmp_randstate_t state;
+        gmp_randinit_default(state);
+        gmp_randseed_ui(state, time(NULL));
+        mpz_urandomb(num1_gmp, state, NUM_BITS);
+        mpz_urandomb(num2_gmp, state, NUM_BITS);
+        char *num1_str = mpz_get_str(NULL, 10, num1_gmp);
+        char *num2_str = mpz_get_str(NULL, 10, num2_gmp);
+        int n = strlen(num1_str);
+        int m = strlen(num2_str);
+        uint32_t *a = (uint32_t *)malloc(n * sizeof(uint32_t));
+        uint32_t *b = (uint32_t *)malloc(m * sizeof(uint32_t));
+        for (int i = 0; i < n; i++)
         {
-            perror("Error disabling counter");
-            exit(EXIT_FAILURE);
+            a[i] = num1_str[i] - '0';
         }
-    }
-    // Read and print the counter values
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
+        for (int i = 0; i < m; i++)
         {
-            perror("Error reading counter value");
-            exit(EXIT_FAILURE);
+            b[i] = num2_str[i] - '0';
         }
-    }
 
-    // Write the counter values to the CSV file
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        fprintf(file_gmp, "%lu,", values[j]);
-    }
-    fprintf(file_gmp, "\n");
+        // Make the two numbers equidistant
+        make_equidistant(&a, &b, &n, &m);
 
-    // clock_gettime(CLOCK_REALTIME, &end);
-    char *sum_gmp_str = mpz_get_str(NULL, 10, sum_gmp);
+        // Convert array of digits to array of limbs
+        int n_limb = n;
+        int m_limb = m;
+        uint32_t *a_limbs = returnLimbs(a, &n_limb);
+        uint32_t *b_limbs = returnLimbs(b, &m_limb);
 
-    // printf("\n");
+        int sum_size;
+        // int *sum = (int *)malloc((n > m ? n : m) * sizeof(int));
 
-    // printf("The sum of the two numbers using GMP is: %s\n", sum_gmp_str);
+        // allocate from scratch space
+        uint32_t *sum = scratch_space + scratch_pointer;
+        scratch_pointer += (n + 31) & ~31;
+        // Clear the sum array
+        memset(sum, 0, (n > m ? n : m) * sizeof(uint32_t));
 
-    // convert add's output sum into a string
-    char *sum_str = formatResult(sum, sum_size);
-    // printf("The sum of the two numbers using add function is: %s\n", sum_str);
-    // check if the two sums are equal
-    if (strlen(sum_gmp_str) != strlen(sum_str))
-    {
-        printf("The two sums are not equal\n");
-        printf("Lengths are different\n");
-        printf("Length of add_sum = %d, length of gmp_sum = %ld\n", sum_size, strlen(sum_gmp_str));
-        printf("add_sum = %s, gmp_sum = %s\n", sum_str, sum_gmp_str);
-        return 1;
-    }
-    for (int i = 0; i < sum_size; i++)
-    {
-        if (sum_str[i] != sum_gmp_str[i])
+        uint64_t values[MAX_EVENTS];
+        assert(n_limb == m_limb);
+        sum_size = n_limb;
+        // struct timespec start, end;
+
+        // prefetched the arrays
+        __builtin_prefetch(a_limbs, 0, 3);
+        __builtin_prefetch(b_limbs, 0, 3);
+
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+
+        add_n(a_limbs, b_limbs, n_limb, sum, &sum_size);
+
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
+            {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Read and print the counter values
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
+            {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            fprintf(file, "%lu,", values[j]);
+        }
+        fprintf(file, "\n");
+
+        mpz_t sum_gmp;
+
+        mpz_init(sum_gmp);
+
+        // Start the events
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        }
+        // clock_gettime(CLOCK_REALTIME, &start);
+        mpz_add(sum_gmp, num1_gmp, num2_gmp); // Use mpz_add function to add two numbers
+
+        // clock_gettime(CLOCK_REALTIME, &end);
+        // Stop monitoring
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
+            {
+                perror("Error disabling counter");
+                exit(EXIT_FAILURE);
+            }
+        }
+        // Read and print the counter values
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
+            {
+                perror("Error reading counter value");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Write the counter values to the CSV file
+        for (int j = 0; j < MAX_EVENTS; j++)
+        {
+            fprintf(file_gmp, "%lu,", values[j]);
+        }
+        fprintf(file_gmp, "\n");
+        // printf("Time taken to add two numbers using GMP: %lf seconds\n", end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) / 1e9);
+
+        char *sum_gmp_str = mpz_get_str(NULL, 10, sum_gmp);
+
+        // printf("\n");
+
+        // printf("The sum of the two numbers using GMP is: %s\n", sum_gmp_str);
+
+        // convert add's output sum into a string
+        char *sum_str = formatResult(sum, sum_size);
+        // printf("The sum of the two numbers using add function is: %s\n", sum_str);
+        // check if the two sums are equal
+        if (strlen(sum_gmp_str) != strlen(sum_str))
         {
             printf("The two sums are not equal\n");
-            printf("Mismatch at index %d\n", i);
-            printf("add_sum[%d] = %c, gmp_sum[%d] = %c\n", i, sum_str[i], i, sum_gmp_str[i]);
+            printf("Lengths are different\n");
+            printf("Length of add_sum = %d, length of gmp_sum = %ld\n", sum_size, strlen(sum_gmp_str));
+            printf("add_sum = %s, gmp_sum = %s\n", sum_str, sum_gmp_str);
             return 1;
         }
+        for (int i = 0; i < sum_size; i++)
+        {
+            if (sum_str[i] != sum_gmp_str[i])
+            {
+                printf("The two sums are not equal\n");
+                printf("Mismatch at index %d\n", i);
+                printf("add_sum[%d] = %c, gmp_sum[%d] = %c\n", i, sum_str[i], i, sum_gmp_str[i]);
+                return 1;
+            }
+        }
+        printf("The two sums are equal, iteration %d\n", iter);
+        free(a);
+        free(b);
+        free(a_limbs);
+        free(b_limbs);
+        mpz_clear(num1_gmp);
+        mpz_clear(num2_gmp);
+        mpz_clear(sum_gmp);
     }
-    printf("The two sums are equal\n");
     return 0;
 }
 
@@ -518,7 +500,6 @@ void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int 
             temp[i] = 0;
         }
 
-        printf("\n");
         // reallocate space for num2 using realloc
         num2 = (uint32_t *)realloc(num2, n1 * sizeof(uint32_t));
         if (num2 == NULL)

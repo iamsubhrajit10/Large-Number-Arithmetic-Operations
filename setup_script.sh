@@ -35,6 +35,6 @@ sudo systemctl restart sshd
 # // write shell command to install perf
 sudo apt-get install linux-tools-common linux-tools-generic linux-tools-`uname -r`
 git config --global credential.helper 'cache --timeout=3600'
-chmod +x git_push.sh
-nohup ./git_push.sh > ~/nohup.out 2>&1 &
-sudo chmod -R 777 .
+# chmod +x git_push.sh
+# nohup ./git_push.sh > ~/nohup.out 2>&1 &
+# sudo chmod -R 777 .
