@@ -52,16 +52,24 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
     It uses avx512 instructions to add the numbers.
     As, data is of type uint32_t, we can add 16 numbers at a time.
     Procedure:
-    1. Load 16 numbers from both arrays into two registers.
-    2. Add the two registers.
-    3. Store the result in the third array.
-    4. Repeat the process for the next 16 numbers.
-    5. Take care of the remaining numbers.
+    1. Load a and b into a_vec, b_vec respectively.
+    2. sum_vec = a_vec + b_vec
+    3. mask = sum_vec >= LIMB_DIGITS
+    4. carry_vec = 0
+    5. carry_vec = mask ? 1 : 0
+    6. sum_vec = mask ? sum_vec - LIMB_DIGITS : sum_vec
+    7. Store sum_vec in sum
+    8. Repeat steps 1-7 for the remaining elements
+    9. Shift the carry array to the left by 1 position
+    10. sum = sum + carry
+    11. Repeat step 10 for the remaining elements
+    12. Return the sum
 */
 
 void *sum_avx512(uint32_t *a, uint32_t *b, int n, uint32_t *sum, int *sum_size)
 {
 
+    int remainder = n & 15;
     int i;
     __m512i limb_digits = _mm512_set1_epi32(LIMB_DIGITS);
 
@@ -69,20 +77,21 @@ void *sum_avx512(uint32_t *a, uint32_t *b, int n, uint32_t *sum, int *sum_size)
     uint32_t *carry_array = carry_space;
 
     // Process first 16 elements separately
+
     // Load 16 elements from a and b
-    __m512i a_vec = _mm512_loadu_si512((__m512i *)a);
-    __m512i b_vec = _mm512_loadu_si512((__m512i *)b);
+    __m512i a_vec = _mm512_load_si512((__m512i *)a);
+    __m512i b_vec = _mm512_load_si512((__m512i *)b);
 
     // Step 1: Add 16 elements at a time
     __m512i sum_vec = _mm512_add_epi32(a_vec, b_vec);
 
-    // Step 2: Extract Carry[0] of 16 elements at once
+    // Step 2: Extract carry mask of 16 elements at once
     __mmask16 mask = _mm512_cmpge_epu32_mask(sum_vec, limb_digits);
 
     // Initialize carry_vec to zero
-    __m512i carry_vec = _mm512_setzero_epi32();
+    __m512i carry_vec;
 
-    // Set Carry[0] to 1 where mask bit is set to 1
+    // Set carry vec to 1 where mask bit is set to 1
     carry_vec = _mm512_mask_set1_epi32(carry_vec, mask, 1);
 
     // Store the carry in the carry_array
@@ -96,51 +105,72 @@ void *sum_avx512(uint32_t *a, uint32_t *b, int n, uint32_t *sum, int *sum_size)
     // Store the sum in the sum array
     _mm512_storeu_si512((__m512i *)sum, temp);
 
+    __m512i zeros = _mm512_setzero_epi32();
+
     // Process addition with AVX-512 instructions
     for (i = 16; i < n; i += 16)
     {
         // Load 16 elements from a and b
-        __m512i a_vec = _mm512_loadu_si512((__m512i *)(a + i));
-        __m512i b_vec = _mm512_loadu_si512((__m512i *)(b + i));
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a + i));
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b + i));
 
         // Step 1: Add 16 elements at a time
         __m512i sum_vec = _mm512_add_epi32(a_vec, b_vec);
 
-        // Step 2: Extract Carry[i] of 16 elements at once
-        __mmask16 mask = _mm512_cmpge_epu32_mask(sum_vec, limb_digits);
+        // Step 2: Extract carry mask and adjust sum simultaneously
+        __mmask16 carry_mask = _mm512_cmpge_epu32_mask(sum_vec, limb_digits);
+        __m512i adjusted_sum_vec = _mm512_mask_sub_epi32(sum_vec, carry_mask, sum_vec, limb_digits);
 
-        // Initialize carry_vec to zero
-        __m512i carry_vec = _mm512_setzero_epi32();
-
-        // Set Carry[i] to 1 where mask bit is set to 1
-        carry_vec = _mm512_mask_set1_epi32(carry_vec, mask, 1);
+        // Set carry vector to 1 where carry_mask bit is set to 1
+        __m512i carry_vec = _mm512_mask_set1_epi32(zeros, carry_mask, 1);
 
         // Store the carry in the carry_array
         _mm512_storeu_si512((__m512i *)(carry_array + i), carry_vec);
-        __m512i temp;
-        // Step 3: If Carry[i] is 1, sum[i] = sum[i] - LIMB_DIGITS, except for the most significant limb
-        temp = _mm512_mask_sub_epi32(sum_vec, mask, sum_vec, limb_digits);
 
-        // Store the sum in the sum array
-        _mm512_storeu_si512((__m512i *)(sum + i), temp);
+        // Store the adjusted sum in the sum array
+        _mm512_storeu_si512((__m512i *)(sum + i), adjusted_sum_vec);
     }
 
     // Shift the carry_array to the left by 1 position
     carry_array = carry_array + 1;
     carry_array[n - 1] = 0;
-    // Step 4: If Carry[i] is 1, update sum[i] = sum[i] + 1, using avx512
-    for (i = 0; i < n; i += 16)
+
+    for (int i = 0; i < n; i += 16)
     {
-        // Load 16 elements from sum and carry
         __m512i carry_vec = _mm512_loadu_si512((__m512i *)(carry_array + i));
         __m512i sum_vec = _mm512_loadu_si512((__m512i *)(sum + i));
-
-        // Step 1: Add 16 elements at a time
         __m512i sum_vec_updated = _mm512_add_epi32(sum_vec, carry_vec);
-
-        // Store the updated sum in the sum array
         _mm512_storeu_si512((__m512i *)(sum + i), sum_vec_updated);
     }
+}
+/*
+ This function simply adds two arrays of numbers and stores the result in a third array.
+    The arrays are assumed to be of the same length.
+    It uses avx512 instructions to add the numbers.
+    As, data is of type uint32_t, we can add 16 numbers at a time.
+    Procedure:
+    0. vec0 <- 0, vec1 <- 0
+    1. Load a and b into a_vec, b_vec respectively starting from the least significant limb.
+    2. sum_vec = b_vec + vec1
+    3. sum_vec = a_vec + sum_vec
+    4. mask = sum_vec >= LIMB_DIGITS
+    5. carry_vec = 0
+    6. carry_vec = mask ? 1 : 0
+    7. <vec1,vec0> = left shift carry_vec by 1 position
+    8. sum_vec = mask ? sum_vec - LIMB_DIGITS : sum_vec
+    9. sum = sum_vec + vec0
+    10. Store sum in the sum array
+    11. Repeat steps 1-10 for the remaining elements in reverse order (from the least significant limb to the most significant limb)
+    12. Return the sum
+*/
+// Function to print a __mmask16 in binary
+void print_mask_binary(__mmask16 mask)
+{
+    for (int i = 15; i >= 0; --i)
+    {
+        printf("%d", (mask >> i) & 1);
+    }
+    printf("\n");
 }
 
 // Function to add two numbers
