@@ -107,17 +107,55 @@ int sub_n(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
     borrow_array[n - 1] = 0;
-
-    for (uint32_t i = 0; i < n; i += 16)
+    int last_pos = 0;
+    int i;
+    bool b_flag = false;
+    for (i = 0; i < n; i += 16)
     {
-        // load 16 elements from result
-        result_vec = _mm512_loadu_si512(result + i);
-        // load 16 elements from borrow array
         __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
-        // add result and borrow
+        __m512i result_vec = _mm512_loadu_si512(result + i);
         result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
-        // store the result
+
+        // check if result_vec[j] < 0
+        __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
+
+        if (__builtin_expect((borrow_mask != 0 && i < n - 16), 0))
+        {
+            last_pos = i;
+            b_flag = true;
+        }
+
+        // generate borrow_vec
+        borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
+
+        // update the borrow array
+        _mm512_storeu_si512(borrow_array + i, borrow_vec);
+
         _mm512_storeu_si512(result + i, result_vec);
+    }
+    if (__builtin_expect(b_flag, 0))
+    {
+        i = last_pos + 16;
+        i = (i > n) ? (n - 1) : i;
+        for (; i >= 0; i--)
+        {
+            if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
+            {
+                result[i] = result[i] + LIMB_DIGITS;
+                result[i - 1] = result[i - 1] - 1;
+                borrow_array[i - 1] = 1;
+            }
+        }
+    }
+
+    if (sign == -1)
+    {
+        int i = 0;
+        while (result[i] <= 0)
+        {
+            i++;
+        }
+        result[i] = -result[i];
     }
     return sign;
 }
@@ -447,27 +485,15 @@ int main(int argc, char *argv[])
         // printf("The sub of the two numbers using GMP is: %s\n", sub_gmp_str);
 
         // convert sub's output sub into a string
-        if (result_sign == -1)
-        {
-            int i = 0;
-            while (i < sub_size && sub[i] == 0)
-            {
-                i++;
-            }
-
-            // If all elements were zeros, ensure we don't go out of bounds
-            if (i < sub_size)
-            {
-                sub[i] = -sub[i]; // Flip the sign of the first non-zero digit
-            }
-
-            // Adjust sub array if needed, though you might not need to reduce sub_size
-            if (i > 0)
-            {
-                memmove(sub, sub + i, sub_size - i); // Shift array left by i positions
-                sub_size -= i;
-            }
-        }
+        // if (result_sign == -1)
+        // {
+        //     int i = 0;
+        //     while (i < sub_size && sub[i] == 0)
+        //     {
+        //         i++;
+        //     }
+        //     sub[i] = -sub[i];
+        // }
         char *sub_str = formatResult(sub, &sub_size);
         // printf("The sub of the two numbers using sub function is: %s\n", sub_str);
         // check if the two subs are equal
@@ -556,6 +582,23 @@ char *formatResult(uint32_t *result, int *result_length)
     int i = 0;
     // Handle the first element separately (without leading zeros)
     sprintf(result_str, "%d", result[0]); // Print result[0] as it is
+    // check if the first element is negative and it has sucessive zeros after the sign
+    if (result[0] < 0)
+    {
+        printf("Result[0]: %d\n", result[0]);
+        i = 1;
+        while (result_str[i] == '0')
+        {
+            i++;
+        }
+        if (i == strlen(result_str))
+        {
+            char *temp = (char *)calloc(2, sizeof(char));
+            temp[0] = '0';
+            temp[1] = '\0';
+            return temp;
+        }
+    }
 
     // Handle the rest of the elements (with leading zeros)
     for (int i = 1; i < *result_length; i++)

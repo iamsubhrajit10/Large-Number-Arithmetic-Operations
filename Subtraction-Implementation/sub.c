@@ -6,7 +6,7 @@
 #include <time.h>
 #include <stdbool.h>
 
-static uint32_t LIMB_DIGITS = 10000;
+static uint32_t LIMB_DIGITS = 10;
 __m512i limb_digits, zeros;
 
 bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
@@ -64,24 +64,57 @@ int sub(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
 
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
-
-    for (uint32_t i = 0; i < n; i += 16)
+    borrow_array[n - 1] = 0;
+    int i;
+    int last_pos = 0;
+    for (i = 0; i < n; i += 16)
     {
-        // load 16 elements from result
-        result_vec = _mm512_loadu_si512(result + i);
-        // load 16 elements from borrow array
         __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
-        // add result and borrow
+        __m512i result_vec = _mm512_loadu_si512(result + i);
         result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
-        // store the result
+
+        // check if result_vec[j] < 0
+        __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
+        if (borrow_mask != 0)
+        {
+            last_pos = i;
+        }
+
+        // generate borrow_vec
+        borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
+
+        // update the borrow array
+        _mm512_storeu_si512(borrow_array + i, borrow_vec);
+
         _mm512_storeu_si512(result + i, result_vec);
+    }
+
+    i = (last_pos + 16);
+    i = (i > n) ? (n - 1) : i;
+    for (; i >= 0; i--)
+    {
+        if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
+        {
+            result[i] = result[i] + LIMB_DIGITS;
+            result[i - 1] = result[i - 1] - 1;
+            borrow_array[i - 1] = 1;
+        }
+    }
+
+    if (sign == -1)
+    {
+        int i = 0;
+        while (result[i] == 0)
+        {
+            i++;
+        }
+        result[i] = -result[i];
     }
     return sign;
 }
-
 int main()
 {
-    uint32_t n = 16;
+    uint32_t n = 39;
     uint32_t *a = (uint32_t *)malloc(2 * n * sizeof(uint32_t));
     uint32_t *b = (uint32_t *)malloc(2 * n * sizeof(uint32_t));
     uint32_t *result = (uint32_t *)malloc(2 * n * sizeof(uint32_t));
@@ -110,16 +143,6 @@ int main()
     printf("\n");
 
     int result_sign = sub(a, b, result, n);
-
-    if (result_sign == -1)
-    {
-        int i = 0;
-        while (result[i] == 0)
-        {
-            i++;
-        }
-        result[i] = -result[i];
-    }
 
     printf("Result: ");
     for (uint32_t i = 0; i < n; i++)
