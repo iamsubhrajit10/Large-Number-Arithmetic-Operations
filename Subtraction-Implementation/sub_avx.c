@@ -1,10 +1,10 @@
 /*
-This code adds two numbers, represented as array of digits.
+This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
 b --> array of digits of second number, of length m
 #Pre-processing:
-1. Equalize the length of both arrays by adding leading zeros to the smaller array.
-Note: For pre-processing, we can use the realloc function to add leading zeros to the smaller array.
+1. Equalize the length of both arrays by subing leading zeros to the smaller array.
+Note: For pre-processing, we can use the realloc function to sub leading zeros to the smaller array.
 */
 
 #include <stdio.h>
@@ -21,20 +21,22 @@ Note: For pre-processing, we can use the realloc function to add leading zeros t
 #include <inttypes.h>
 #include <immintrin.h>
 #include <assert.h>
+#include <stdbool.h>
 
 #define MAX_EVENTS 6
 
 #define LIMB_SIZE 9
 #define ITERATIONS 100000
 
-uint32_t *sum_space;
-uint32_t *carry_space;
-static int sum_space_ptr = 0;
-static int carry_space_ptr = 0;
+uint32_t *sub_space;
+uint32_t *borrow_space;
+static int sub_space_ptr = 0;
+static int borrow_space_ptr = 0;
 
 static uint32_t LIMB_DIGITS = 1000000000;
 __m512i limb_digits;
 __m512i minus_limb_digits;
+__m512i zeros;
 static int NUM_BITS;
 
 uint32_t *returnLimbs(uint32_t *number, int *length);
@@ -48,126 +50,78 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
     ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
     return ret;
 }
-/*
- This function simply adds two arrays of numbers and stores the result in a third array.
-    The arrays are assumed to be of the same length.
-    It uses avx512 instructions to add the numbers.
-    As, data is of type uint32_t, we can add 16 numbers at a time.
-    Procedure:
-    1. Load a and b into a_vec, b_vec respectively.
-    2. sum_vec = a_vec + b_vec
-    3. mask = sum_vec >= LIMB_DIGITS
-    4. carry_vec = 0
-    5. carry_vec = mask ? 1 : 0
-    6. sum_vec = mask ? sum_vec - LIMB_DIGITS : sum_vec
-    7. Store sum_vec in sum
-    8. Repeat steps 1-7 for the remaining elements
-    9. Shift the carry array to the left by 1 position
-    10. sum = sum + carry
-    11. Repeat step 10 for the remaining elements
-    12. Return the sum
-*/
 
-void *sum_avx512(uint32_t *a, uint32_t *b, int n, uint32_t *sum, int *sum_size)
+bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
 {
-
-    int i;
-    // Allocate scratch space for carry array
-    uint32_t *carry_array = carry_space;
-
-    // Process first 16 elements separately
-
-    // Load 16 elements from a and b
-    __m512i a_vec = _mm512_load_si512((__m512i *)a);
-    __m512i b_vec = _mm512_load_si512((__m512i *)b);
-
-    // Step 1: Add 16 elements at a time
-    __m512i sum_vec = _mm512_add_epi32(a_vec, b_vec);
-
-    // Step 2: Extract carry mask of 16 elements at once
-    __mmask16 mask = _mm512_cmpge_epu32_mask(sum_vec, limb_digits);
-
-    mask = mask & 0xFFFE; // 0xFFFE masks out the first bit
-
-    // Step 3: If Carry[0] is 1, sum[0] = sum[0] - LIMB_DIGITS
-    __m512i temp = _mm512_mask_sub_epi32(sum_vec, mask, sum_vec, limb_digits);
-    __m512i carry_vec = _mm512_maskz_set1_epi32(mask, 1);
-
-    // Store the carry in the carry_array
-    _mm512_storeu_si512((__m512i *)carry_array, carry_vec);
-
-    // Store the sum in the sum array
-    _mm512_storeu_si512((__m512i *)sum, temp);
-
-    // Process addition with AVX-512 instructions
-    for (i = 16; i < n; i += 16)
+    for (uint32_t i = 0; i < n; i++)
     {
-        // Load 16 elements from a and b
-        a_vec = _mm512_load_si512((__m512i *)(a + i));
-        b_vec = _mm512_load_si512((__m512i *)(b + i));
-
-        // Add 16 elements at a time
-        sum_vec = _mm512_add_epi32(a_vec, b_vec);
-
-        // Extract carry mask and adjust sum simultaneously
-        mask = _mm512_cmpge_epu32_mask(sum_vec, limb_digits);
-
-        // Adjust sum_vec where carry occurred
-        temp = _mm512_mask_sub_epi32(sum_vec, mask, sum_vec, limb_digits);
-
-        // Convert carry_mask to carry vector and store directly
-        carry_vec = _mm512_maskz_set1_epi32(mask, 1);
-        _mm512_storeu_si512((__m512i *)(carry_array + i), carry_vec);
-
-        // Store the adjusted sum in the sum array
-        _mm512_storeu_si512((__m512i *)(sum + i), temp);
+        if (a[i] < b[i])
+        {
+            return true;
+        }
+        else if (a[i] > b[i])
+        {
+            return false;
+        }
     }
-
-    // Shift the carry_array to the left by 1 position
-    carry_array = carry_array + 1;
-    carry_array[n - 1] = 0;
-
-    for (i = 0; i < n; i += 16)
-    {
-        carry_vec = _mm512_loadu_si512((__m512i *)(carry_array + i));
-        sum_vec = _mm512_loadu_si512((__m512i *)(sum + i));
-
-        sum_vec = _mm512_add_epi32(sum_vec, carry_vec);
-        _mm512_storeu_si512((__m512i *)(sum + i), sum_vec);
-    }
-
-    // // Align i to the next multiple of 16
-    // i = (n + 15) & ~15;
-    // for (; i >= 0; i -= 16)
-    // {
-    //     carry_vec = _mm512_loadu_si512((__m512i *)(carry_array + i));
-    //     sum_vec = _mm512_loadu_si512((__m512i *)(sum + i));
-
-    //     sum_vec = _mm512_add_epi32(sum_vec, carry_vec);
-    //     _mm512_storeu_si512((__m512i *)(sum + i), sum_vec);
-    // }
+    return false;
 }
 
-/*
- This function simply adds two arrays of numbers and stores the result in a third array.
-    The arrays are assumed to be of the same length.
-    It uses avx512 instructions to add the numbers.
-    As, data is of type uint32_t, we can add 16 numbers at a time.
-    Procedure:
-    0. vec0 <- 0, vec1 <- 0
-    1. Load a and b into a_vec, b_vec respectively starting from the least significant limb.
-    2. sum_vec = b_vec + vec1
-    3. sum_vec = a_vec + sum_vec
-    4. mask = sum_vec >= LIMB_DIGITS
-    5. carry_vec = 0
-    6. carry_vec = mask ? 1 : 0
-    7. <vec1,vec0> = left shift carry_vec by 1 position
-    8. sum_vec = mask ? sum_vec - LIMB_DIGITS : sum_vec
-    9. sum = sum_vec + vec0
-    10. Store sum in the sum array
-    11. Repeat steps 1-10 for the remaining elements in reverse order (from the least significant limb to the most significant limb)
-    12. Return the sum
-*/
+int sub_n(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
+{
+    bool is_less = is_less_than(a, b, n);
+    int sign = 1;
+    if (is_less)
+    {
+        // swap a and b
+        uint32_t *temp = a;
+        a = b;
+        b = temp;
+        sign = -1;
+    }
+    uint32_t *borrow_array = borrow_space + borrow_space_ptr;
+    __m512i a_vec, b_vec, result_vec;
+    for (uint32_t i = 0; i < n; i += 16)
+    {
+        // load 16 elements from a and b
+        a_vec = _mm512_loadu_si512(a + i);
+        b_vec = _mm512_loadu_si512(b + i);
+        // subtract a and b
+        result_vec = _mm512_sub_epi32(a_vec, b_vec);
+
+        // if result_vec[j] < 0, set borrow mask to 1
+        __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
+
+        // based on borrow mask, result_vec[j] = limb_digits + result_vec[j]
+        result_vec = _mm512_mask_add_epi32(result_vec, borrow_mask, result_vec, limb_digits);
+
+        __m512i borrow = _mm512_maskz_set1_epi32(borrow_mask, 1);
+
+        // store the borrow
+        _mm512_storeu_si512(borrow_array + i, borrow);
+
+        // store the result
+        _mm512_storeu_si512(result + i, result_vec);
+    }
+
+    // left shift the borrow array by 1
+    borrow_array = borrow_array + 1;
+    borrow_array[n - 1] = 0;
+
+    for (uint32_t i = 0; i < n; i += 16)
+    {
+        // load 16 elements from result
+        result_vec = _mm512_loadu_si512(result + i);
+        // load 16 elements from borrow array
+        __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
+        // add result and borrow
+        result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
+        // store the result
+        _mm512_storeu_si512(result + i, result_vec);
+    }
+    return sign;
+}
+
 // Function to print a __mmask16 in binary
 void print_mask_binary(__mmask16 mask)
 {
@@ -176,49 +130,6 @@ void print_mask_binary(__mmask16 mask)
         printf("%d", (mask >> i) & 1);
     }
     printf("\n");
-}
-
-// Function to add two numbers
-/*
-Procedure:
-1. Equalize the length of both arrays.
-2. Add the digits of the two arrays, starting from the least significant digit.
-   (Note: Don't compute carry, just add the digits)
-3. Loop through the digits of the sum array from the least significant digit to the most significant digit.
-   If the digit is greater than 9, subtract 10 from the digit and add 1 to the next digit.
-// 4. If the most significant digit is 0, remove it.
-*/
-void *add_n(uint32_t *a, uint32_t *b, int n, uint32_t *sum, int *sum_size)
-{
-    // Compute sum without carry propagation using avx512; sum_avx512 function
-    // int i = 0;
-    // for (i = 0; i < n; i += 16)
-    // {
-    //     __m512i a_vec = _mm512_load_si512((__m512i *)(a + i));
-    //     __m512i b_vec = _mm512_load_si512((__m512i *)(b + i));
-    //     __m512i sum_vec = _mm512_add_epi32(a_vec, b_vec);
-    //     _mm512_storeu_si512((__m512i *)(sum + i), sum_vec);
-    // }
-    // uint32_t *sum_pointer = sum + n - 1;
-
-    // // Loop through the digits of the sum array from the least significant digit to the most significant digit.
-    // uint32_t carry = 0;
-    // for (int i = 0; i < n; i++)
-    // {
-    //     uint32_t temp_sum = *sum_pointer + carry;
-    //     carry = (temp_sum >= LIMB_DIGITS);
-    //     *sum_pointer = carry ? (temp_sum - LIMB_DIGITS) : temp_sum;
-    //     sum_pointer--;
-    // }
-    // If the sum has a carry in the most significant digit
-    // if (carry)
-    // {
-    //     // Shift the sum array to the right by one position
-    //     memmove(sum + 1, sum, n * sizeof(uint32_t));
-    //     sum[0] = carry;
-    //     *sum_size = n + 1;
-    // }
-    sum_avx512(a, b, n, sum, sum_size);
 }
 
 // main function with cmd arguments
@@ -245,6 +156,7 @@ int main(int argc, char *argv[])
 
     limb_digits = _mm512_set1_epi32(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi32(-LIMB_DIGITS);
+    zeros = _mm512_set1_epi32(0);
 
     memset(pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
     for (i = 0; i < MAX_EVENTS; i++)
@@ -308,7 +220,7 @@ int main(int argc, char *argv[])
     };
 
     // Open a file for writing formatted output
-    char binary_name[] = "add_limb_avx_"; // replace with actual binary name
+    char binary_name[] = "sub_limb_avx_"; // replace with actual binary name
     int input_size = 100;                 // replace with actual input size
 
     char filename[100];
@@ -347,11 +259,11 @@ int main(int argc, char *argv[])
     }
     fprintf(file_gmp, "\n");
 
-    // Allocate scratch space for the sum and carry arrays
-    uint32_t *sum_space = (uint32_t *)malloc(1 << 30);
-    if (sum_space == NULL)
+    // Allocate scratch space for the sub and borrow arrays
+    uint32_t *sub_space = (uint32_t *)malloc(1 << 30);
+    if (sub_space == NULL)
     {
-        perror("Memory allocation failed for sum_space\n");
+        perror("Memory allocation failed for sub_space\n");
         exit(0);
     }
 
@@ -360,10 +272,10 @@ int main(int argc, char *argv[])
 
         // Generate random numbers using  GMP library
         mpz_t num1_gmp, num2_gmp;
-        mpz_t sum_gmp;
+        mpz_t sub_gmp;
         mpz_init(num1_gmp);
         mpz_init(num2_gmp);
-        mpz_init(sum_gmp);
+        mpz_init(sub_gmp);
         gmp_randstate_t state;
         gmp_randinit_default(state);
         gmp_randseed_ui(state, time(NULL));
@@ -393,27 +305,27 @@ int main(int argc, char *argv[])
         uint32_t *a_limbs = returnLimbs(a, &n_limb);
         uint32_t *b_limbs = returnLimbs(b, &m_limb);
 
-        int sum_size;
-        // int *sum = (int *)malloc((n > m ? n : m) * sizeof(int));
+        int sub_size;
+        // int *sub = (int *)malloc((n > m ? n : m) * sizeof(int));
 
         // allocate from scratch space
-        uint32_t *sum = sum_space + sum_space_ptr;
-        sum_space_ptr += (n + 31) & ~31;
-        // Clear the sum array
-        memset(sum, 0, (n + 1) * sizeof(uint32_t));
+        uint32_t *sub = sub_space + sub_space_ptr;
+        sub_space_ptr += (n + 31) & ~31;
+        // Clear the sub array
+        memset(sub, 0, (n + 1) * sizeof(uint32_t));
 
-        carry_space = (uint32_t *)malloc((n) * sizeof(uint32_t));
-        if (carry_space == NULL)
+        borrow_space = (uint32_t *)malloc((n) * sizeof(uint32_t));
+        if (borrow_space == NULL)
         {
-            perror("Memory allocation failed for carry_space\n");
+            perror("Memory allocation failed for borrow_space\n");
             exit(0);
         }
-        carry_space_ptr = 0;
-        memset(carry_space, 0, n * sizeof(uint32_t));
+        borrow_space_ptr = 0;
+        memset(borrow_space, 0, n * sizeof(uint32_t));
 
         uint64_t values[MAX_EVENTS];
         assert(n_limb == m_limb);
-        sum_size = n_limb;
+        sub_size = n_limb;
         // struct timespec start, end;
 
         // prefetched the arrays
@@ -434,7 +346,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
 
-        add_n(a_limbs, b_limbs, n_limb, sum, &sum_size);
+        int result_sign = sub_n(a_limbs, b_limbs, sub, n_limb);
 
         // Get the end time
         if (clock_gettime(CLOCK_MONOTONIC_RAW, &end) == -1)
@@ -490,7 +402,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
 
-        mpz_add(sum_gmp, num1_gmp, num2_gmp); // Use mpz_add function to add two numbers
+        mpz_sub(sub_gmp, num1_gmp, num2_gmp); // Use mpz_sub function to sub two numbers
 
         // Get the end time
         if (clock_gettime(CLOCK_MONOTONIC_RAW, &end) == -1)
@@ -524,54 +436,76 @@ int main(int argc, char *argv[])
             fprintf(file_gmp, "%lu,", values[j]);
         }
         fprintf(file_gmp, "\n");
-        // printf("Time taken to add two numbers using GMP: %lf seconds\n", end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) / 1e9);
+        // printf("Time taken to sub two numbers using GMP: %lf seconds\n", end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) / 1e9);
 
         gmp_total_time += (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1e9;
 
-        char *sum_gmp_str = mpz_get_str(NULL, 10, sum_gmp);
+        char *sub_gmp_str = mpz_get_str(NULL, 10, sub_gmp);
 
         // printf("\n");
 
-        // printf("The sum of the two numbers using GMP is: %s\n", sum_gmp_str);
+        // printf("The sub of the two numbers using GMP is: %s\n", sub_gmp_str);
 
-        // convert add's output sum into a string
-        char *sum_str = formatResult(sum, &sum_size);
-        // printf("The sum of the two numbers using add function is: %s\n", sum_str);
-        // check if the two sums are equal
-        if (strlen(sum_gmp_str) != strlen(sum_str))
+        // convert sub's output sub into a string
+        if (result_sign == -1)
         {
-            printf("The two sums are not equal\n");
+            int i = 0;
+            while (i < sub_size && sub[i] == 0)
+            {
+                i++;
+            }
+
+            // If all elements were zeros, ensure we don't go out of bounds
+            if (i < sub_size)
+            {
+                sub[i] = -sub[i]; // Flip the sign of the first non-zero digit
+            }
+
+            // Adjust sub array if needed, though you might not need to reduce sub_size
+            if (i > 0)
+            {
+                memmove(sub, sub + i, sub_size - i); // Shift array left by i positions
+                sub_size -= i;
+            }
+        }
+        char *sub_str = formatResult(sub, &sub_size);
+        // printf("The sub of the two numbers using sub function is: %s\n", sub_str);
+        // check if the two subs are equal
+        if (strlen(sub_gmp_str) != strlen(sub_str))
+        {
+            printf("The two subs are not equal\n");
             printf("Lengths are different\n");
-            printf("Length of add_sum = %d, length of gmp_sum = %ld\n", sum_size, strlen(sum_gmp_str));
-            printf("add_sum = %s, gmp_sum = %s\n", sum_str, sum_gmp_str);
+            printf("Length of sub_sub = %d, length of gmp_sub = %ld\n", sub_size, strlen(sub_gmp_str));
+            printf("sub_sub = %s, gmp_sub = %s\n", sub_str, sub_gmp_str);
             return 1;
         }
-        for (int i = 0; i < sum_size; i++)
+        for (int i = 0; i < sub_size; i++)
         {
-            if (sum_str[i] != sum_gmp_str[i])
+            if (sub_str[i] != sub_gmp_str[i])
             {
-                printf("The two sums are not equal\n");
+                printf("The two subs are not equal\n");
                 printf("Mismatch at index %d\n", i);
-                printf("add_sum[%d] = %c, gmp_sum[%d] = %c\n", i, sum_str[i], i, sum_gmp_str[i]);
-                printf("add_sum = %s\ngmp_sum = %s\n", &sum_str[i], &sum_gmp_str[i]);
-                printf("add_sum = %s\ngmp_sum = %s\n", sum_str, sum_gmp_str);
+                printf("sub_sub[%d] = %c, gmp_sub[%d] = %c\n", i, sub_str[i], i, sub_gmp_str[i]);
+                printf("sub_sub = %s\ngmp_sub = %s\n", &sub_str[i], &sub_gmp_str[i]);
+                printf("sub_sub = %s\ngmp_sub = %s\n", sub_str, sub_gmp_str);
                 return 1;
             }
         }
-        // printf("The two sums are equal, iteration %d\n", iter);
+        // printf("The two subs are equal, iteration %d\n", iter);
+        printf("Iteration %d passed\n", iter);
         free(a);
         free(b);
         free(a_limbs);
         free(b_limbs);
-        free(carry_space);
+        free(borrow_space);
         mpz_clear(num1_gmp);
         mpz_clear(num2_gmp);
-        mpz_clear(sum_gmp);
-        memset(sum_space, 0, (n + 1) * sizeof(uint32_t));
-        sum_space_ptr = 0;
+        mpz_clear(sub_gmp);
+        memset(sub_space, 0, (n + 1) * sizeof(uint32_t));
+        sub_space_ptr = 0;
     }
-    printf("Total time taken to add two numbers using AVX: %lf seconds\n", avx_total_time);
-    printf("Total time taken to add two numbers using GMP: %lf seconds\n", gmp_total_time);
+    printf("Total time taken to sub two numbers using AVX: %lf seconds\n", avx_total_time);
+    printf("Total time taken to sub two numbers using GMP: %lf seconds\n", gmp_total_time);
     return 0;
 }
 
@@ -620,10 +554,14 @@ char *formatResult(uint32_t *result, int *result_length)
         exit(0);
     }
     int i = 0;
-    for (i = 0; i < *result_length; i++)
+    // Handle the first element separately (without leading zeros)
+    sprintf(result_str, "%d", result[0]); // Print result[0] as it is
+
+    // Handle the rest of the elements (with leading zeros)
+    for (int i = 1; i < *result_length; i++)
     {
         char temp[15];
-        sprintf(temp, "%09d", result[i]);
+        sprintf(temp, "%09d", result[i]); // Print with leading zeros
         strcat(result_str, temp);
     }
     // remove leading zeroes
@@ -657,7 +595,7 @@ char *formatResult(uint32_t *result, int *result_length)
     *result_length = strlen(final_result);
     return final_result;
 }
-// Function to make the two number strings equidistant by adding zeroes in front of the smaller number, and reallocate space for the smaller number
+// Function to make the two number strings equidistant by subing zeroes in front of the smaller number, and reallocate space for the smaller number
 void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int *n_2)
 {
     if (*n_1 == *n_2)
