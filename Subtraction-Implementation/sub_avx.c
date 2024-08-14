@@ -25,8 +25,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 
 #define MAX_EVENTS 6
 
-// #define LIMB_SIZE 9
-#define LIMB_SIZE 2
+#define LIMB_SIZE 9
 #define ITERATIONS 100000
 
 uint32_t *sub_space;
@@ -34,8 +33,7 @@ uint32_t *borrow_space;
 static int sub_space_ptr = 0;
 static int borrow_space_ptr = 0;
 
-// static uint32_t LIMB_DIGITS = 1000000000;
-static uint32_t LIMB_DIGITS = 100;
+static uint32_t LIMB_DIGITS = 1000000000;
 
 __m512i limb_digits;
 __m512i minus_limb_digits;
@@ -143,12 +141,14 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
                 {
                     int x = n - i;
                     // zero out the borrow_mask for the first 16-x postions
+                    __mmask16 temp_mask = borrow_mask;
                     borrow_mask = borrow_mask << (16 - x);
                     if (borrow_mask != 0)
                     {
                         borrow_flag = true;
                         last_borrow_block = i;
                     }
+                    borrow_mask = temp_mask;
                 }
                 else
                 {
@@ -168,43 +168,28 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
 
         if (borrow_flag)
         {
-            printf("Result: ");
-            for (int i = 0; i < n; i++)
-            {
-                printf("%d ", result[i]);
-            }
-            printf("\n");
-            printf("last_borrow_block: %d\n", last_borrow_block);
+
             i = (last_borrow_block + 16);
             i = (i > n - 1) ? (n - 1) : i;
-            printf("updated last_borrow_block: %d\n", i);
-            printf("n: %d\n", n);
-            printf("Borrow array: ");
-            for (int i = 0; i < n; i++)
-            {
-                printf("%d ", borrow_array[i]);
-            }
-            printf("\n");
+
             for (; i >= 0; i--)
             {
 
                 if (borrow_array[i] > 0)
                 {
-                    printf("i: %d\n", i);
-                    result[i] = result[i] + LIMB_DIGITS;
-                    result[i - 1] = result[i - 1] - 1;
                     if (result[i] > LIMB_DIGITS)
                     {
-                        printf("Result[i]: %d\n", result[i]);
+
+                        result[i] = result[i] + LIMB_DIGITS;
                     }
-                    borrow_array[i - 1] = 1;
-                    borrow_array[i] = 0;
-                    printf("Borrow array: ");
-                    for (int i = 0; i < n; i++)
+                    result[i - 1] = result[i - 1] - 1;
+                    if (result[i - 1] > LIMB_DIGITS)
                     {
-                        printf("%d ", borrow_array[i]);
+
+                        borrow_array[i - 1] += 1;
                     }
-                    printf("\n");
+
+                    borrow_array[i] = 0;
                 }
             }
         }
@@ -672,7 +657,7 @@ char *formatResult(uint32_t *result, int *result_length)
     for (int i = 1; i < *result_length; i++)
     {
         char temp[15];
-        sprintf(temp, "%02d", result[i]); // Print with leading zeros
+        sprintf(temp, "%09d", result[i]); // Print with leading zeros
         strcat(result_str, temp);
     }
     // remove leading zeroes
