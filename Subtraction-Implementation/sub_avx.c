@@ -25,7 +25,8 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 
 #define MAX_EVENTS 6
 
-#define LIMB_SIZE 9
+// #define LIMB_SIZE 9
+#define LIMB_SIZE 2
 #define ITERATIONS 100000
 
 uint32_t *sub_space;
@@ -33,7 +34,9 @@ uint32_t *borrow_space;
 static int sub_space_ptr = 0;
 static int borrow_space_ptr = 0;
 
-static uint32_t LIMB_DIGITS = 1000000000;
+// static uint32_t LIMB_DIGITS = 1000000000;
+static uint32_t LIMB_DIGITS = 100;
+
 __m512i limb_digits;
 __m512i minus_limb_digits;
 __m512i zeros;
@@ -50,10 +53,16 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
     ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
     return ret;
 }
+unsigned long generate_seed()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_nsec ^ getpid();
+}
 
 bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
 {
-    for (uint32_t i = 0; i < n; i++)
+    for (int i = 0; i < n; i++)
     {
         if (a[i] < b[i])
         {
@@ -67,10 +76,11 @@ bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
     return false;
 }
 
-int sub_n(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
+void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_size)
 {
+    uint32_t *result = *result_ptr;
     bool is_less = is_less_than(a, b, n);
-    int sign = 1;
+    uint32_t sign = 1;
     if (is_less)
     {
         // swap a and b
@@ -79,18 +89,28 @@ int sub_n(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
         b = temp;
         sign = -1;
     }
-    uint32_t *borrow_array = borrow_space + borrow_space_ptr;
+    uint32_t *borrow_array = borrow_space;
     __m512i a_vec, b_vec, result_vec;
-    for (uint32_t i = 0; i < n; i += 16)
+    bool borrow_flag = false;
+    int last_borrow_block = 0;
+    int i;
+    for (i = 0; i < n; i += 16)
     {
         // load 16 elements from a and b
         a_vec = _mm512_loadu_si512(a + i);
         b_vec = _mm512_loadu_si512(b + i);
+
         // subtract a and b
         result_vec = _mm512_sub_epi32(a_vec, b_vec);
 
         // if result_vec[j] < 0, set borrow mask to 1
         __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
+
+        if (borrow_mask)
+        {
+            borrow_flag = true;
+            last_borrow_block = i;
+        }
 
         // based on borrow mask, result_vec[j] = limb_digits + result_vec[j]
         result_vec = _mm512_mask_add_epi32(result_vec, borrow_mask, result_vec, limb_digits);
@@ -103,47 +123,89 @@ int sub_n(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
         // store the result
         _mm512_storeu_si512(result + i, result_vec);
     }
-
     // left shift the borrow array by 1
-    borrow_array = borrow_array + 1;
-    borrow_array[n - 1] = 0;
-    int last_pos = 0;
-    int i;
-    bool b_flag = false;
-    for (i = 0; i < n; i += 16)
+    if (borrow_flag)
     {
-        __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
-        __m512i result_vec = _mm512_loadu_si512(result + i);
-        result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
-
-        // check if result_vec[j] < 0
-        __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
-
-        if (__builtin_expect((borrow_mask != 0 && i < n - 16), 0))
+        borrow_flag = false;
+        borrow_array = borrow_array + 1;
+        borrow_array[n - 1] = 0;
+        for (i = 0; i < n; i += 16)
         {
-            last_pos = i;
-            b_flag = true;
+            __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
+            __m512i result_vec = _mm512_loadu_si512(result + i);
+            result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
+
+            // check if result_vec[j] < 0
+            __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
+            if (borrow_mask != 0)
+            {
+                if (n < i + 16)
+                {
+                    int x = n - i;
+                    // zero out the borrow_mask for the first 16-x postions
+                    borrow_mask = borrow_mask << (16 - x);
+                    if (borrow_mask != 0)
+                    {
+                        borrow_flag = true;
+                        last_borrow_block = i;
+                    }
+                }
+                else
+                {
+                    borrow_flag = true;
+                    last_borrow_block = i;
+                }
+            }
+
+            // generate borrow_vec
+            borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
+
+            // update the borrow array
+            _mm512_storeu_si512(borrow_array + i, borrow_vec);
+
+            _mm512_storeu_si512(result + i, result_vec);
         }
 
-        // generate borrow_vec
-        borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
-
-        // update the borrow array
-        _mm512_storeu_si512(borrow_array + i, borrow_vec);
-
-        _mm512_storeu_si512(result + i, result_vec);
-    }
-    if (__builtin_expect(b_flag, 0))
-    {
-        i = last_pos + 16;
-        i = (i > n) ? (n - 1) : i;
-        for (; i >= 0; i--)
+        if (borrow_flag)
         {
-            if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
+            printf("Result: ");
+            for (int i = 0; i < n; i++)
             {
-                result[i] = result[i] + LIMB_DIGITS;
-                result[i - 1] = result[i - 1] - 1;
-                borrow_array[i - 1] = 1;
+                printf("%d ", result[i]);
+            }
+            printf("\n");
+            printf("last_borrow_block: %d\n", last_borrow_block);
+            i = (last_borrow_block + 16);
+            i = (i > n - 1) ? (n - 1) : i;
+            printf("updated last_borrow_block: %d\n", i);
+            printf("n: %d\n", n);
+            printf("Borrow array: ");
+            for (int i = 0; i < n; i++)
+            {
+                printf("%d ", borrow_array[i]);
+            }
+            printf("\n");
+            for (; i >= 0; i--)
+            {
+
+                if (borrow_array[i] > 0)
+                {
+                    printf("i: %d\n", i);
+                    result[i] = result[i] + LIMB_DIGITS;
+                    result[i - 1] = result[i - 1] - 1;
+                    if (result[i] > LIMB_DIGITS)
+                    {
+                        printf("Result[i]: %d\n", result[i]);
+                    }
+                    borrow_array[i - 1] = 1;
+                    borrow_array[i] = 0;
+                    printf("Borrow array: ");
+                    for (int i = 0; i < n; i++)
+                    {
+                        printf("%d ", borrow_array[i]);
+                    }
+                    printf("\n");
+                }
             }
         }
     }
@@ -155,9 +217,14 @@ int sub_n(uint32_t *a, uint32_t *b, uint32_t *result, uint32_t n)
         {
             i++;
         }
+
         result[i] = -result[i];
+        // update the result
+        result = result + i;
+        // update to result_ptr
+        *result_ptr = result;
+        *result_size = *result_size - i;
     }
-    return sign;
 }
 
 // Function to print a __mmask16 in binary
@@ -315,8 +382,9 @@ int main(int argc, char *argv[])
         mpz_init(num2_gmp);
         mpz_init(sub_gmp);
         gmp_randstate_t state;
+        unsigned long seed = generate_seed();
         gmp_randinit_default(state);
-        gmp_randseed_ui(state, time(NULL));
+        gmp_randseed_ui(state, seed);
         mpz_urandomb(num1_gmp, state, NUM_BITS);
         mpz_urandomb(num2_gmp, state, NUM_BITS);
         char *num1_str = mpz_get_str(NULL, 10, num1_gmp);
@@ -384,7 +452,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
 
-        int result_sign = sub_n(a_limbs, b_limbs, sub, n_limb);
+        sub_n(a_limbs, b_limbs, &sub, n_limb, &sub_size);
 
         // Get the end time
         if (clock_gettime(CLOCK_MONOTONIC_RAW, &end) == -1)
@@ -604,7 +672,7 @@ char *formatResult(uint32_t *result, int *result_length)
     for (int i = 1; i < *result_length; i++)
     {
         char temp[15];
-        sprintf(temp, "%09d", result[i]); // Print with leading zeros
+        sprintf(temp, "%02d", result[i]); // Print with leading zeros
         strcat(result_str, temp);
     }
     // remove leading zeroes
