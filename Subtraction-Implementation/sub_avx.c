@@ -26,6 +26,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #define MAX_EVENTS 6
 
 #define LIMB_SIZE 9
+// #define LIMB_SIZE 2
 #define ITERATIONS 100000
 
 uint32_t *sub_space;
@@ -34,6 +35,7 @@ static int sub_space_ptr = 0;
 static int borrow_space_ptr = 0;
 
 static uint32_t LIMB_DIGITS = 1000000000;
+// static uint32_t LIMB_DIGITS = 100;
 
 __m512i limb_digits;
 __m512i minus_limb_digits;
@@ -89,8 +91,7 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
     }
     uint32_t *borrow_array = borrow_space;
     __m512i a_vec, b_vec, result_vec;
-    bool borrow_flag = false;
-    int last_borrow_block = 0;
+
     int i;
     for (i = 0; i < n; i += 16)
     {
@@ -104,12 +105,6 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         // if result_vec[j] < 0, set borrow mask to 1
         __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
 
-        if (borrow_mask)
-        {
-            borrow_flag = true;
-            last_borrow_block = i;
-        }
-
         // based on borrow mask, result_vec[j] = limb_digits + result_vec[j]
         result_vec = _mm512_mask_add_epi32(result_vec, borrow_mask, result_vec, limb_digits);
 
@@ -121,76 +116,73 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         // store the result
         _mm512_storeu_si512(result + i, result_vec);
     }
-    // left shift the borrow array by 1
-    if (borrow_flag)
-    {
-        borrow_flag = false;
-        borrow_array = borrow_array + 1;
-        borrow_array[n - 1] = 0;
-        for (i = 0; i < n; i += 16)
-        {
-            __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
-            __m512i result_vec = _mm512_loadu_si512(result + i);
-            result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
 
-            // check if result_vec[j] < 0
-            __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
-            if (borrow_mask != 0)
+    bool borrow_flag = false;
+    // left shift the borrow array by 1
+    borrow_array = borrow_array + 1;
+    borrow_array[n - 1] = 0;
+    borrow_array[n] = 0;
+    int last_borrow_block = -1;
+    for (i = 0; i < n; i += 16)
+    {
+        __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
+        __m512i result_vec = _mm512_loadu_si512(result + i);
+        result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
+
+        // check if result_vec[j] < 0
+        __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
+        if (__builtin_expect((borrow_mask != 0), 0))
+        {
+            printf("Borrow mask is not zero\n");
+            if (__builtin_expect(n < i + 16, 0))
             {
-                if (n < i + 16)
-                {
-                    int x = n - i;
-                    // zero out the borrow_mask for the first 16-x postions
-                    __mmask16 temp_mask = borrow_mask;
-                    borrow_mask = borrow_mask << (16 - x);
-                    if (borrow_mask != 0)
-                    {
-                        borrow_flag = true;
-                        last_borrow_block = i;
-                    }
-                    borrow_mask = temp_mask;
-                }
-                else
+                int x = n - i;
+                // zero out the borrow_mask for the first 16-x postions
+                __mmask16 temp_mask = borrow_mask;
+                borrow_mask = borrow_mask << (16 - x);
+                if (borrow_mask != 0)
                 {
                     borrow_flag = true;
                     last_borrow_block = i;
                 }
+                borrow_mask = temp_mask;
             }
-
-            // generate borrow_vec
-            borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
-
-            // update the borrow array
-            _mm512_storeu_si512(borrow_array + i, borrow_vec);
-
-            _mm512_storeu_si512(result + i, result_vec);
+            else
+            {
+                borrow_flag = true;
+                last_borrow_block = i;
+            }
         }
 
-        if (borrow_flag)
+        // generate borrow_vec
+        borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
+
+        // update the borrow array
+        _mm512_storeu_si512(borrow_array + i, borrow_vec);
+
+        _mm512_storeu_si512(result + i, result_vec);
+    }
+
+    // if (borrow_flag)
+    if (__builtin_expect(borrow_flag, 0))
+    {
+
+        i = (last_borrow_block + 16);
+        i = (i > n - 1) ? (n - 1) : i;
+
+        for (; i >= 0; i--)
         {
 
-            i = (last_borrow_block + 16);
-            i = (i > n - 1) ? (n - 1) : i;
-
-            for (; i >= 0; i--)
+            if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
             {
-
-                if (borrow_array[i] > 0)
+                result[i] = result[i] + LIMB_DIGITS;
+                result[i - 1] = result[i - 1] - 1;
+                if (__builtin_expect((result[i - 1] > LIMB_DIGITS), 0))
                 {
-                    if (result[i] > LIMB_DIGITS)
-                    {
 
-                        result[i] = result[i] + LIMB_DIGITS;
-                    }
-                    result[i - 1] = result[i - 1] - 1;
-                    if (result[i - 1] > LIMB_DIGITS)
-                    {
-
-                        borrow_array[i - 1] += 1;
-                    }
-
-                    borrow_array[i] = 0;
+                    borrow_array[i - 1] = 1;
                 }
+                borrow_array[i] = 0;
             }
         }
     }
@@ -202,7 +194,6 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         {
             i++;
         }
-
         result[i] = -result[i];
         // update the result
         result = result + i;
