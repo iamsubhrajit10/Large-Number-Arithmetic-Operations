@@ -22,12 +22,18 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <immintrin.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <fcntl.h>
+#include <sys/syscall.h>
+#include <stdint.h>
 
 #define MAX_EVENTS 6
 
 #define LIMB_SIZE 9
 // #define LIMB_SIZE 2
 #define ITERATIONS 100000
+
+#define unlikely(expr) __builtin_expect(!!(expr), 0)
+#define likely(expr) __builtin_expect(!!(expr), 1)
 
 uint32_t *sub_space;
 uint32_t *borrow_space;
@@ -55,9 +61,19 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
 }
 unsigned long generate_seed()
 {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_nsec ^ getpid();
+    struct timespec ts1, ts2;
+    clock_gettime(CLOCK_MONOTONIC, &ts1);
+    clock_gettime(CLOCK_REALTIME, &ts2);
+
+    int urandom_fd = open("/dev/urandom", O_RDONLY);
+    uint32_t urandom_value;
+    read(urandom_fd, &urandom_value, sizeof(urandom_value));
+    close(urandom_fd);
+
+    pid_t pid = getpid();
+    pid_t tid = syscall(SYS_gettid);
+
+    return ts1.tv_nsec ^ ts2.tv_nsec ^ urandom_value ^ pid ^ tid;
 }
 
 bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
@@ -91,8 +107,8 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
     }
     uint32_t *borrow_array = borrow_space;
     __m512i a_vec, b_vec, result_vec;
-
     int i;
+
     for (i = 0; i < n; i += 16)
     {
         // load 16 elements from a and b
@@ -120,38 +136,26 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
     bool borrow_flag = false;
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
-    borrow_array[n - 1] = 0;
-    borrow_array[n] = 0;
+
+    // zero out all the elements of borrow_vec
+    // store the borrow_vec
+    _mm512_storeu_si512(borrow_array + n - 1, zeros);
+    _mm512_storeu_si512(result + n, zeros);
+
     int last_borrow_block = -1;
     for (i = 0; i < n; i += 16)
     {
         __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
-        __m512i result_vec = _mm512_loadu_si512(result + i);
+        result_vec = _mm512_loadu_si512(result + i);
         result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
 
         // check if result_vec[j] < 0
         __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
-        if (__builtin_expect((borrow_mask != 0), 0))
+        if (unlikely(borrow_mask))
         {
             printf("Borrow mask is not zero\n");
-            if (__builtin_expect(n < i + 16, 0))
-            {
-                int x = n - i;
-                // zero out the borrow_mask for the first 16-x postions
-                __mmask16 temp_mask = borrow_mask;
-                borrow_mask = borrow_mask << (16 - x);
-                if (borrow_mask != 0)
-                {
-                    borrow_flag = true;
-                    last_borrow_block = i;
-                }
-                borrow_mask = temp_mask;
-            }
-            else
-            {
-                borrow_flag = true;
-                last_borrow_block = i;
-            }
+            borrow_flag = true;
+            last_borrow_block = i;
         }
 
         // generate borrow_vec
@@ -163,8 +167,7 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         _mm512_storeu_si512(result + i, result_vec);
     }
 
-    // if (borrow_flag)
-    if (__builtin_expect(borrow_flag, 0))
+    if (unlikely(borrow_flag))
     {
 
         i = (last_borrow_block + 16);
@@ -172,12 +175,12 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
 
         for (; i >= 0; i--)
         {
-
             if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
             {
                 result[i] = result[i] + LIMB_DIGITS;
                 result[i - 1] = result[i - 1] - 1;
-                if (__builtin_expect((result[i - 1] > LIMB_DIGITS), 0))
+
+                if (unlikely(result[i - 1] > LIMB_DIGITS))
                 {
 
                     borrow_array[i - 1] = 1;
