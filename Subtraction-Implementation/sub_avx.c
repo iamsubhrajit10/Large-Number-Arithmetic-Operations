@@ -80,11 +80,11 @@ bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
 {
     for (int i = 0; i < n; i++)
     {
-        if (a[i] < b[i])
+        if (*(a + i) < *(b + i))
         {
             return true;
         }
-        else if (a[i] > b[i])
+        else if (*(a + i) > *(b + i))
         {
             return false;
         }
@@ -132,15 +132,16 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         // store the result
         _mm512_storeu_si512(result + i, result_vec);
     }
+    _mm512_storeu_si512(result + n, zeros);
+    _mm512_storeu_si512(borrow_array + n, zeros);
 
     bool borrow_flag = false;
+
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
 
     // zero out all the elements of borrow_vec
     // store the borrow_vec
-    _mm512_storeu_si512(borrow_array + n - 1, zeros);
-    _mm512_storeu_si512(result + n, zeros);
 
     int last_borrow_block = -1;
     for (i = 0; i < n; i += 16)
@@ -198,10 +199,8 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
             i++;
         }
         result[i] = -result[i];
-        // update the result
-        result = result + i;
         // update to result_ptr
-        *result_ptr = result;
+        *result_ptr = result + i;
         *result_size = *result_size - i;
     }
 }
