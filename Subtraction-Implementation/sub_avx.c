@@ -76,9 +76,20 @@ unsigned long generate_seed()
     return ts1.tv_nsec ^ ts2.tv_nsec ^ urandom_value ^ pid ^ tid;
 }
 
+// Function to print a __mmask16 in binary
+void print_mask_binary(__mmask16 mask)
+{
+    for (int i = 15; i >= 0; --i)
+    {
+        printf("%d", (mask >> i) & 1);
+    }
+    printf("\n");
+}
+
 bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
 {
-    for (int i = 0; i < n; i++)
+    int i = 0;
+    do
     {
         if (*(a + i) < *(b + i))
         {
@@ -88,22 +99,20 @@ bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
         {
             return false;
         }
-    }
-    return false;
+        i++;
+    } while (unlikely(i < n));
 }
 
 void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_size)
 {
     uint32_t *result = *result_ptr;
     bool is_less = is_less_than(a, b, n);
-    uint32_t sign = 1;
     if (is_less)
     {
         // swap a and b
         uint32_t *temp = a;
         a = b;
         b = temp;
-        sign = -1;
     }
     uint32_t *borrow_array = borrow_space;
     __m512i a_vec, b_vec, result_vec;
@@ -135,13 +144,8 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
     _mm512_storeu_si512(result + n, zeros);
     _mm512_storeu_si512(borrow_array + n, zeros);
 
-    bool borrow_flag = false;
-
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
-
-    // zero out all the elements of borrow_vec
-    // store the borrow_vec
 
     int last_borrow_block = -1;
     for (i = 0; i < n; i += 16)
@@ -154,8 +158,6 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
         if (unlikely(borrow_mask))
         {
-            printf("Borrow mask is not zero\n");
-            borrow_flag = true;
             last_borrow_block = i;
         }
 
@@ -168,13 +170,12 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         _mm512_storeu_si512(result + i, result_vec);
     }
 
-    if (unlikely(borrow_flag))
+    if (unlikely(last_borrow_block != -1))
     {
-
-        i = (last_borrow_block + 16);
+        i = (last_borrow_block + 15);
         i = (i > n - 1) ? (n - 1) : i;
 
-        for (; i >= 0; i--)
+        for (; i >= 1; i--)
         {
             if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
             {
@@ -183,36 +184,21 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
 
                 if (unlikely(result[i - 1] > LIMB_DIGITS))
                 {
-
                     borrow_array[i - 1] = 1;
                 }
                 borrow_array[i] = 0;
             }
         }
     }
-
-    if (sign == -1)
+    i = 0;
+    while (result[i] <= 0)
     {
-        int i = 0;
-        while (result[i] <= 0)
-        {
-            i++;
-        }
-        result[i] = -result[i];
-        // update to result_ptr
-        *result_ptr = result + i;
-        *result_size = *result_size - i;
+        i++;
     }
-}
-
-// Function to print a __mmask16 in binary
-void print_mask_binary(__mmask16 mask)
-{
-    for (int i = 15; i >= 0; --i)
-    {
-        printf("%d", (mask >> i) & 1);
-    }
-    printf("\n");
+    result[i] = (is_less) ? -result[i] : result[i];
+    // update to result_ptr
+    *result_ptr = result + i;
+    *result_size = *result_size - i;
 }
 
 // main function with cmd arguments
