@@ -30,7 +30,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 
 #define LIMB_SIZE 9
 // #define LIMB_SIZE 2
-#define ITERATIONS 100000
+#define ITERATIONS 1000000
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0)
 #define likely(expr) __builtin_expect(!!(expr), 1)
@@ -51,6 +51,8 @@ static int NUM_BITS;
 uint32_t *returnLimbs(uint32_t *number, int *length);
 char *formatResult(uint32_t *result, int *result_length);
 void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int *n_2);
+void run_tests();
+void initialize_perf();
 
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
@@ -114,7 +116,7 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
         a = b;
         b = temp;
     }
-    uint32_t *borrow_array = borrow_space;
+    uint32_t *borrow_array = borrow_space + borrow_space_ptr;
     __m512i a_vec, b_vec, result_vec;
     int i;
 
@@ -211,359 +213,22 @@ int main(int argc, char *argv[])
     }
     assert(atoi(argv[1]) > 0);
     NUM_BITS = atoi(argv[1]);
-    // Define the events to monitor
-    struct perf_event_attr pe[MAX_EVENTS];
-    int fd[MAX_EVENTS];
-    long long count[MAX_EVENTS];
-    int i;
-
-    struct timespec start, end;
-    double elapsed_time;
-
-    double avx_total_time = 0;
-    double gmp_total_time = 0;
-
     limb_digits = _mm512_set1_epi32(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi32(-LIMB_DIGITS);
     zeros = _mm512_set1_epi32(0);
+    sub_space = (uint32_t *)malloc(1 << 30);
+    borrow_space = (uint32_t *)malloc(1 << 30);
 
-    memset(pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
-    for (i = 0; i < MAX_EVENTS; i++)
-    {
-        pe[i].size = sizeof(struct perf_event_attr);
-        pe[i].disabled = 1;
-        pe[i].exclude_kernel = 0;
-        pe[i].exclude_hv = 1;
-        pe[i].exclude_idle = 1;
-        pe[i].exclude_user = 0; // Initialize exclude_user explicitly
-        pe[i].pinned = 1;       // Ensure counter stays on the specific CPU
-    }
+    // set sub_space_ptr and borrow_space_ptr to 0
+    sub_space_ptr = 0;
+    borrow_space_ptr = 0;
 
-    // CPU cycles
-    pe[0].type = PERF_TYPE_HARDWARE;
-    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+    // set sub_space and borrow_space to 0
+    memset(sub_space, 0, 1 << 30);
+    memset(borrow_space, 0, 1 << 30);
 
-    // User-level instructions
-    pe[1].type = PERF_TYPE_HARDWARE;
-    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
-    pe[1].exclude_kernel = 1;
-    pe[1].exclude_user = 0;
+    run_tests();
 
-    // Kernel-level instructions
-    pe[2].type = PERF_TYPE_HARDWARE;
-    pe[2].config = PERF_COUNT_HW_INSTRUCTIONS;
-    pe[2].exclude_kernel = 0;
-    pe[2].exclude_user = 1;
-
-    // Page faults
-    pe[3].type = PERF_TYPE_SOFTWARE;
-    pe[3].config = PERF_COUNT_SW_PAGE_FAULTS;
-
-    // L1D Cache Reads
-    pe[4].type = PERF_TYPE_HW_CACHE;
-    pe[4].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
-
-    // L1D Cache Read Misses
-    pe[5].type = PERF_TYPE_HW_CACHE;
-    pe[5].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
-
-    // Open the events
-    for (i = 0; i < MAX_EVENTS; i++)
-    {
-        fd[i] = perf_event_open(&pe[i], 0, 0, -1, 0);
-        if (fd[i] == -1)
-        {
-            fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    // Array of event type names
-    const char *event_names[MAX_EVENTS] = {
-        "PERF_COUNT_HW_CPU_CYCLES",          // CPU Cycles
-        "PERF_COUNT_HW_USER_INSTRUCTIONS",   // User Instructions
-        "PERF_COUNT_HW_KERNEL_INSTRUCTIONS", // Kernel Instructions
-        "PERF_COUNT_SW_PAGE_FAULTS",         // Page Faults
-        "PERF_COUNT_L1D_CACHE_READS",        // L1D Cache Reads
-        "PERF_COUNT_L1D_CACHE_READ_MISSES"   // L1D Cache Read Misses
-    };
-
-    // Open a file for writing formatted output
-    char binary_name[] = "sub_limb_avx_"; // replace with actual binary name
-    int input_size = 100;                 // replace with actual input size
-
-    char filename[100];
-    snprintf(filename, sizeof(filename), "%s_%d.csv", binary_name, NUM_BITS);
-    FILE *file = fopen(filename, "w");
-
-    if (file == NULL)
-    {
-        perror("Error opening file for writing \n");
-        return -1;
-    }
-
-    // Write the header to the CSV file
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        fprintf(file, "%s,", event_names[j]);
-    }
-    fprintf(file, "\n");
-
-    // Open a file for writing for gmp
-    char binary_name_gmp[] = "GMP_"; // replace with actual binary name
-    char filename_gmp[100];
-    snprintf(filename_gmp, sizeof(filename_gmp), "%s_%d.csv", binary_name_gmp, NUM_BITS);
-    FILE *file_gmp = fopen(filename_gmp, "w");
-
-    if (file_gmp == NULL)
-    {
-        perror("Error opening file for writing for gmp\n");
-        return -1;
-    }
-
-    // Write the header to the CSV file
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        fprintf(file_gmp, "%s,", event_names[j]);
-    }
-    fprintf(file_gmp, "\n");
-
-    // Allocate scratch space for the sub and borrow arrays
-    uint32_t *sub_space = (uint32_t *)malloc(1 << 30);
-    if (sub_space == NULL)
-    {
-        perror("Memory allocation failed for sub_space\n");
-        exit(0);
-    }
-
-    for (int iter = 0; iter < ITERATIONS; iter++)
-    {
-
-        // Generate random numbers using  GMP library
-        mpz_t num1_gmp, num2_gmp;
-        mpz_t sub_gmp;
-        mpz_init(num1_gmp);
-        mpz_init(num2_gmp);
-        mpz_init(sub_gmp);
-        gmp_randstate_t state;
-        unsigned long seed = generate_seed();
-        gmp_randinit_default(state);
-        gmp_randseed_ui(state, seed);
-        mpz_urandomb(num1_gmp, state, NUM_BITS);
-        mpz_urandomb(num2_gmp, state, NUM_BITS);
-        char *num1_str = mpz_get_str(NULL, 10, num1_gmp);
-        char *num2_str = mpz_get_str(NULL, 10, num2_gmp);
-        int n = strlen(num1_str);
-        int m = strlen(num2_str);
-        uint32_t *a = (uint32_t *)malloc(n * sizeof(uint32_t));
-        uint32_t *b = (uint32_t *)malloc(m * sizeof(uint32_t));
-        for (int i = 0; i < n; i++)
-        {
-            a[i] = num1_str[i] - '0';
-        }
-        for (int i = 0; i < m; i++)
-        {
-            b[i] = num2_str[i] - '0';
-        }
-
-        // Make the two numbers equidistant
-        make_equidistant(&a, &b, &n, &m);
-
-        // Convert array of digits to array of limbs
-        int n_limb = n;
-        int m_limb = m;
-        uint32_t *a_limbs = returnLimbs(a, &n_limb);
-        uint32_t *b_limbs = returnLimbs(b, &m_limb);
-
-        int sub_size;
-        // int *sub = (int *)malloc((n > m ? n : m) * sizeof(int));
-
-        // allocate from scratch space
-        uint32_t *sub = sub_space + sub_space_ptr;
-        sub_space_ptr += (n + 31) & ~31;
-        // Clear the sub array
-        memset(sub, 0, (n + 1) * sizeof(uint32_t));
-
-        borrow_space = (uint32_t *)malloc((n) * sizeof(uint32_t));
-        if (borrow_space == NULL)
-        {
-            perror("Memory allocation failed for borrow_space\n");
-            exit(0);
-        }
-        borrow_space_ptr = 0;
-        memset(borrow_space, 0, n * sizeof(uint32_t));
-
-        uint64_t values[MAX_EVENTS];
-        assert(n_limb == m_limb);
-        sub_size = n_limb;
-        // struct timespec start, end;
-
-        // prefetched the arrays
-        __builtin_prefetch(a_limbs, 0, 3);
-        __builtin_prefetch(b_limbs, 0, 3);
-
-        // Start the events
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
-        }
-
-        // Get the start time
-        if (clock_gettime(CLOCK_MONOTONIC_RAW, &start) == -1)
-        {
-            perror("Error getting start time");
-            exit(EXIT_FAILURE);
-        }
-
-        sub_n(a_limbs, b_limbs, &sub, n_limb, &sub_size);
-
-        // Get the end time
-        if (clock_gettime(CLOCK_MONOTONIC_RAW, &end) == -1)
-        {
-            perror("Error getting end time");
-            exit(EXIT_FAILURE);
-        }
-
-        // Stop monitoring
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
-            {
-                perror("Error disabling counter");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        // Read and print the counter values
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
-            {
-                perror("Error reading counter value");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        // Write the counter values to the CSV file
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            fprintf(file, "%lu,", values[j]);
-        }
-        fprintf(file, "\n");
-        avx_total_time += (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1e9;
-
-        // print number of limbs of num1gmp
-        // printf("Number of limbs of num1_gmp: %ld\n", mpz_size(num1_gmp));
-
-        // printf("Number of limbs of my implementation: %d\n", n_limb);
-        // printf("n: %d\n", n);
-
-        // Start the events
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-            ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
-        }
-        // Get the start time
-        if (clock_gettime(CLOCK_MONOTONIC_RAW, &start) == -1)
-        {
-            perror("Error getting start time");
-            exit(EXIT_FAILURE);
-        }
-
-        mpz_sub(sub_gmp, num1_gmp, num2_gmp); // Use mpz_sub function to sub two numbers
-
-        // Get the end time
-        if (clock_gettime(CLOCK_MONOTONIC_RAW, &end) == -1)
-        {
-            perror("Error getting end time");
-            exit(EXIT_FAILURE);
-        }
-
-        // Stop monitoring
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
-            {
-                perror("Error disabling counter");
-                exit(EXIT_FAILURE);
-            }
-        }
-        // Read and print the counter values
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
-            {
-                perror("Error reading counter value");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        // Write the counter values to the CSV file
-        for (int j = 0; j < MAX_EVENTS; j++)
-        {
-            fprintf(file_gmp, "%lu,", values[j]);
-        }
-        fprintf(file_gmp, "\n");
-        // printf("Time taken to sub two numbers using GMP: %lf seconds\n", end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) / 1e9);
-
-        gmp_total_time += (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1e9;
-
-        char *sub_gmp_str = mpz_get_str(NULL, 10, sub_gmp);
-
-        // printf("\n");
-
-        // printf("The sub of the two numbers using GMP is: %s\n", sub_gmp_str);
-
-        // convert sub's output sub into a string
-        // if (result_sign == -1)
-        // {
-        //     int i = 0;
-        //     while (i < sub_size && sub[i] == 0)
-        //     {
-        //         i++;
-        //     }
-        //     sub[i] = -sub[i];
-        // }
-        char *sub_str = formatResult(sub, &sub_size);
-        // printf("The sub of the two numbers using sub function is: %s\n", sub_str);
-        // check if the two subs are equal
-        if (strlen(sub_gmp_str) != strlen(sub_str))
-        {
-            printf("The two subs are not equal\n");
-            printf("Lengths are different\n");
-            printf("Length of sub_sub = %d, length of gmp_sub = %ld\n", sub_size, strlen(sub_gmp_str));
-            printf("sub_sub = %s, gmp_sub = %s\n", sub_str, sub_gmp_str);
-            return 1;
-        }
-        for (int i = 0; i < sub_size; i++)
-        {
-            if (sub_str[i] != sub_gmp_str[i])
-            {
-                printf("The two subs are not equal\n");
-                printf("Mismatch at index %d\n", i);
-                printf("sub_sub[%d] = %c, gmp_sub[%d] = %c\n", i, sub_str[i], i, sub_gmp_str[i]);
-                printf("sub_sub = %s\ngmp_sub = %s\n", &sub_str[i], &sub_gmp_str[i]);
-                printf("sub_sub = %s\ngmp_sub = %s\n", sub_str, sub_gmp_str);
-                return 1;
-            }
-        }
-        // printf("The two subs are equal, iteration %d\n", iter);
-        printf("Iteration %d passed\n", iter);
-        free(a);
-        free(b);
-        free(a_limbs);
-        free(b_limbs);
-        free(borrow_space);
-        mpz_clear(num1_gmp);
-        mpz_clear(num2_gmp);
-        mpz_clear(sub_gmp);
-        memset(sub_space, 0, (n + 1) * sizeof(uint32_t));
-        sub_space_ptr = 0;
-    }
-    printf("Total time taken to sub two numbers using AVX: %lf seconds\n", avx_total_time);
-    printf("Total time taken to sub two numbers using GMP: %lf seconds\n", gmp_total_time);
     return 0;
 }
 
@@ -755,4 +420,711 @@ void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int 
         *num1_base = num1;
         free(temp);
     }
+}
+
+struct perf_event_attr pe[MAX_EVENTS];
+int fd[MAX_EVENTS];
+long long count;
+// event names
+const char *event_names[MAX_EVENTS] = {
+    "PERF_COUNT_HW_CPU_CYCLES",          // CPU Cycles
+    "PERF_COUNT_HW_USER_INSTRUCTIONS",   // User Instructions
+    "PERF_COUNT_HW_KERNEL_INSTRUCTIONS", // Kernel Instructions
+    "PERF_COUNT_SW_PAGE_FAULTS",         // Page Faults
+    "PERF_COUNT_L1D_CACHE_READS",        // L1D Cache Reads
+    "PERF_COUNT_L1D_CACHE_READ_MISSES"   // L1D Cache Read Misses
+};
+
+void initialize_perf()
+{
+    // Define the events to monitor
+    memset(pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
+    for (int i = 0; i < MAX_EVENTS; i++)
+    {
+        pe[i].size = sizeof(struct perf_event_attr);
+        pe[i].disabled = 1;
+        pe[i].exclude_kernel = 0;
+        pe[i].exclude_hv = 1;
+        pe[i].exclude_idle = 1;
+        pe[i].exclude_user = 0; // Initialize exclude_user explicitly
+        pe[i].pinned = 1;       // Ensure counter stays on the specific CPU
+    }
+
+    // CPU cycles
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+
+    // User-level instructions
+    pe[1].type = PERF_TYPE_HARDWARE;
+    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
+    pe[1].exclude_kernel = 1;
+    pe[1].exclude_user = 0;
+
+    // Kernel-level instructions
+    pe[2].type = PERF_TYPE_HARDWARE;
+    pe[2].config = PERF_COUNT_HW_INSTRUCTIONS;
+    pe[2].exclude_kernel = 0;
+    pe[2].exclude_user = 1;
+
+    // Page faults
+    pe[3].type = PERF_TYPE_SOFTWARE;
+    pe[3].config = PERF_COUNT_SW_PAGE_FAULTS;
+
+    // L1D Cache Reads
+    pe[4].type = PERF_TYPE_HW_CACHE;
+    pe[4].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
+
+    // L1D Cache Read Misses
+    pe[5].type = PERF_TYPE_HW_CACHE;
+    pe[5].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
+
+    // Open the events
+    for (int i = 0; i < MAX_EVENTS; i++)
+    {
+        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        if (fd[i] == -1)
+        {
+            fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+FILE *open_file(char *filename)
+{
+    FILE *file = fopen(filename, "w");
+
+    if (file == NULL)
+    {
+        perror("Error opening file for writing \n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Write the header to the CSV file
+    for (int j = 0; j < MAX_EVENTS; j++)
+    {
+        fprintf(file, "%s,", event_names[j]);
+    }
+    fprintf(file, "\n");
+    return file;
+}
+
+void read_perf(long long values[])
+{
+    for (int j = 0; j < MAX_EVENTS; j++)
+    {
+        if (read(fd[j], &values[j], sizeof(uint64_t)) == -1)
+        {
+            perror("Error reading counter value");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void write_perf(FILE *file, long long values[])
+{
+    for (int j = 0; j < MAX_EVENTS; j++)
+    {
+        fprintf(file, "%lu,", values[j]);
+    }
+    fprintf(file, "\n");
+    // close the file
+    // fclose(file);
+}
+
+void start_perf()
+{
+    for (int j = 0; j < MAX_EVENTS; j++)
+    {
+        ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
+        ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+    }
+}
+
+void stop_perf()
+{
+    for (int j = 0; j < MAX_EVENTS; j++)
+    {
+        if (ioctl(fd[j], PERF_EVENT_IOC_DISABLE, 0) == -1)
+        {
+            perror("Error disabling counter");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void start_timespec(struct timespec *start)
+{
+    start->tv_sec = 0;
+    start->tv_nsec = 0;
+    if (clock_gettime(CLOCK_MONOTONIC_RAW, start) == -1)
+    {
+        perror("Error getting start time");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void stop_timespec(struct timespec *end)
+{
+    // initialize the end time
+    end->tv_sec = 0;
+    end->tv_nsec = 0;
+    if (clock_gettime(CLOCK_MONOTONIC_RAW, end) == -1)
+    {
+        perror("Error getting end time");
+        exit(EXIT_FAILURE);
+    }
+}
+
+double calculate_time(struct timespec start, struct timespec end)
+{
+    return (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1e9;
+}
+
+bool check_result(char *result, char *result_gmp, int result_size)
+{
+    // check if the two subs lengths are equal
+    if (strlen(result) != strlen(result_gmp))
+    {
+        printf("The two subs are not equal, lengths are different\n");
+        printf("Length of result = %d, length of result_gmp = %ld\n", result_size, strlen(result_gmp));
+        printf("result = %s\n result_gmp = %s\n", result, result_gmp);
+        return false;
+    }
+    for (int i = 0; i < result_size; i++)
+    {
+        if (result[i] != result_gmp[i])
+        {
+            printf("The two subs are not equal\n");
+            printf("Mismatch at index %d\n", i);
+            printf("result[%d] = %c, result_gmp[%d] = %c\n", i, result[i], i, result_gmp[i]);
+            printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
+            return false;
+        }
+    }
+    return true;
+}
+
+// each 9 group of digits of a1_test1 will have the below property for no borrow-propagation
+// each group of digits of a1_test1 will start with higher digit, then slowly decrease to lower digit, non-increasing order
+// each group of digits of b1_test1 will just be the reverse of a1_test1 for no borrow-propagation
+
+void generate_no_borrow_propagation(uint32_t **a, uint32_t **b, int n)
+{
+    // Allocate memory for arrays a and b
+    *a = (uint32_t *)malloc(n * sizeof(uint32_t));
+    *b = (uint32_t *)malloc(n * sizeof(uint32_t));
+
+    if (*a == NULL || *b == NULL)
+    {
+        perror("Memory allocation failed for a or b\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Seed the random number generator
+    int seed = generate_seed();
+    srand(seed);
+
+    // Fill the arrays from the least significant end
+    for (int i = n - 1; i >= 0;)
+    {
+        // Determine the size of the current group
+        int group_size = (i >= 8) ? 9 : (i + 1);
+        int start_index = i - group_size + 1;
+
+        // Generate the group for array a in non-increasing order
+        uint32_t start_value = rand() % 10;
+        for (int j = 0; j < group_size; j++)
+        {
+            (*a)[start_index + j] = start_value;
+            // Randomly decide if the next digit should be the same or smaller
+            if (rand() % 2 == 0 && start_value > 0)
+            {
+                start_value--;
+            }
+        }
+
+        // Generate the group for array b as the reverse of array a
+        for (int j = 0; j < group_size; j++)
+        {
+            (*b)[start_index + j] = (*a)[start_index + group_size - 1 - j];
+        }
+
+        i -= group_size;
+    }
+}
+
+/*
+ * Function to run tests
+ * Tests the sub function with different inputs
+ * Basically, there are 4 types of tests:
+ * 1. No Borrow-Propagation (Best-case)
+ * 2. Full Borrow-Propagation (Worst-case)
+ * 3. n/2 Borrow-Propagation (Average-case)
+ * 4. Random Borrow-Propagation (Random-case)
+ */
+
+void run_tests()
+{
+    initialize_perf();
+    struct timespec start, end;
+    char filename[256] = "sub_limb_avx"; // replace with actual binary name
+    char filename_gmp[256] = "GMP";      // replace with actual binary name
+
+    snprintf(filename, sizeof(filename), "%s_%d.csv", "sub_limb_avx", NUM_BITS);
+    snprintf(filename_gmp, sizeof(filename_gmp), "%s_%d.csv", "GMP", NUM_BITS);
+    FILE *file = open_file(filename);
+    FILE *file_gmp = open_file(filename_gmp);
+
+    long long values[MAX_EVENTS];
+
+    // By using GMP, we can generate random numbers to get the length of the numbers according to the number of bits
+    mpz_t sample_num;
+    mpz_init(sample_num);
+    gmp_randstate_t state;
+    unsigned long seed = generate_seed();
+    gmp_randinit_default(state);
+    gmp_randseed_ui(state, seed);
+    mpz_urandomb(sample_num, state, NUM_BITS);
+    char *sample_num_str = mpz_get_str(NULL, 10, sample_num);
+    int n = strlen(sample_num_str);
+
+    int sub_size;
+    uint32_t *sub;
+
+    printf("Number of bits = %d\n", NUM_BITS);
+    printf("Number of digits = %d\n", n);
+
+    printf("Running tests\n");
+
+    memset(sub_space, 0, (1 << 30));
+    sub_space_ptr = 0;
+
+    memset(borrow_space, 0, (1 << 30));
+    borrow_space_ptr = 0;
+
+    printf("Test 1: No Borrow-Propagation\n");
+    double test1_time = 0;
+    double test1_gmp_time = 0;
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        // Test 1: No Borrow-Propagation,  remember, numbers will grouped into 9 digits
+        uint32_t *a1_test1;
+
+        uint32_t *b1_test1;
+
+        // intialize a1_test1 and b1_test1 with no borrow-propagation case
+
+        // auto generate the numbers
+        generate_no_borrow_propagation(&a1_test1, &b1_test1, n);
+
+        // Make the two numbers equidistant
+        make_equidistant(&a1_test1, &b1_test1, &n, &n);
+
+        // format the numbers into limbs
+        int n_limb = n;
+        int m_limb = n;
+
+        uint32_t *a1_limbs = returnLimbs(a1_test1, &n_limb);
+        uint32_t *b1_limbs = returnLimbs(b1_test1, &m_limb);
+
+        // allocate from scratch space
+        uint32_t *sub_test1 = sub_space + sub_space_ptr;
+        int sub_size_test1 = n_limb;
+        sub_space_ptr += (n_limb + 31) & ~31;
+        borrow_space_ptr += (n_limb + 31) & ~31;
+
+        // Start the perf events
+        start_perf();
+
+        // Start the clock
+        start_timespec(&start);
+
+        // Run the sub function
+        sub_n(a1_limbs, b1_limbs, &sub_test1, n_limb, &sub_size_test1);
+
+        // Stop the clock
+        stop_timespec(&end);
+
+        // Stop the perf events
+        stop_perf();
+
+        // read the perf events
+        read_perf(values);
+
+        // Write the perf events to the file
+        write_perf(file, values);
+
+        test1_time += calculate_time(start, end);
+
+        // convert a1_test1 into a string
+        char *a1_str_test1 = (char *)calloc(n + 1, sizeof(char));
+        for (int i = 0; i < n; i++)
+        {
+            a1_str_test1[i] = a1_test1[i] + '0';
+        }
+        a1_str_test1[n] = '\0';
+
+        // convert b1_test1 into a string
+        char *b1_str_test1 = (char *)calloc(n + 1, sizeof(char));
+        for (int i = 0; i < n; i++)
+        {
+            b1_str_test1[i] = b1_test1[i] + '0';
+        }
+        b1_str_test1[n] = '\0';
+
+        // Use GMP to sub the two numbers
+        mpz_t a1_test1_gmp, b1_test1_gmp, sub_gmp_test1;
+        mpz_init(a1_test1_gmp);
+        mpz_init(b1_test1_gmp);
+        mpz_init(sub_gmp_test1);
+        mpz_set_str(a1_test1_gmp, a1_str_test1, 10);
+        mpz_set_str(b1_test1_gmp, b1_str_test1, 10);
+
+        // Start the perf events
+        start_perf();
+
+        // Start the clock
+        start_timespec(&start);
+
+        // Run the sub function
+        mpz_sub(sub_gmp_test1, a1_test1_gmp, b1_test1_gmp);
+
+        // Stop the clock
+        stop_timespec(&end);
+
+        // Stop the perf events
+        stop_perf();
+
+        // read the perf events
+        read_perf(values);
+
+        // Write the perf events to the file
+        write_perf(file_gmp, values);
+
+        test1_gmp_time += calculate_time(start, end);
+
+        // convert sub's output sub into a string
+        char *sub_str_test1 = formatResult(sub_test1, &sub_size_test1);
+
+        // convert gmp's output sub into a string
+        char *sub_gmp_str_test1 = mpz_get_str(NULL, 10, sub_gmp_test1);
+
+        // check if the two subs are equal
+        if (!check_result(sub_str_test1, sub_gmp_str_test1, sub_size_test1))
+        {
+            printf("Test 1 failed\n");
+            return;
+        }
+        printf("Test 1 iteration %d passed\n", i);
+    }
+    printf("Test 1 passed with %d iterations, time taken by my implementation = %lf, time taken by GMP = %lf\n", ITERATIONS, test1_time, test1_gmp_time);
+    // // Test 2: Full Borrow-Propagation,  remember, numbers will grouped into 9 digits
+    // uint32_t *a1_test2 = (uint32_t *)malloc(n * sizeof(uint32_t));
+
+    // uint32_t *b1_test2 = (uint32_t *)malloc(n * sizeof(uint32_t));
+
+    // // intialize a1_test2 and b1_test2 with full borrow-propagation case
+
+    // // Make the two numbers equidistant
+    // make_equidistant(&a1_test2, &b1_test2, &n, &n);
+
+    // // format the numbers into limbs
+    // n_limb = n;
+    // m_limb = n;
+
+    // uint32_t *a1_limbs = returnLimbs(a1_test2, &n_limb);
+    // uint32_t *b1_limbs = returnLimbs(b1_test2, &m_limb);
+
+    // // allocate from scratch space
+    // uint32_t *sub_test2 = sub_space + sub_space_ptr;
+    // int sub_size_test2;
+    // sub_space_ptr += (n + 31) & ~31;
+    // memset(sub, 0, (n + 1) * sizeof(uint32_t));
+
+    // // allocate borrow space
+    // borrow_space = (uint32_t *)malloc((n) * sizeof(uint32_t));
+    // memset(borrow_space, 0, n * sizeof(uint32_t));
+
+    // // Start the perf events
+    // start_perf();
+
+    // // Start the clock
+    // start_timespec(&start);
+
+    // // Run the sub function
+    // sub_n(a1_limbs, b1_limbs, &sub_test2, n_limb, &sub_size_test2);
+
+    // // Stop the clock
+    // stop_timespec(&end);
+
+    // // Stop the perf events
+    // stop_perf();
+
+    // // read the perf events
+    // read_perf(values);
+
+    // // Write the perf events to the file
+    // write_perf(file, values);
+
+    // double test2_time = calculate_time(start, end);
+
+    // // Use GMP to sub the two numbers
+    // mpz_t a1_test2_gmp, b1_test2_gmp, sub_gmp_test2;
+    // mpz_init(a1_test2_gmp);
+    // mpz_init(b1_test2_gmp);
+    // mpz_init(sub_gmp_test2);
+
+    // mpz_set_str(a1_test2_gmp, a1_test2, 10);
+
+    // mpz_set_str(b1_test2_gmp, b1_test2, 10);
+
+    // // Start the perf events
+    // start_perf();
+
+    // // Start the clock
+    // start_timespec(&start);
+
+    // // Run the sub function
+    // mpz_sub(sub_gmp_test2, a1_test2_gmp, b1_test2_gmp);
+
+    // // Stop the clock
+    // stop_timespec(&end);
+
+    // // Stop the perf events
+    // stop_perf();
+
+    // // read the perf events
+    // read_perf(values);
+
+    // // Write the perf events to the file
+    // write_perf(file_gmp, values);
+
+    // double test2_gmp_time = calculate_time(start, end);
+
+    // // convert sub's output sub into a string
+    // char *sub_str_test2 = formatResult(sub_test2, &sub_size_test2);
+
+    // // convert gmp's output sub into a string
+    // char *sub_gmp_str_test2 = mpz_get_str(NULL, 10, sub_gmp_test2);
+
+    // // check if the two subs are equal
+    // if (!check_result(sub_str_test2, sub_gmp_str_test2, sub_size_test2))
+    // {
+    //     printf("Test 2 failed\n");
+    //     return;
+    // }
+
+    // printf("Test 2 passed, time taken by my implementation = %lf, time taken by GMP = %lf\n", test2_time, test2_gmp_time);
+
+    // // Test 3: n/2 Borrow-Propagation,  remember, numbers will grouped into 9 digits
+    // uint32_t *a1_test3 = (uint32_t *)malloc(n * sizeof(uint32_t));
+
+    // uint32_t *b1_test3 = (uint32_t *)malloc(n * sizeof(uint32_t));
+
+    // // intialize a1_test3 and b1_test3 with n/2 borrow-propagation case
+
+    // // Make the two numbers equidistant
+    // make_equidistant(&a1_test3, &b1_test3, &n, &n);
+
+    // // format the numbers into limbs
+    // n_limb = n;
+    // m_limb = n;
+
+    // uint32_t *a1_limbs = returnLimbs(a1_test3, &n_limb);
+    // uint32_t *b1_limbs = returnLimbs(b1_test3, &m_limb);
+
+    // // allocate from scratch space
+    // uint32_t *sub_test3 = sub_space + sub_space_ptr;
+    // int sub_size_test3;
+    // sub_space_ptr += (n + 31) & ~31;
+
+    // memset(sub, 0, (n + 1) * sizeof(uint32_t));
+
+    // // allocate borrow space
+    // borrow_space = (uint32_t *)malloc((n) * sizeof(uint32_t));
+
+    // memset(borrow_space, 0, n * sizeof(uint32_t));
+
+    // // Start the perf events
+    // start_perf();
+
+    // // Start the clock
+    // start_timespec(&start);
+
+    // // Run the sub function
+    // sub_n(a1_limbs, b1_limbs, &sub_test3, n_limb, &sub_size_test3);
+
+    // // Stop the clock
+    // stop_timespec(&end);
+
+    // // Stop the perf events
+    // stop_perf();
+
+    // // read the perf events
+    // read_perf(values);
+
+    // // Write the perf events to the file
+    // write_perf(file, values);
+
+    // double test3_time = calculate_time(start, end);
+
+    // // Use GMP to sub the two numbers
+    // mpz_t a1_test3_gmp, b1_test3_gmp, sub_gmp_test3;
+    // mpz_init(a1_test3_gmp);
+    // mpz_init(b1_test3_gmp);
+    // mpz_init(sub_gmp_test3);
+
+    // mpz_set_str(a1_test3_gmp, a1_test3, 10);
+    // mpz_set_str(b1_test3_gmp, b1_test3, 10);
+
+    // // Start the perf events
+    // start_perf();
+
+    // // Start the clock
+    // start_timespec(&start);
+
+    // // Run the sub function
+    // mpz_sub(sub_gmp_test3, a1_test3_gmp, b1_test3_gmp);
+
+    // // Stop the clock
+    // stop_timespec(&end);
+
+    // // Stop the perf events
+    // stop_perf();
+
+    // // read the perf events
+    // read_perf(values);
+
+    // // Write the perf events to the file
+    // write_perf(file_gmp, values);
+
+    // double test3_gmp_time = calculate_time(start, end);
+
+    // // convert sub's output sub into a string
+    // char *sub_str_test3 = formatResult(sub_test3, &sub_size_test3);
+
+    // // convert gmp's output sub into a string
+    // char *sub_gmp_str_test3 = mpz_get_str(NULL, 10, sub_gmp_test3);
+
+    // // check if the two subs are equal
+    // if (!check_result(sub_str_test3, sub_gmp_str_test3, sub_size_test3))
+    // {
+    //     printf("Test 3 failed\n");
+    //     return;
+    // }
+
+    // printf("Test 3 passed, time taken by my implementation = %lf, time taken by GMP = %lf\n", test3_time, test3_gmp_time);
+
+    // // Test 4: Random Borrow-Propagation,  remember, numbers will grouped into 9 digits
+    // // use GMP to generate random numbers
+    // mpz_t a1_test4_gmp, b1_test4_gmp, sub_gmp_test4;
+    // mpz_init(a1_test4_gmp);
+    // mpz_init(b1_test4_gmp);
+    // mpz_init(sub_gmp_test4);
+
+    // // generate seed
+    // seed = generate_seed();
+    // gmp_randseed_ui(state, seed);
+
+    // // generate random numbers
+    // mpz_urandomb(a1_test4_gmp, state, NUM_BITS);
+    // mpz_urandomb(b1_test4_gmp, state, NUM_BITS);
+
+    // // convert the random numbers to strings
+    // char *a1_test4 = mpz_get_str(NULL, 10, a1_test4_gmp);
+    // char *b1_test4 = mpz_get_str(NULL, 10, b1_test4_gmp);
+
+    // // Make the two numbers equidistant
+    // make_equidistant(&a1_test4, &b1_test4, &n, &n);
+
+    // // format the numbers into limbs
+    // n_limb = n;
+    // m_limb = n;
+
+    // uint32_t *a1_limbs = returnLimbs(a1_test4, &n_limb);
+    // uint32_t *b1_limbs = returnLimbs(b1_test4, &m_limb);
+
+    // // allocate from scratch space
+    // uint32_t *sub_test4 = sub_space + sub_space_ptr;
+    // int sub_size_test4;
+    // sub_space_ptr += (n + 31) & ~31;
+
+    // memset(sub, 0, (n + 1) * sizeof(uint32_t));
+
+    // // allocate borrow space
+    // borrow_space = (uint32_t *)malloc((n) * sizeof(uint32_t));
+
+    // memset(borrow_space, 0, n * sizeof(uint32_t));
+
+    // // Start the perf events
+    // start_perf();
+
+    // // Start the clock
+    // start_timespec(&start);
+
+    // // Run the sub function
+    // sub_n(a1_limbs, b1_limbs, &sub_test4, n_limb, &sub_size_test4);
+
+    // // Stop the clock
+    // stop_timespec(&end);
+
+    // // Stop the perf events
+    // stop_perf();
+
+    // // read the perf events
+    // read_perf(values);
+
+    // // Write the perf events to the file
+    // write_perf(file, values);
+
+    // double test4_time = calculate_time(start, end);
+
+    // // Convert sub's output sub into a string
+    // char *sub_str_test4 = formatResult(sub_test4, &sub_size_test4);
+
+    // // Convert GMP's output sub into a string
+    // char *sub_gmp_str_test4 = mpz_get_str(NULL, 10, sub_gmp_test4);
+
+    // // Check if the two subs are equal
+    // if (!check_result(sub_str_test4, sub_gmp_str_test4, sub_size_test4))
+    // {
+    //     printf("Test 4 failed\n");
+    //     return;
+    // }
+
+    // printf("Test 4 passed, time taken by my implementation = %lf, time taken by GMP = %lf\n", test4_time, test4_gmp_time);
+
+    // printf("All tests passed :)\n");
+
+    // // free the allocated memory
+    // free(a1_test1);
+    // free(b1_test1);
+    // free(a1_test2);
+    // free(b1_test2);
+    // free(a1_test3);
+    // free(b1_test3);
+    // free(a1_test4);
+    // free(b1_test4);
+    // free(a1_limbs);
+    // free(b1_limbs);
+    // free(sub_test1);
+    // free(sub_test2);
+    // free(sub_test3);
+    // free(sub_test4);
+    // free(borrow_space);
+    // mpz_clear(sample_num);
+    // mpz_clear(a1_test1_gmp);
+    // mpz_clear(b1_test1_gmp);
+    // mpz_clear(sub_gmp_test1);
+    // mpz_clear(a1_test2_gmp);
+    // mpz_clear(b1_test2_gmp);
+    // mpz_clear(sub_gmp_test2);
+    // mpz_clear(a1_test3_gmp);
+    // mpz_clear(b1_test3_gmp);
+    // mpz_clear(sub_gmp_test3);
+    // mpz_clear(a1_test4_gmp);
+    // mpz_clear(b1_test4_gmp);
+    // mpz_clear(sub_gmp_test4);
+    // free(sub_space);
 }
