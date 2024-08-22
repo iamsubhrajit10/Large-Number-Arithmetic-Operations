@@ -1,0 +1,22 @@
+Running for core 0
+Running for bit size 256
+Number of bits = 256
+Number of digits = 77
+Running tests
+Test 1: No Borrow-Propagation
+Running test 1, with 1000000 iterations
+Test 1 passed with 1000000 iterations, time taken by my implementation = 239376197.000000, time taken by GMP = 477832514.000000
+rdtsc for test 1 = 334859166, rdtsc for test 1 gmp = 1035039482
+Timespec Speedup: 1.996157
+RDTSC Speedup: 0.000000
+ 
+Running for bit size 512
+Number of bits = 512
+Number of digits = 154
+Running tests
+Test 1: No Borrow-Propagation
+Running test 1, with 1000000 iterations
+Test 1 passed with 1000000 iterations, time taken by my implementation = 175428080.000000, time taken by GMP = 402267349.000000
+rdtsc for test 1 = 221829220, rdtsc for test 1 gmp = 753175812
+Timespec Speedup: 2.293061
+RDTSC Speedup: 0.000000

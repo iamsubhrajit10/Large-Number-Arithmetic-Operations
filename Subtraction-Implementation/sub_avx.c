@@ -30,7 +30,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 
 #define LIMB_SIZE 9
 // #define LIMB_SIZE 2
-#define ITERATIONS 1000000
+#define ITERATIONS 100000
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0)
 #define likely(expr) __builtin_expect(!!(expr), 1)
@@ -42,6 +42,8 @@ static int borrow_space_ptr = 0;
 
 static uint32_t LIMB_DIGITS = 1000000000;
 // static uint32_t LIMB_DIGITS = 100;
+
+static int CORE_NO;
 
 __m512i limb_digits;
 __m512i minus_limb_digits;
@@ -68,8 +70,20 @@ unsigned long generate_seed()
     clock_gettime(CLOCK_REALTIME, &ts2);
 
     int urandom_fd = open("/dev/urandom", O_RDONLY);
+    if (urandom_fd == -1)
+    {
+        perror("Error opening /dev/urandom");
+        exit(EXIT_FAILURE);
+    }
+
     uint32_t urandom_value;
-    read(urandom_fd, &urandom_value, sizeof(urandom_value));
+    ssize_t result = read(urandom_fd, &urandom_value, sizeof(urandom_value));
+    if (result != sizeof(urandom_value))
+    {
+        perror("Error reading from /dev/urandom");
+        close(urandom_fd);
+        exit(EXIT_FAILURE);
+    }
     close(urandom_fd);
 
     pid_t pid = getpid();
@@ -206,13 +220,16 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
+    if (argc != 3)
     {
-        printf("Usage: %s <number of bits>\n", argv[0]);
+        printf("Usage: %s <number of bits> <core number>\n", argv[0]);
         return 1;
     }
+
     assert(atoi(argv[1]) > 0);
     NUM_BITS = atoi(argv[1]);
+    CORE_NO = atoi(argv[2]);
+
     limb_digits = _mm512_set1_epi32(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi32(-LIMB_DIGITS);
     zeros = _mm512_set1_epi32(0);
@@ -481,7 +498,7 @@ void initialize_perf()
     // Open the events
     for (int i = 0; i < MAX_EVENTS; i++)
     {
-        fd[i] = perf_event_open(&pe[i], 0, -1, -1, 0);
+        fd[i] = perf_event_open(&pe[i], 0, CORE_NO, -1, 0);
         if (fd[i] == -1)
         {
             fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
@@ -525,7 +542,7 @@ void write_perf(FILE *file, long long values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        fprintf(file, "%lu,", values[j]);
+        fprintf(file, "%llu,", values[j]);
     }
     fprintf(file, "\n");
     // close the file
@@ -564,6 +581,16 @@ void start_timespec(struct timespec *start)
     }
 }
 
+// // function to get time of the day
+// void get_time(struct timeval *start)
+// {
+//     if (gettimeofday(start, NULL) == -1)
+//     {
+//         perror("Error getting start time");
+//         exit(EXIT_FAILURE);
+//     }
+// }
+
 void stop_timespec(struct timespec *end)
 {
     // initialize the end time
@@ -578,7 +605,19 @@ void stop_timespec(struct timespec *end)
 
 double calculate_time(struct timespec start, struct timespec end)
 {
-    return (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1e9;
+    // Calculate the difference in seconds and nanoseconds
+    long long seconds = end.tv_sec - start.tv_sec;
+    long long nanoseconds = end.tv_nsec - start.tv_nsec;
+
+    // Adjust seconds and nanoseconds if nanoseconds is negative
+    if (nanoseconds < 0)
+    {
+        seconds--;
+        nanoseconds += 1000000000; // 1 second in nanoseconds
+    }
+
+    // Convert to nanoseconds
+    return (seconds * 1000000000LL) + nanoseconds;
 }
 
 bool check_result(char *result, char *result_gmp, int result_size)
@@ -654,6 +693,35 @@ void generate_no_borrow_propagation(uint32_t **a, uint32_t **b, int n)
     }
 }
 
+// function which returns the rdtsc ticks
+static __inline__ unsigned long long rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__("rdtsc"
+                         : "=a"(lo), "=d"(hi));
+    return ((unsigned long long)lo) | (((unsigned long long)hi) << 32);
+}
+
+void open_time_file(char *filename, FILE **file)
+{
+    *file = fopen(filename, "w");
+
+    if (*file == NULL)
+    {
+        perror("Error opening file for writing \n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Write the header to the CSV file
+    // Time, RDTSC
+    fprintf(*file, "Time, RDTSC\n");
+}
+
+void write_time(FILE *file, double time, unsigned long long rdtsc)
+{
+    fprintf(file, "%lf, %llu\n", time, rdtsc);
+}
+
 /*
  * Function to run tests
  * Tests the sub function with different inputs
@@ -668,13 +736,19 @@ void run_tests()
 {
     initialize_perf();
     struct timespec start, end;
-    char filename[256] = "sub_limb_avx"; // replace with actual binary name
-    char filename_gmp[256] = "GMP";      // replace with actual binary name
+    char filename[256];
+    char filename_gmp[256];
+    char time_filename[256];
+    char time_filename_gmp[256];
 
-    snprintf(filename, sizeof(filename), "%s_%d.csv", "sub_limb_avx", NUM_BITS);
-    snprintf(filename_gmp, sizeof(filename_gmp), "%s_%d.csv", "GMP", NUM_BITS);
+    snprintf(filename, sizeof(filename), "experiments/sub_limb_avx_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(filename_gmp, sizeof(filename_gmp), "experiments/GMP_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(time_filename, sizeof(time_filename), "experiments/my_time_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(time_filename_gmp, sizeof(time_filename_gmp), "experiments/gmp_time_%d_%d.csv", NUM_BITS, CORE_NO);
     FILE *file = open_file(filename);
     FILE *file_gmp = open_file(filename_gmp);
+    FILE *time_file = fopen(time_filename, "w");
+    FILE *time_file_gmp = fopen(time_filename_gmp, "w");
 
     long long values[MAX_EVENTS];
 
@@ -706,6 +780,12 @@ void run_tests()
     printf("Test 1: No Borrow-Propagation\n");
     double test1_time = 0;
     double test1_gmp_time = 0;
+
+    unsigned long long start_rdtsc, end_rdtsc;
+    unsigned long long start_rdtsc_gmp, end_rdtsc_gmp;
+
+    unsigned long long test1_rdtsc = 0, test1_rdtsc_gmp = 0;
+    printf("Running test 1, with %d iterations\n", ITERATIONS);
     for (int i = 0; i < ITERATIONS; i++)
     {
         // Test 1: No Borrow-Propagation,  remember, numbers will grouped into 9 digits
@@ -740,8 +820,14 @@ void run_tests()
         // Start the clock
         start_timespec(&start);
 
+        // Measure rdtsc
+        start_rdtsc = rdtsc();
+
         // Run the sub function
         sub_n(a1_limbs, b1_limbs, &sub_test1, n_limb, &sub_size_test1);
+
+        // Measure rdtsc
+        end_rdtsc = rdtsc();
 
         // Stop the clock
         stop_timespec(&end);
@@ -755,7 +841,11 @@ void run_tests()
         // Write the perf events to the file
         write_perf(file, values);
 
+        // Write the time to the file
+        write_time(time_file, calculate_time(start, end), end_rdtsc - start_rdtsc);
+
         test1_time += calculate_time(start, end);
+        test1_rdtsc += end_rdtsc - start_rdtsc;
 
         // convert a1_test1 into a string
         char *a1_str_test1 = (char *)calloc(n + 1, sizeof(char));
@@ -787,8 +877,14 @@ void run_tests()
         // Start the clock
         start_timespec(&start);
 
+        // Measure rdtsc
+        start_rdtsc_gmp = rdtsc();
+
         // Run the sub function
         mpz_sub(sub_gmp_test1, a1_test1_gmp, b1_test1_gmp);
+
+        // Measure rdtsc
+        end_rdtsc_gmp = rdtsc();
 
         // Stop the clock
         stop_timespec(&end);
@@ -802,7 +898,11 @@ void run_tests()
         // Write the perf events to the file
         write_perf(file_gmp, values);
 
+        // Write the time to the file
+        write_time(time_file_gmp, calculate_time(start, end), end_rdtsc_gmp - start_rdtsc_gmp);
+
         test1_gmp_time += calculate_time(start, end);
+        test1_rdtsc_gmp += end_rdtsc_gmp - start_rdtsc_gmp;
 
         // convert sub's output sub into a string
         char *sub_str_test1 = formatResult(sub_test1, &sub_size_test1);
@@ -813,12 +913,14 @@ void run_tests()
         // check if the two subs are equal
         if (!check_result(sub_str_test1, sub_gmp_str_test1, sub_size_test1))
         {
-            printf("Test 1 failed\n");
+            printf("Test 1 failed, at iteration %d\n", i);
             return;
         }
-        printf("Test 1 iteration %d passed\n", i);
     }
     printf("Test 1 passed with %d iterations, time taken by my implementation = %lf, time taken by GMP = %lf\n", ITERATIONS, test1_time, test1_gmp_time);
+    printf("rdtsc for test 1 = %llu, rdtsc for test 1 gmp = %llu\n", test1_rdtsc, test1_rdtsc_gmp);
+    printf("Timespec Speedup: %f\n", test1_gmp_time / test1_time);
+    printf("RDTSC Speedup: %f\n", (double)test1_rdtsc_gmp / test1_rdtsc);
     // // Test 2: Full Borrow-Propagation,  remember, numbers will grouped into 9 digits
     // uint32_t *a1_test2 = (uint32_t *)malloc(n * sizeof(uint32_t));
 
