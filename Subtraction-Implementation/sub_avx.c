@@ -30,7 +30,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 
 #define LIMB_SIZE 9
 // #define LIMB_SIZE 2
-#define ITERATIONS 100000
+#define ITERATIONS 1000000
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0)
 #define likely(expr) __builtin_expect(!!(expr), 1)
