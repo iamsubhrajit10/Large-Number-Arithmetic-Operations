@@ -25,12 +25,17 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <stdint.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <x86intrin.h>
+
+#include <linux/sched.h>
 
 #define MAX_EVENTS 6
 
 #define LIMB_SIZE 9
 // #define LIMB_SIZE 2
-#define ITERATIONS 1000000
+#define ITERATIONS 100000
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0)
 #define likely(expr) __builtin_expect(!!(expr), 1)
@@ -55,6 +60,50 @@ char *formatResult(uint32_t *result, int *result_length);
 void make_equidistant(uint32_t **num1_base, uint32_t **num2_base, int *n_1, int *n_2);
 void run_tests();
 void initialize_perf();
+inline void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_size) __attribute__((always_inline));
+inline bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n) __attribute__((always_inline));
+
+// inline function for warming up rdstcp ticks
+inline void warmup_rdtsc()
+{
+    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
+    asm volatile("CPUID\n\t"
+                 "RDTSC\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
+    asm volatile("RDTSCP\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t"
+                 "CPUID\n\t" : "=r"(cycles_high1), "=r"(cycles_low1)::"%rax",
+                               "%rbx", "%rcx", "%rdx");
+}
+
+// inline function for measuring rdstc ticks
+inline unsigned long long measure_rdtsc_start()
+{
+    unsigned cycles_low, cycles_high;
+    unsigned long long ticks;
+    asm volatile("CPUID\n\t"
+                 "RDTSC\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
+    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
+    return ticks;
+}
+
+// inline function for measuring rdstcp ticks
+inline unsigned long long measure_rdtscp_end()
+{
+    unsigned cycles_low, cycles_high;
+    unsigned long long ticks;
+    asm volatile("RDTSCP\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t"
+                 "CPUID\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax",
+                               "%rbx", "%rcx", "%rdx");
+    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
+    return ticks;
+}
 
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
@@ -102,7 +151,7 @@ void print_mask_binary(__mmask16 mask)
     printf("\n");
 }
 
-bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
+inline bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
 {
     int i = 0;
     do
@@ -119,9 +168,10 @@ bool is_less_than(uint32_t *a, uint32_t *b, uint32_t n)
     } while (unlikely(i < n));
 }
 
-void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_size)
+inline void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_size)
 {
     uint32_t *result = *result_ptr;
+
     bool is_less = is_less_than(a, b, n);
     if (is_less)
     {
@@ -136,6 +186,7 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
 
     for (i = 0; i < n; i += 16)
     {
+
         // load 16 elements from a and b
         a_vec = _mm512_loadu_si512(a + i);
         b_vec = _mm512_loadu_si512(b + i);
@@ -164,8 +215,10 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
     borrow_array = borrow_array + 1;
 
     int last_borrow_block = -1;
+
     for (i = 0; i < n; i += 16)
     {
+
         __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
         result_vec = _mm512_loadu_si512(result + i);
         result_vec = _mm512_sub_epi32(result_vec, borrow_vec);
@@ -188,6 +241,7 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
 
     if (unlikely(last_borrow_block != -1))
     {
+
         i = (last_borrow_block + 15);
         i = (i > n - 1) ? (n - 1) : i;
 
@@ -211,6 +265,7 @@ void sub_n(uint32_t *a, uint32_t *b, uint32_t **result_ptr, int n, int *result_s
     {
         i++;
     }
+
     result[i] = (is_less) ? -result[i] : result[i];
     // update to result_ptr
     *result_ptr = result + i;
@@ -693,15 +748,6 @@ void generate_no_borrow_propagation(uint32_t **a, uint32_t **b, int n)
     }
 }
 
-// function which returns the rdtsc ticks
-static __inline__ unsigned long long rdtsc(void)
-{
-    unsigned hi, lo;
-    __asm__ __volatile__("rdtsc"
-                         : "=a"(lo), "=d"(hi));
-    return ((unsigned long long)lo) | (((unsigned long long)hi) << 32);
-}
-
 void open_time_file(char *filename, FILE **file)
 {
     *file = fopen(filename, "w");
@@ -735,7 +781,6 @@ void write_time(FILE *file, double time, unsigned long long rdtsc)
 void run_tests()
 {
     initialize_perf();
-    struct timespec start, end;
     char filename[256];
     char filename_gmp[256];
     char time_filename[256];
@@ -783,6 +828,9 @@ void run_tests()
 
     unsigned long long start_rdtsc, end_rdtsc;
     unsigned long long start_rdtsc_gmp, end_rdtsc_gmp;
+    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
+    unsigned long flags;
+    uint64_t start, end;
 
     unsigned long long test1_rdtsc = 0, test1_rdtsc_gmp = 0;
     printf("Running test 1, with %d iterations\n", ITERATIONS);
@@ -814,23 +862,30 @@ void run_tests()
         sub_space_ptr += (n_limb + 31) & ~31;
         borrow_space_ptr += (n_limb + 31) & ~31;
 
+        // warmup for rdtsc
+        warmup_rdtsc();
+
+        // // Disable preemption
+        // preempt_disable();
+
+        // // Disable hardware interrupts
+        // raw_local_irq_save(flags); /*we disable hard interrupts on our CPU*/
+        /*at this stage we exclusively own the CPU*/
+
         // Start the perf events
         start_perf();
 
-        // Start the clock
-        start_timespec(&start);
-
-        // Measure rdtsc
-        start_rdtsc = rdtsc();
+        // preempt_disable();
+        // raw_local_irq_save(flags);
+        start_rdtsc = measure_rdtsc_start();
 
         // Run the sub function
         sub_n(a1_limbs, b1_limbs, &sub_test1, n_limb, &sub_size_test1);
 
-        // Measure rdtsc
-        end_rdtsc = rdtsc();
+        end_rdtsc = measure_rdtscp_end();
 
-        // Stop the clock
-        stop_timespec(&end);
+        // raw_local_irq_restore(flags);
+        // preempt_enable();
 
         // Stop the perf events
         stop_perf();
@@ -838,14 +893,16 @@ void run_tests()
         // read the perf events
         read_perf(values);
 
+        if (end_rdtsc < start_rdtsc)
+        {
+            perror("Error in rdtsc\n");
+            exit(EXIT_FAILURE);
+        }
+
         // Write the perf events to the file
         write_perf(file, values);
 
-        // Write the time to the file
-        write_time(time_file, calculate_time(start, end), end_rdtsc - start_rdtsc);
-
-        test1_time += calculate_time(start, end);
-        test1_rdtsc += end_rdtsc - start_rdtsc;
+        test1_rdtsc += (end_rdtsc - start_rdtsc);
 
         // convert a1_test1 into a string
         char *a1_str_test1 = (char *)calloc(n + 1, sizeof(char));
@@ -871,23 +928,28 @@ void run_tests()
         mpz_set_str(a1_test1_gmp, a1_str_test1, 10);
         mpz_set_str(b1_test1_gmp, b1_str_test1, 10);
 
+        // warmup for rdtsc
+        warmup_rdtsc();
+
+        // // Disable preemption
+        // preempt_disable();
+
+        // // Disable hardware interrupts
+        // raw_local_irq_save(flags); /*we disable hard interrupts on our CPU*/
+        /*at this stage we exclusively own the CPU*/
+
         // Start the perf events
         start_perf();
 
-        // Start the clock
-        start_timespec(&start);
-
-        // Measure rdtsc
-        start_rdtsc_gmp = rdtsc();
+        // measure rdtsc
+        start_rdtsc_gmp = measure_rdtsc_start();
 
         // Run the sub function
         mpz_sub(sub_gmp_test1, a1_test1_gmp, b1_test1_gmp);
 
-        // Measure rdtsc
-        end_rdtsc_gmp = rdtsc();
-
-        // Stop the clock
-        stop_timespec(&end);
+        end_rdtsc_gmp = measure_rdtscp_end();
+        // raw_local_irq_restore(flags);
+        // preempt_enable();
 
         // Stop the perf events
         stop_perf();
@@ -895,14 +957,16 @@ void run_tests()
         // read the perf events
         read_perf(values);
 
+        if (end_rdtsc_gmp < start_rdtsc_gmp)
+        {
+            perror("Error in rdtsc\n");
+            exit(EXIT_FAILURE);
+        }
+
         // Write the perf events to the file
         write_perf(file_gmp, values);
 
-        // Write the time to the file
-        write_time(time_file_gmp, calculate_time(start, end), end_rdtsc_gmp - start_rdtsc_gmp);
-
-        test1_gmp_time += calculate_time(start, end);
-        test1_rdtsc_gmp += end_rdtsc_gmp - start_rdtsc_gmp;
+        test1_rdtsc_gmp += (end_rdtsc_gmp - start_rdtsc_gmp);
 
         // convert sub's output sub into a string
         char *sub_str_test1 = formatResult(sub_test1, &sub_size_test1);
@@ -916,6 +980,8 @@ void run_tests()
             printf("Test 1 failed, at iteration %d\n", i);
             return;
         }
+        printf("Test 1 iteration %d passed\n", i);
+        sleep(0.1);
     }
     printf("Test 1 passed with %d iterations, time taken by my implementation = %lf, time taken by GMP = %lf\n", ITERATIONS, test1_time, test1_gmp_time);
     printf("rdtsc for test 1 = %llu, rdtsc for test 1 gmp = %llu\n", test1_rdtsc, test1_rdtsc_gmp);
