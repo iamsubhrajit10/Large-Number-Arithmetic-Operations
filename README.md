@@ -1,1 +1,1 @@
-Trying to parallize the addition!
+Trying to exploit parallelism!
