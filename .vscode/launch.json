@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/users/lattu",
-      "program": "/users/lattu/build/Debug/outDebug",
+      "cwd": "/users/lattu/Large-Number-Arithmetic-Operations",
+      "program": "/users/lattu/Large-Number-Arithmetic-Operations/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
