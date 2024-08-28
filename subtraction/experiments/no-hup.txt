@@ -1,2 +1,0 @@
-Running for core 0
-Running for bit size 256
