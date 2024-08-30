@@ -53,11 +53,6 @@ aligned_uint64 LIMB_DIGITS = 10000000000000000000ULL; // 10^19, used for borrow-
 
 int CORE_NO; // Core number to run the tests on
 
-// AVX512 constants, to be used directly in the code
-__m512i limb_digits;       // 10^19 as chunk of 8 64-bit integers
-__m512i minus_limb_digits; // -10^19 as chunk of 8 64-bit integers
-__m512i zeros;             // 0 as chunk of 8 64-bit integers
-
 int NUM_BITS; // Number of bits for the numbers
 
 // Function prototypes
@@ -209,41 +204,25 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
 
     // uint32_t *borrow_array = borrow_space + borrow_space_ptr;
     aligned_uint64_ptr borrow_array = borrow_space + borrow_space_ptr;
-    __m512i a_vec, b_vec, result_vec;
     int i;
     __builtin_assume_aligned(a, 64);
     __builtin_assume_aligned(b, 64);
     __builtin_assume_aligned(result, 64);
 
-    for (i = 0; i < n; i += 8)
+    for (i = 0; i < n; i++)
     {
 
-        // load 8 64-bit integers from a and b
-        a_vec = _mm512_load_si512(a + i);
-        b_vec = _mm512_load_si512(b + i);
+        result[i] = a[i] - b[i];
 
-        // subtract a and b
-        // result_vec = _mm512_sub_epi32(a_vec, b_vec);
-        result_vec = _mm512_sub_epi64(a_vec, b_vec);
-
-        // if result_vec[j] < 0, set borrow mask to 1
-        // __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
-        __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
-
-        // based on borrow mask, result_vec[j] = limb_digits + result_vec[j]
-        // result_vec = _mm512_mask_add_epi32(result_vec, borrow_mask, result_vec, limb_digits);
-        result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
-
-        // __m512i borrow = _mm512_maskz_set1_epi32(borrow_mask, 1);
-        __m512i borrow = _mm512_maskz_set1_epi64(borrow_mask, 1);
-
-        // store the borrow
-        // _mm512_storeu_si512(borrow_array + i, borrow);
-        _mm512_store_si512(borrow_array + i, borrow);
-
-        // store the result
-        // _mm512_storeu_si512(result + i, result_vec);
-        _mm512_store_si512(result + i, result_vec);
+        if (result[i] < 0)
+        {
+            result[i] = result[i] + LIMB_DIGITS;
+            borrow_array[i] = 1;
+        }
+        else
+        {
+            borrow_array[i] = 0;
+        }
     }
 
     // left shift the borrow array by 1
@@ -252,31 +231,18 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
     int last_borrow_block = -1;
     __builtin_assume_aligned(borrow_array, 64);
 
-    for (i = 0; i < n; i += 8)
+    for (i = 0; i < n; i++)
     {
-
-        // __m512i borrow_vec = _mm512_loadu_si512(borrow_array + i);
-        __m512i borrow_vec = _mm512_load_si512(borrow_array + i);
-        result_vec = _mm512_load_si512(result + i);
-
-        result_vec = _mm512_sub_epi64(result_vec, borrow_vec);
-
-        // check if result_vec[j] < 0
-        // __mmask16 borrow_mask = _mm512_cmplt_epi32_mask(result_vec, zeros);
-        __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
-        if (unlikely(borrow_mask))
+        result[i] = result[i] - borrow_array[i];
+        if (result[i] < 0)
         {
             last_borrow_block = i;
+            borrow_array[i] = 1;
         }
-
-        // generate borrow_vec
-        // borrow_vec = _mm512_maskz_set1_epi32(borrow_mask, 1);
-        borrow_vec = _mm512_maskz_set1_epi64(borrow_mask, 1);
-
-        // update the borrow array
-        _mm512_store_si512(borrow_array + i, borrow_vec);
-
-        _mm512_store_si512(result + i, result_vec);
+        else
+        {
+            borrow_array[i] = 0;
+        }
     }
 
     if (unlikely(last_borrow_block != -1))
@@ -324,11 +290,6 @@ int main(int argc, char *argv[])
     assert(atoi(argv[1]) > 0);
     NUM_BITS = atoi(argv[1]);
     CORE_NO = atoi(argv[2]);
-
-    // Adjusted for 64-bit integers
-    limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
-    minus_limb_digits = _mm512_set1_epi64(-LIMB_DIGITS);
-    zeros = _mm512_set1_epi64(0);
 
     // sub_space = (uint32_t *)malloc(1 << 30);
     // borrow_space = (uint32_t *)malloc(1 << 30);
@@ -756,19 +717,19 @@ bool check_result(char *result, char *result_gmp, int result_size)
     // check if the two subs lengths are equal
     if (strlen(result) != strlen(result_gmp))
     {
-        printf("The two subs are not equal, lengths are different\n");
-        printf("Length of result = %d, length of result_gmp = %ld\n", result_size, strlen(result_gmp));
-        printf("result = %s\n result_gmp = %s\n", result, result_gmp);
+        // printf("The two subs are not equal, lengths are different\n");
+        // printf("Length of result = %d, length of result_gmp = %ld\n", result_size, strlen(result_gmp));
+        // printf("result = %s\n result_gmp = %s\n", result, result_gmp);
         return false;
     }
     for (int i = 0; i < result_size; i++)
     {
         if (result[i] != result_gmp[i])
         {
-            printf("The two subs are not equal\n");
-            printf("Mismatch at index %d\n", i);
-            printf("result[%d] = %c, result_gmp[%d] = %c\n", i, result[i], i, result_gmp[i]);
-            printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
+            // printf("The two subs are not equal\n");
+            // printf("Mismatch at index %d\n", i);
+            // printf("result[%d] = %c, result_gmp[%d] = %c\n", i, result[i], i, result_gmp[i]);
+            // printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
             return false;
         }
     }
@@ -1078,8 +1039,13 @@ void run_tests()
         // check if the two subs are equal
         if (!check_result(sub_str_test1, sub_gmp_str_test1, sub_size_test1))
         {
+            // printf("Test 1 failed, at iteration %d\n", i);
+            // return;
             printf("Test 1 failed, at iteration %d\n", i);
-            return;
+        }
+        else
+        {
+            printf("Test 1 iteration %d passed\n", i);
         }
         printf("Test 1 iteration %d passed\n", i);
         sleep(0.1);

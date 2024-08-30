@@ -1,0 +1,557 @@
+Global optimization report for : generate_seed
+=================================================================
+
+Global optimization report for : main
+
+LOOP BEGIN at sub_64_aligned.c (561, 5)
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (601, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (623, 5)
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (623, 5)
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (656, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (665, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (633, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (645, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (656, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (665, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (633, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (645, 5)
+    remark #15527: Loop was not vectorized: function call to  cannot be vectorized
+    remark #25436: Loop completely unrolled by 6
+LOOP END
+
+LOOP BEGIN at sub_64_aligned.c (907, 5)
+
+    LOOP BEGIN at sub_64_aligned.c (774, 5)
+
+        LOOP BEGIN at sub_64_aligned.c (783, 9)
+            remark #15344: Loop was not vectorized: vector dependence prevents vectorization
+            remark #15346: vector dependence: assumed FLOW dependence between [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (787, 33) ] and [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (785, 35) ] 
+            remark #15346: vector dependence: assumed FLOW dependence
+            remark #15346: vector dependence: assumed FLOW dependence between [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (787, 33) ] and [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (787, 33) ] 
+            remark #25439: Loop unrolled with remainder by 8
+            remark #25018: Total number of lines prefetched=1
+            remark #25019: Number of spatial prefetches=1, default dist=6
+        LOOP END
+
+        LOOP BEGIN at sub_64_aligned.c (783, 9)
+        <Remainder loop>
+            remark #25018: Total number of lines prefetched=1
+            remark #25019: Number of spatial prefetches=1, default dist=52
+        LOOP END
+
+        LOOP BEGIN at sub_64_aligned.c (794, 9)
+        <Multiversioned v2>
+            remark #15319: Loop was not vectorized: novector directive used
+            remark #25018: Total number of lines prefetched=2
+            remark #25019: Number of spatial prefetches=2, default dist=56
+        LOOP END
+
+        LOOP BEGIN at sub_64_aligned.c (794, 9)
+        <Peeled loop for vectorization>
+            remark #25018: Total number of lines prefetched=2
+            remark #25019: Number of spatial prefetches=2, default dist=56
+        LOOP END
+
+        LOOP BEGIN at sub_64_aligned.c (794, 9)
+        <Multiversioned v1>
+            remark #25228: Loop multiversioned for Data Dependence
+            remark #15300: LOOP WAS VECTORIZED
+            remark #15305: vectorization support: vector length 8
+            remark #25018: Total number of lines prefetched=1
+            remark #25019: Number of spatial prefetches=1, default dist=49
+        LOOP END
+
+        LOOP BEGIN at sub_64_aligned.c (794, 9)
+        <Remainder loop for vectorization>
+            remark #15440: remainder loop was vectorized (masked)
+            remark #15305: vectorization support: vector length 8
+        LOOP END
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Multiversioned v2>
+        remark #15319: Loop was not vectorized: novector directive used
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=70
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Multiversioned v1>
+        remark #25228: Loop multiversioned for Data Dependence
+        remark #15300: LOOP WAS VECTORIZED
+        remark #15305: vectorization support: vector length 16
+        remark #25018: Total number of lines prefetched=1
+        remark #25019: Number of spatial prefetches=1, default dist=64
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Remainder loop for vectorization>
+        remark #15440: remainder loop was vectorized (masked)
+        remark #15305: vectorization support: vector length 16
+        remark #25261: Single iteration loop optimized away
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Remainder loop for vectorization>
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=70
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Multiversioned v2>
+        remark #15319: Loop was not vectorized: novector directive used
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=70
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Multiversioned v1>
+        remark #25228: Loop multiversioned for Data Dependence
+        remark #15300: LOOP WAS VECTORIZED
+        remark #15305: vectorization support: vector length 16
+        remark #25018: Total number of lines prefetched=1
+        remark #25019: Number of spatial prefetches=1, default dist=64
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Remainder loop for vectorization>
+        remark #15440: remainder loop was vectorized (masked)
+        remark #15305: vectorization support: vector length 16
+        remark #25261: Single iteration loop optimized away
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (832, 5)
+    <Remainder loop for vectorization>
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=70
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (346, 5)
+
+        LOOP BEGIN at sub_64_aligned.c (350, 9)
+            remark #25530: Stmt at line 350 sinked after loop using last value computation
+            remark #25530: Stmt at line 350 sinked after loop using last value computation
+            remark #15344: Loop was not vectorized: vector dependence prevents vectorization
+            remark #15346: vector dependence: assumed FLOW dependence between [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (353, 19) ] and [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (352, 18) ] 
+            remark #15346: vector dependence: assumed FLOW dependence between [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (353, 19) ] and [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (353, 19) ] 
+            remark #25018: Total number of lines prefetched=1
+            remark #25019: Number of spatial prefetches=1, default dist=76
+        LOOP END
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (346, 5)
+
+        LOOP BEGIN at sub_64_aligned.c (350, 9)
+            remark #25530: Stmt at line 350 sinked after loop using last value computation
+            remark #25530: Stmt at line 350 sinked after loop using last value computation
+            remark #15344: Loop was not vectorized: vector dependence prevents vectorization
+            remark #15346: vector dependence: assumed FLOW dependence between [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (353, 19) ] and [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (352, 18) ] 
+            remark #15346: vector dependence: assumed FLOW dependence between [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (353, 19) ] and [ /users/lattu/Large-Number-Arithmetic-Operations/subtraction/sub_64_aligned.c (353, 19) ] 
+            remark #25018: Total number of lines prefetched=1
+            remark #25019: Number of spatial prefetches=1, default dist=76
+        LOOP END
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (162, 5)
+        remark #15522: loop was not vectorized: loop control flow is too complex. Try using canonical loop form from OpenMP specification 5.0
+        remark #25439: Loop unrolled with remainder by 2
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (217, 5)
+    <Multiversioned v2>
+        remark #15319: Loop was not vectorized: novector directive used
+        remark #25018: Total number of lines prefetched=4
+        remark #25019: Number of spatial prefetches=4, default dist=30
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (217, 5)
+    <Multiversioned v2>
+        remark #15300: LOOP WAS VECTORIZED
+        remark #15305: vectorization support: vector length 8
+        remark #25018: Total number of lines prefetched=4
+        remark #25019: Number of spatial prefetches=4, default dist=28
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (217, 5)
+    <Remainder loop for vectorization>
+        remark #15440: remainder loop was vectorized (masked)
+        remark #15305: vectorization support: vector length 8
+        remark #25261: Single iteration loop optimized away
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (217, 5)
+    <Multiversioned v1>
+    <Multiversioned v1>
+        remark #25228: Loop multiversioned for Data Dependence
+        remark #25408: memset generated
+        remark #25562: The loop has been multiversioned for the small trip count
+        remark #15300: LOOP WAS VECTORIZED
+        remark #15305: vectorization support: vector length 8
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=38
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (217, 5)
+    <Remainder loop for vectorization>
+        remark #15440: remainder loop was vectorized (masked)
+        remark #15305: vectorization support: vector length 8
+        remark #25261: Single iteration loop optimized away
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (239, 5)
+    <Multiversioned v2>
+        remark #15319: Loop was not vectorized: novector directive used
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=28
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (239, 5)
+        remark #15300: LOOP WAS VECTORIZED
+        remark #15305: vectorization support: vector length 16
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=20
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (239, 5)
+    <Multiversioned v1>
+    <Multiversioned v1>
+        remark #25228: Loop multiversioned for Data Dependence
+        remark #25408: memset generated
+        remark #25562: The loop has been multiversioned for the small trip count
+        remark #15300: LOOP WAS VECTORIZED
+        remark #15305: vectorization support: vector length 8
+        remark #25018: Total number of lines prefetched=2
+        remark #25019: Number of spatial prefetches=2, default dist=35
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (239, 5)
+    <Remainder loop for vectorization>
+        remark #15440: remainder loop was vectorized (masked)
+        remark #15305: vectorization support: vector length 8
+        remark #25261: Single iteration loop optimized away
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (275, 5)
+        remark #15521: Loop was not vectorized: loop control variable was not identified. Explicitly compute the iteration count before executing the loop or try using canonical loop form from OpenMP specification
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (392, 5)
+        remark #15344: Loop was not vectorized: vector dependence prevents vectorization
+        remark #15346: vector dependence: assumed OUTPUT dependence
+        remark #15346: vector dependence: assumed OUTPUT dependence
+        remark #15346: vector dependence: assumed FLOW dependence
+        remark #25439: Loop unrolled with remainder by 8
+        remark #25018: Total number of lines prefetched=1
+        remark #25019: Number of spatial prefetches=1, default dist=4
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (392, 5)
+    <Remainder loop>
+        remark #25018: Total number of lines prefetched=1
+        remark #25019: Number of spatial prefetches=1, default dist=36
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (400, 5)
+        remark #15521: Loop was not vectorized: loop control variable was not identified. Explicitly compute the iteration count before executing the loop or try using canonical loop form from OpenMP specification
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (418, 5)
+        remark #15521: Loop was not vectorized: loop control variable was not identified. Explicitly compute the iteration count before executing the loop or try using canonical loop form from OpenMP specification
+        remark #25478: While loop unrolled by 8
+    LOOP END
+
+    LOOP BEGIN at sub_64_aligned.c (735, 5)
+        remark #15520: loop was not vectorized: loop with multiple exits cannot be vectorized unless it meets search loop idiom criteria
+        remark #25439: Loop unrolled with remainder by 2
+    LOOP END
+LOOP END
+=================================================================
+
+---- Begin Inlining Report ----
+Option Values:
+  inline-threshold: 225
+  inlinehint-threshold: 325
+  inlinecold-threshold: 45
+  inlineoptsize-threshold: 15
+
+DEAD STATIC FUNC: formatResult
+
+DEAD STATIC FUNC: generate_no_borrow_propagation
+
+DEAD STATIC FUNC: initialize_perf
+
+DEAD STATIC FUNC: llvm.ssa.copy.i32
+
+DEAD STATIC FUNC: llvm.ssa.copy.i64
+
+DEAD STATIC FUNC: llvm.ssa.copy.i8
+
+DEAD STATIC FUNC: make_equidistant
+
+DEAD STATIC FUNC: run_tests
+
+COMPILE FUNC: generate_seed
+
+COMPILE FUNC: main
+   -> DELETE: llvm.memset.p0.i64 ld-temp.o (322,5)
+   -> DELETE: llvm.memset.p0.i64 ld-temp.o (323,5)
+   -> INLINE: run_tests ld-temp.o (325,5)
+      -> INLINE: initialize_perf ld-temp.o (852,5)
+         -> DELETE: llvm.memset.p0.i64 ld-temp.o (560,5)
+         -> DELETE: syscall ld-temp.o (123,11)
+         -> llvm.memset.p0.i64 ld-temp.o (560,5)
+      -> DELETE: fprintf ld-temp.o (625,9)
+      -> DELETE: fprintf ld-temp.o (625,9)
+      -> generate_seed ld-temp.o (873,26)
+      -> llvm.memset.p0.i64 ld-temp.o (889,5)
+      -> llvm.memset.p0.i64 ld-temp.o (892,5)
+      -> INLINE: generate_no_borrow_propagation ld-temp.o (915,9)
+         -> generate_seed ld-temp.o (767,16)
+         -> DELETE: rand ld-temp.o (787,17)
+      -> INLINE: make_equidistant ld-temp.o (935,9)
+         -> DELETE: posix_memalign ld-temp.o (448,55)
+         -> DELETE: perror ld-temp.o (451,13)
+         -> DELETE: exit ld-temp.o (452,13)
+         -> DELETE: llvm.memset.p0.i64 ld-temp.o (468,21)
+         -> DELETE: posix_memalign ld-temp.o (473,36)
+         -> DELETE: perror ld-temp.o (476,13)
+         -> DELETE: exit ld-temp.o (477,13)
+         -> DELETE: free ld-temp.o (491,9)
+         -> DELETE: posix_memalign ld-temp.o (497,55)
+         -> DELETE: perror ld-temp.o (500,13)
+         -> DELETE: exit ld-temp.o (501,13)
+         -> DELETE: llvm.memset.p0.i64 ld-temp.o (519,21)
+         -> DELETE: posix_memalign ld-temp.o (523,36)
+         -> DELETE: perror ld-temp.o (526,13)
+         -> DELETE: exit ld-temp.o (527,13)
+         -> DELETE: free ld-temp.o (540,9)
+      -> llvm.memset.p0.i64 ld-temp.o (343,5)
+      -> llvm.memset.p0.i64 ld-temp.o (343,5)
+      -> DELETE: ioctl ld-temp.o (658,9)
+      -> DELETE: ioctl ld-temp.o (659,9)
+      -> llvm.experimental.noalias.scope.decl ld-temp.o (971,9)
+      -> llvm.experimental.noalias.scope.decl ld-temp.o (971,9)
+      -> llvm.umax.i32 ld-temp.o (162,5)
+      -> llvm.memset.p0.i64 ld-temp.o (182,9)
+      -> DELETE: llvm.memmove.p0.p0.i64 ld-temp.o (187,5)
+      -> DELETE: llvm.memset.p0.i64 ld-temp.o (182,9)
+      -> DELETE: ioctl ld-temp.o (667,13)
+      -> DELETE: read ld-temp.o (635,13)
+      -> DELETE: fprintf ld-temp.o (647,9)
+      -> DELETE: ioctl ld-temp.o (658,9)
+      -> DELETE: ioctl ld-temp.o (659,9)
+      -> DELETE: ioctl ld-temp.o (667,13)
+      -> DELETE: read ld-temp.o (635,13)
+      -> DELETE: fprintf ld-temp.o (647,9)
+      -> INLINE: formatResult ld-temp.o (1044,31)
+         -> DELETE: snprintf ld-temp.o (395,9)
+         -> DELETE: strcat ld-temp.o (396,9)
+      -> DELETE: llvm.memset.p0.i64 ld-temp.o (182,9)
+      -> llvm.memmove.p0.p0.i64 ld-temp.o (187,5)
+   -> llvm.memset.p0.i64 ld-temp.o (322,5)
+   -> llvm.memset.p0.i64 ld-temp.o (323,5)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (785,13)
+   -> llvm.prefetch.p0 ld-temp.o (785,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (785,13)
+   -> llvm.prefetch.p0 ld-temp.o (785,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (796,37)
+   -> llvm.prefetch.p0 ld-temp.o (796,37)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (796,13)
+   -> llvm.prefetch.p0 ld-temp.o (796,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (796,37)
+   -> llvm.prefetch.p0 ld-temp.o (796,37)
+   -> DELETE: llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (796,37)
+   -> llvm.prefetch.p0 ld-temp.o (796,37)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (796,13)
+   -> llvm.prefetch.p0 ld-temp.o (796,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,18)
+   -> llvm.prefetch.p0 ld-temp.o (834,18)
+   -> DELETE: llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,18)
+   -> llvm.prefetch.p0 ld-temp.o (834,18)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,9)
+   -> llvm.prefetch.p0 ld-temp.o (834,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,18)
+   -> llvm.prefetch.p0 ld-temp.o (834,18)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,9)
+   -> llvm.prefetch.p0 ld-temp.o (834,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,18)
+   -> llvm.prefetch.p0 ld-temp.o (834,18)
+   -> DELETE: llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,18)
+   -> llvm.prefetch.p0 ld-temp.o (834,18)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,9)
+   -> llvm.prefetch.p0 ld-temp.o (834,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,18)
+   -> llvm.prefetch.p0 ld-temp.o (834,18)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (834,9)
+   -> llvm.prefetch.p0 ld-temp.o (834,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (352,21)
+   -> llvm.prefetch.p0 ld-temp.o (352,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (352,21)
+   -> llvm.prefetch.p0 ld-temp.o (352,21)
+   -> DELETE: llvm.memset.p0.i64 ld-temp.o (229,13)
+   -> llvm.memset.p0.i64 ld-temp.o (229,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,21)
+   -> llvm.prefetch.p0 ld-temp.o (220,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,28)
+   -> llvm.prefetch.p0 ld-temp.o (220,28)
+   -> DELETE: llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> llvm.x86.sse.sfence ld-temp.o (289,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,21)
+   -> llvm.prefetch.p0 ld-temp.o (220,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,28)
+   -> llvm.prefetch.p0 ld-temp.o (220,28)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,9)
+   -> llvm.prefetch.p0 ld-temp.o (220,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (229,13)
+   -> llvm.prefetch.p0 ld-temp.o (229,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,21)
+   -> llvm.prefetch.p0 ld-temp.o (220,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,28)
+   -> llvm.prefetch.p0 ld-temp.o (220,28)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (220,9)
+   -> llvm.prefetch.p0 ld-temp.o (220,9)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (229,13)
+   -> llvm.prefetch.p0 ld-temp.o (229,13)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (241,21)
+   -> llvm.prefetch.p0 ld-temp.o (241,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (241,33)
+   -> llvm.prefetch.p0 ld-temp.o (241,33)
+   -> DELETE: llvm.memset.p0.i64 ld-temp.o (241,33)
+   -> llvm.memset.p0.i64 ld-temp.o (241,33)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (241,21)
+   -> llvm.prefetch.p0 ld-temp.o (241,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (241,33)
+   -> llvm.prefetch.p0 ld-temp.o (241,33)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (241,21)
+   -> llvm.prefetch.p0 ld-temp.o (241,21)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (241,33)
+   -> llvm.prefetch.p0 ld-temp.o (241,33)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (395,53)
+   -> llvm.prefetch.p0 ld-temp.o (395,53)
+   -> DELETE: llvm.prefetch.p0 ld-temp.o (395,53)
+   -> llvm.prefetch.p0 ld-temp.o (395,53)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (561,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (601,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (623,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (623,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (783,42)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (794,42)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (832,29)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (832,29)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (350,56)
+   -> DELETE: llvm.ssa.copy.i32 ld-temp.o (350,51)
+   -> DELETE: llvm.ssa.copy.i32 ld-temp.o (350,56)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (350,56)
+   -> DELETE: llvm.ssa.copy.i32 ld-temp.o (350,51)
+   -> DELETE: llvm.ssa.copy.i32 ld-temp.o (350,56)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (656,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (172,10)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (217,25)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (239,25)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (665,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (633,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (645,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (656,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (665,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (633,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (645,38)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (392,42)
+   -> DELETE: llvm.ssa.copy.i8 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i8 ld-temp.o (418,12)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (421,10)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (422,10)
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o
+   -> DELETE: llvm.ssa.copy.i64 ld-temp.o (735,39)
+   -> DELETE: llvm.smin.i32 ld-temp.o (350,56)
+   -> DELETE: llvm.umin.i32 ld-temp.o (350,56)
+   -> DELETE: llvm.smin.i32 ld-temp.o (350,39)
+   -> DELETE: llvm.umin.i32 ld-temp.o (350,39)
+   -> DELETE: llvm.smin.i32 ld-temp.o (350,56)
+   -> DELETE: llvm.umin.i32 ld-temp.o (350,56)
+   -> DELETE: llvm.smin.i32 ld-temp.o (350,39)
+   -> DELETE: llvm.umin.i32 ld-temp.o (350,39)
+   -> llvm.smin.i32 ld-temp.o (604,13)
+   -> llvm.umin.i32 ld-temp.o (604,13)
+   -> llvm.smin.i32 ld-temp.o (604,13)
+   -> llvm.umin.i32 ld-temp.o (604,13)
+   -> llvm.smax.i64 ld-temp.o (392,5)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (796,37)
+   -> llvm.masked.store.v8i64.p0 ld-temp.o (796,35)
+   -> llvm.masked.load.v16i64.p0 ld-temp.o (834,18)
+   -> llvm.masked.store.v16i8.p0 ld-temp.o (834,16)
+   -> llvm.masked.load.v16i64.p0 ld-temp.o (834,18)
+   -> llvm.masked.store.v16i8.p0 ld-temp.o (834,16)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (220,21)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (220,28)
+   -> llvm.masked.store.v8i64.p0 ld-temp.o (220,19)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (220,21)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (220,28)
+   -> llvm.masked.store.v8i64.p0 ld-temp.o (220,19)
+   -> llvm.masked.store.v8i64.p0 ld-temp.o (229,29)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (241,21)
+   -> llvm.masked.load.v8i64.p0 ld-temp.o (241,33)
+   -> llvm.masked.store.v8i64.p0 ld-temp.o (241,19)
+   -> llvm.masked.load.v16i64.p0 ld-temp.o (241,21)
+   -> llvm.masked.load.v16i64.p0 ld-temp.o (241,33)
+   -> llvm.masked.store.v16i64.p0 ld-temp.o (241,19)
+   -> llvm.masked.store.v16i64.p0 ld-temp.o (249,29)
+
+---- End Inlining Report ------

@@ -1,0 +1,14 @@
+sub_64_aligned.c:397:17: optimized: basic block part vectorized using 16 byte vectors
+sub_64_aligned.c:667:19: optimized: basic block part vectorized using 16 byte vectors
+sub_64_aligned.c:689:17: optimized: basic block part vectorized using 16 byte vectors
+sub_64_aligned.c:784:27: optimized: loop vectorized using 16 byte vectors
+sub_64_aligned.c:784:27: optimized:  loop versioned for vectorization because of possible aliasing
+sub_64_aligned.c:822:23: optimized: loop vectorized using 16 byte vectors
+sub_64_aligned.c:234:19: optimized: loop vectorized using 16 byte vectors
+sub_64_aligned.c:234:19: optimized:  loop versioned for vectorization because of possible aliasing
+sub_64_aligned.c:212:19: optimized: loop vectorized using 16 byte vectors
+sub_64_aligned.c:212:19: optimized:  loop versioned for vectorization because of possible aliasing
+sub_64_aligned.c:822:23: optimized: loop vectorized using 16 byte vectors
+sub_64_aligned.c:822:23: optimized:  loop versioned for vectorization because of possible aliasing
+sub_64_aligned.c:822:23: optimized: loop vectorized using 16 byte vectors
+sub_64_aligned.c:822:23: optimized:  loop versioned for vectorization because of possible aliasing

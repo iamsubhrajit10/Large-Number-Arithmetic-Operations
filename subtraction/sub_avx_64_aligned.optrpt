@@ -1,0 +1,176 @@
+---- Begin Inlining Report ----
+Option Values:
+  inline-threshold: 225
+  inlinehint-threshold: 325
+  inlinecold-threshold: 45
+  inlineoptsize-threshold: 15
+
+DEAD STATIC FUNC: _mm512_add_epi64
+
+DEAD STATIC FUNC: _mm512_load_si512
+
+DEAD STATIC FUNC: _mm512_mask_add_epi64
+
+DEAD STATIC FUNC: _mm512_maskz_set1_epi64
+
+DEAD STATIC FUNC: _mm512_set1_epi64
+
+DEAD STATIC FUNC: _mm512_setzero_si512
+
+DEAD STATIC FUNC: _mm512_store_si512
+
+DEAD STATIC FUNC: _mm512_sub_epi64
+
+DEAD STATIC FUNC: _mm_free
+
+DEAD STATIC FUNC: _mm_malloc
+
+DEAD STATIC FUNC: atoi
+
+DEAD STATIC FUNC: is_less_than
+
+DEAD STATIC FUNC: llvm.experimental.noalias.scope.decl
+
+DEAD STATIC FUNC: measure_rdtsc_start
+
+DEAD STATIC FUNC: measure_rdtscp_end
+
+DEAD STATIC FUNC: sub_n
+
+DEAD STATIC FUNC: warmup_rdtsc
+
+COMPILE FUNC: generate_no_borrow_propagation
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (787,22)
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (786,22)
+   -> generate_seed sub_avx_64_aligned.c (796,16)
+
+COMPILE FUNC: make_equidistant
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (552,36)
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (526,55)
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (502,36)
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (477,55)
+   -> INLINE: _mm_free sub_avx_64_aligned.c (569,9)
+   -> INLINE: _mm_free sub_avx_64_aligned.c (520,9)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (497,21)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (548,21)
+
+COMPILE FUNC: returnLimbs
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (366,33)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (372,5)
+
+COMPILE FUNC: main
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (338,40)
+   -> INLINE: _mm_malloc sub_avx_64_aligned.c (337,37)
+   -> INLINE: _mm512_set1_epi64 sub_avx_64_aligned.c (331,13)
+   -> INLINE: _mm512_set1_epi64 sub_avx_64_aligned.c (330,25)
+   -> INLINE: _mm512_set1_epi64 sub_avx_64_aligned.c (329,19)
+   -> INLINE: atoi sub_avx_64_aligned.c (324,5)
+   -> INLINE: atoi sub_avx_64_aligned.c (326,15)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (351,5)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (352,5)
+   -> run_tests sub_avx_64_aligned.c (354,5)
+
+COMPILE FUNC: open_file
+
+COMPILE FUNC: write_perf
+
+COMPILE FUNC: check_result
+
+COMPILE FUNC: run_tests
+   -> INLINE: check_result sub_avx_64_aligned.c (1079,14)
+   -> INLINE: sub_n sub_avx_64_aligned.c (1000,9)
+      -> INLINE: _mm512_maskz_set1_epi64 sub_avx_64_aligned.c (274,22)
+         -> INLINE: _mm512_setzero_si512 sub_avx_64_aligned.c
+         -> INLINE: _mm512_set1_epi64 sub_avx_64_aligned.c
+      -> INLINE: _mm512_maskz_set1_epi64 sub_avx_64_aligned.c (274,22)
+         -> INLINE: _mm512_setzero_si512 sub_avx_64_aligned.c
+         -> INLINE: _mm512_set1_epi64 sub_avx_64_aligned.c
+      -> INLINE: _mm512_maskz_set1_epi64 sub_avx_64_aligned.c (238,26)
+         -> INLINE: _mm512_setzero_si512 sub_avx_64_aligned.c
+         -> INLINE: _mm512_set1_epi64 sub_avx_64_aligned.c
+      -> INLINE: is_less_than sub_avx_64_aligned.c (201,20)
+      -> INLINE: _mm512_load_si512 sub_avx_64_aligned.c (222,17)
+      -> INLINE: _mm512_load_si512 sub_avx_64_aligned.c (223,17)
+      -> INLINE: _mm512_sub_epi64 sub_avx_64_aligned.c (227,22)
+      -> INLINE: _mm512_mask_add_epi64 sub_avx_64_aligned.c (235,22)
+         -> INLINE: _mm512_add_epi64 sub_avx_64_aligned.c
+      -> INLINE: _mm512_store_si512 sub_avx_64_aligned.c (242,9)
+      -> INLINE: _mm512_store_si512 sub_avx_64_aligned.c (246,9)
+      -> INLINE: left_shift sub_avx_64_aligned.c (250,5)
+         -> llvm.memset.p0.i64 sub_avx_64_aligned.c (182,9)
+         -> llvm.memmove.p0.p0.i64 sub_avx_64_aligned.c (187,5)
+         -> llvm.memset.p0.i64 sub_avx_64_aligned.c (182,9)
+      -> INLINE: _mm512_load_si512 sub_avx_64_aligned.c (259,30)
+      -> INLINE: _mm512_load_si512 sub_avx_64_aligned.c (260,22)
+      -> INLINE: _mm512_sub_epi64 sub_avx_64_aligned.c (262,22)
+      -> INLINE: _mm512_store_si512 sub_avx_64_aligned.c (277,9)
+      -> INLINE: _mm512_store_si512 sub_avx_64_aligned.c (279,9)
+   -> INLINE: warmup_rdtsc sub_avx_64_aligned.c (983,9)
+   -> INLINE: warmup_rdtsc sub_avx_64_aligned.c (1033,9)
+   -> INLINE: measure_rdtsc_start sub_avx_64_aligned.c (997,23)
+   -> INLINE: measure_rdtsc_start sub_avx_64_aligned.c (1046,27)
+   -> INLINE: measure_rdtscp_end sub_avx_64_aligned.c (1002,21)
+   -> INLINE: measure_rdtscp_end sub_avx_64_aligned.c (1051,25)
+   -> initialize_perf sub_avx_64_aligned.c (881,5)
+   -> INLINE: open_file sub_avx_64_aligned.c (891,18)
+   -> INLINE: open_file sub_avx_64_aligned.c (892,22)
+   -> generate_seed sub_avx_64_aligned.c (902,26)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (918,5)
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (921,5)
+   -> generate_no_borrow_propagation sub_avx_64_aligned.c (944,9)
+   -> INLINE: convert_digits_to_string sub_avx_64_aligned.c (960,30)
+   -> INLINE: convert_digits_to_string sub_avx_64_aligned.c (961,30)
+   -> make_equidistant sub_avx_64_aligned.c (964,9)
+   -> INLINE: returnLimbs sub_avx_64_aligned.c (971,39)
+      -> INLINE: _mm_malloc sub_avx_64_aligned.c (366,33)
+      -> llvm.memset.p0.i64 sub_avx_64_aligned.c (372,5)
+   -> INLINE: returnLimbs sub_avx_64_aligned.c (973,39)
+      -> INLINE: _mm_malloc sub_avx_64_aligned.c (366,33)
+      -> llvm.memset.p0.i64 sub_avx_64_aligned.c (372,5)
+   -> INLINE: start_perf sub_avx_64_aligned.c (993,9)
+   -> DELETE: llvm.experimental.noalias.scope.decl sub_avx_64_aligned.c (1000,9)
+   -> DELETE: llvm.experimental.noalias.scope.decl sub_avx_64_aligned.c (1000,9)
+   -> DELETE: llvm.experimental.noalias.scope.decl sub_avx_64_aligned.c (1000,9)
+   -> INLINE: stop_perf sub_avx_64_aligned.c (1008,9)
+   -> INLINE: read_perf sub_avx_64_aligned.c (1011,9)
+   -> INLINE: write_perf sub_avx_64_aligned.c (1020,9)
+   -> INLINE: start_perf sub_avx_64_aligned.c (1043,9)
+   -> INLINE: stop_perf sub_avx_64_aligned.c (1056,9)
+   -> INLINE: read_perf sub_avx_64_aligned.c (1059,9)
+   -> INLINE: write_perf sub_avx_64_aligned.c (1068,9)
+   -> formatResult sub_avx_64_aligned.c (1073,31)
+   -> llvm.umax.i32 sub_avx_64_aligned.c (162,5)
+
+COMPILE FUNC: left_shift
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (182,9)
+   -> llvm.memmove.p0.p0.i64 sub_avx_64_aligned.c (187,5)
+
+COMPILE FUNC: perf_event_open
+
+COMPILE FUNC: generate_seed
+
+COMPILE FUNC: initialize_perf
+   -> llvm.memset.p0.i64 sub_avx_64_aligned.c (589,5)
+   -> INLINE: perf_event_open sub_avx_64_aligned.c (632,17)
+
+COMPILE FUNC: convert_digits_to_string
+
+COMPILE FUNC: start_perf
+
+COMPILE FUNC: stop_perf
+
+COMPILE FUNC: read_perf
+
+COMPILE FUNC: formatResult
+
+COMPILE FUNC: start_timespec
+
+COMPILE FUNC: stop_timespec
+
+COMPILE FUNC: calculate_time
+
+COMPILE FUNC: open_time_file
+
+COMPILE FUNC: write_time
+
+---- End Inlining Report ------
