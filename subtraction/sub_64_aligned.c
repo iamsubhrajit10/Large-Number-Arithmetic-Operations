@@ -32,9 +32,9 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <x86intrin.h>
 #include <linux/sched.h>
 
-#define MAX_EVENTS 6      // Number of events to monitor
-#define LIMB_SIZE 19      // Number of digits in each limb
-#define ITERATIONS 100000 // Number of iterations for each test
+#define MAX_EVENTS 6    // Number of events to monitor
+#define LIMB_SIZE 19    // Number of digits in each limb
+#define ITERATIONS 1000 // Number of iterations for each test
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -211,10 +211,9 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
 
     for (i = 0; i < n; i++)
     {
-
         result[i] = a[i] - b[i];
 
-        if (result[i] < 0)
+        if ((int64_t)result[i] < 0)
         {
             result[i] = result[i] + LIMB_DIGITS;
             borrow_array[i] = 1;
@@ -234,7 +233,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
     for (i = 0; i < n; i++)
     {
         result[i] = result[i] - borrow_array[i];
-        if (result[i] < 0)
+        if ((int64_t)result[i] < 0)
         {
             last_borrow_block = i;
             borrow_array[i] = 1;
@@ -267,7 +266,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
         }
     }
     i = 0;
-    while (result[i] <= 0)
+    while ((int64_t)result[i] == 0 && i < n)
     {
         i++;
     }
@@ -351,6 +350,15 @@ uint64_t *returnLimbs(uint64_t *number, int *length)
 
 char *formatResult(uint64_t *result, int *result_length)
 {
+    if (*result_length == 0)
+    {
+        printf("Result length is 0\n");
+        char *temp = (char *)calloc(2, sizeof(char));
+        temp[0] = '0';
+        temp[1] = '\0';
+        *result_length = 1;
+        return temp;
+    }
     char *result_str = (char *)calloc(*result_length * 25 + 1, sizeof(char)); // 25 digits + null terminator per number
     if (result_str == NULL)
     {
@@ -845,10 +853,10 @@ void run_tests()
     char time_filename[256];
     char time_filename_gmp[256];
 
-    snprintf(filename, sizeof(filename), "experiments/sub_limb_avx_%d_%d.csv", NUM_BITS, CORE_NO);
-    snprintf(filename_gmp, sizeof(filename_gmp), "experiments/GMP_%d_%d.csv", NUM_BITS, CORE_NO);
-    snprintf(time_filename, sizeof(time_filename), "experiments/my_time_%d_%d.csv", NUM_BITS, CORE_NO);
-    snprintf(time_filename_gmp, sizeof(time_filename_gmp), "experiments/gmp_time_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(filename, sizeof(filename), "experiments/sub_64_aligned_mavx512f_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(filename_gmp, sizeof(filename_gmp), "experiments/GMP_sub_64_aligned_mavx512f%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(time_filename, sizeof(time_filename), "experiments/sub_64_aligned_mavx512f_my_time_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(time_filename_gmp, sizeof(time_filename_gmp), "experiments/sub_64_mavx512f_nonO3_gmp_time_%d_%d.csv", NUM_BITS, CORE_NO);
     FILE *file = open_file(filename);
     FILE *file_gmp = open_file(filename_gmp);
     FILE *time_file = fopen(time_filename, "w");
@@ -903,20 +911,6 @@ void run_tests()
 
         // auto generate the numbers
         generate_no_borrow_propagation(&a1_test1, &b1_test1, n);
-
-        // printf("a1_test1 = ");
-        // for (int i = 0; i < n; i++)
-        // {
-        //     printf("%ld", a1_test1[i]);
-        // }
-        // printf("\n");
-
-        // printf("b1_test1 = ");
-        // for (int i = 0; i < n; i++)
-        // {
-        //     printf("%ld", b1_test1[i]);
-        // }
-        // printf("\n");
 
         char *a1_str_test1 = convert_digits_to_string(a1_test1, n);
         char *b1_str_test1 = convert_digits_to_string(b1_test1, n);
@@ -1039,9 +1033,12 @@ void run_tests()
         // check if the two subs are equal
         if (!check_result(sub_str_test1, sub_gmp_str_test1, sub_size_test1))
         {
-            // printf("Test 1 failed, at iteration %d\n", i);
-            // return;
             printf("Test 1 failed, at iteration %d\n", i);
+            printf("a1_str_test1 = %s\n", a1_str_test1);
+            printf("b1_str_test1 = %s\n", b1_str_test1);
+            printf("sub_str_test1 = %s\n", sub_str_test1);
+            printf("sub_gmp_str_test1 = %s\n", sub_gmp_str_test1);
+            return;
         }
         else
         {
@@ -1052,5 +1049,6 @@ void run_tests()
     }
     printf("Test 1 completed\n");
     printf("rdtsc for test 1 = %llu, rdtsc for test 1 gmp = %llu\n", test1_rdtsc, test1_rdtsc_gmp);
-    printf("RDTSC Speedup: %f\n", (double)test1_rdtsc_gmp / test1_rdtsc);
+    double speedup = (double)test1_rdtsc_gmp / test1_rdtsc;
+    printf("RDTSC Speedup: %f\n", speedup);
 }
