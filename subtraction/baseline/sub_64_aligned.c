@@ -1,3 +1,4 @@
+/* This is the baseline version, without explicit SIMD */
 /*
 This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
@@ -31,10 +32,13 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <linux/kernel.h>
 #include <x86intrin.h>
 #include <linux/sched.h>
+#include <zlib.h>
+#include <sys/stat.h>
 
-#define MAX_EVENTS 6    // Number of events to monitor
-#define LIMB_SIZE 19    // Number of digits in each limb
-#define ITERATIONS 1000 // Number of iterations for each test
+#define MAX_EVENTS 6      // Number of events to monitor
+#define LIMB_SIZE 19      // Number of digits in each limb
+#define ITERATIONS 100000 // Number of iterations for each test
+#define CHUNK 16384       // Chunk size for reading the file
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -169,7 +173,7 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
 }
 
 // Function to left shift the borrow array by 1
-void left_shift(uint64_t *borrow_array, int n)
+void logical_left_shift_by_one(uint64_t *borrow_array, int n)
 {
     // Check if the array is not empty
     if (n <= 1)
@@ -225,7 +229,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
     }
 
     // left shift the borrow array by 1
-    left_shift(borrow_array, n);
+    logical_left_shift_by_one(borrow_array, n);
 
     int last_borrow_block = -1;
     __builtin_assume_aligned(borrow_array, 64);
@@ -607,25 +611,6 @@ void initialize_perf()
     }
 }
 
-FILE *open_file(char *filename)
-{
-    FILE *file = fopen(filename, "w");
-
-    if (file == NULL)
-    {
-        perror("Error opening file for writing \n");
-        exit(EXIT_FAILURE);
-    }
-
-    // Write the header to the CSV file
-    for (int j = 0; j < MAX_EVENTS; j++)
-    {
-        fprintf(file, "%s,", event_names[j]);
-    }
-    fprintf(file, "\n");
-    return file;
-}
-
 void read_perf(long long values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
@@ -638,15 +623,13 @@ void read_perf(long long values[])
     }
 }
 
-void write_perf(FILE *file, long long values[])
+void write_perf(gzFile file, long long values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        fprintf(file, "%llu,", values[j]);
+        gzprintf(file, "%llu,", values[j]);
     }
-    fprintf(file, "\n");
-    // close the file
-    // fclose(file);
+    gzprintf(file, "\n");
 }
 
 void start_perf()
@@ -670,56 +653,7 @@ void stop_perf()
     }
 }
 
-void start_timespec(struct timespec *start)
-{
-    start->tv_sec = 0;
-    start->tv_nsec = 0;
-    if (clock_gettime(CLOCK_MONOTONIC_RAW, start) == -1)
-    {
-        perror("Error getting start time");
-        exit(EXIT_FAILURE);
-    }
-}
-
-// // function to get time of the day
-// void get_time(struct timeval *start)
-// {
-//     if (gettimeofday(start, NULL) == -1)
-//     {
-//         perror("Error getting start time");
-//         exit(EXIT_FAILURE);
-//     }
-// }
-
-void stop_timespec(struct timespec *end)
-{
-    // initialize the end time
-    end->tv_sec = 0;
-    end->tv_nsec = 0;
-    if (clock_gettime(CLOCK_MONOTONIC_RAW, end) == -1)
-    {
-        perror("Error getting end time");
-        exit(EXIT_FAILURE);
-    }
-}
-
-double calculate_time(struct timespec start, struct timespec end)
-{
-    // Calculate the difference in seconds and nanoseconds
-    long long seconds = end.tv_sec - start.tv_sec;
-    long long nanoseconds = end.tv_nsec - start.tv_nsec;
-
-    // Adjust seconds and nanoseconds if nanoseconds is negative
-    if (nanoseconds < 0)
-    {
-        seconds--;
-        nanoseconds += 1000000000; // 1 second in nanoseconds
-    }
-
-    // Convert to nanoseconds
-    return (seconds * 1000000000LL) + nanoseconds;
-}
-
+// Function to check if the result of the subtraction is correct
 bool check_result(char *result, char *result_gmp, int result_size)
 {
     // check if the two subs lengths are equal
@@ -744,145 +678,79 @@ bool check_result(char *result, char *result_gmp, int result_size)
     return true;
 }
 
-// each 9 group of digits of a1_test1 will have the below property for no borrow-propagation
-// each group of digits of a1_test1 will start with higher digit, then slowly decrease to lower digit, non-increasing order
-// each group of digits of b1_test1 will just be the reverse of a1_test1 for no borrow-propagation
-
-// void generate_no_borrow_propagation(uint32_t **a, uint32_t **b, int n)
-void generate_no_borrow_propagation(uint64_t **a, uint64_t **b, int n)
+uint64_t *convert_string_to_digits(char *str, int *n)
 {
-    // Allocate memory for arrays a and b
-    *a = (uint64_t *)_mm_malloc(n * sizeof(uint64_t), 64);
-    *b = (uint64_t *)_mm_malloc(n * sizeof(uint64_t), 64);
-
-    if (*a == NULL || *b == NULL)
+    int len = strlen(str);
+    *n = len;
+    uint64_t *digits = (uint64_t *)_mm_malloc(len * sizeof(uint64_t), 64);
+    if (digits == NULL)
     {
-        perror("Memory allocation failed for a or b\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // Seed the random number generator
-    int seed = generate_seed();
-    srand(seed);
-
-    // Fill the arrays from the least significant end
-    // assume the alignment of the pointers
-    __builtin_assume_aligned(*a, 64);
-    __builtin_assume_aligned(*b, 64);
-    for (int i = n - 1; i >= 0;)
-    {
-        // Determine the size of the current group
-        int group_size = (i >= 8) ? 9 : (i + 1);
-        int start_index = i - group_size + 1;
-
-        // Generate the group for array a in non-increasing order
-        // uint32_t start_value = rand() % 10;
-        uint64_t start_value = rand() % 10;
-        for (int j = 0; j < group_size; j++)
-        {
-            (*a)[start_index + j] = start_value;
-            // Randomly decide if the next digit should be the same or smaller
-            if (rand() % 2 == 0 && start_value > 0)
-            {
-                start_value--;
-            }
-        }
-
-        // Generate the group for array b as the reverse of array a
-        for (int j = 0; j < group_size; j++)
-        {
-            (*b)[start_index + j] = (*a)[start_index + group_size - 1 - j];
-        }
-
-        i -= group_size;
-    }
-}
-
-void open_time_file(char *filename, FILE **file)
-{
-    *file = fopen(filename, "w");
-
-    if (*file == NULL)
-    {
-        perror("Error opening file for writing \n");
-        exit(EXIT_FAILURE);
-    }
-
-    // Write the header to the CSV file
-    // Time, RDTSC
-    fprintf(*file, "Time, RDTSC\n");
-}
-
-void write_time(FILE *file, double time, unsigned long long rdtsc)
-{
-    fprintf(file, "%lf, %llu\n", time, rdtsc);
-}
-
-// This function will convert single digits array into a string
-char *convert_digits_to_string(uint64_t *digits, int n)
-{
-    char *str = (char *)calloc(n + 1, sizeof(char));
-    if (str == NULL)
-    {
-        perror("Memory allocation failed for str\n");
+        perror("Memory allocation failed for digits\n");
         exit(0);
     }
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < len; i++)
     {
-        str[i] = digits[i] + '0';
+        digits[i] = str[i] - '0';
     }
-    str[n] = '\0';
-    return str;
+    return digits;
 }
 
-/*
- * Function to run tests
- * Tests the sub function with different inputs
- * Basically, there are 4 types of tests:
- * 1. No Borrow-Propagation (Best-case)
- * 2. Full Borrow-Propagation (Worst-case)
- * 3. n/2 Borrow-Propagation (Average-case)
- * 4. Random Borrow-Propagation (Random-case)
- */
+// Function to create a directory
+void create_directory(const char *path)
+{
+    if (mkdir(path, 0777) && errno != EEXIST)
+    {
+        fprintf(stderr, "Error creating directory %s: %s\n", path, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Function to open a gzip file and handle errors
+gzFile open_gzfile(const char *filename, const char *mode)
+{
+    gzFile file = gzopen(filename, mode);
+    if (file == NULL)
+    {
+        fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    return file;
+}
+
+void skip_first_line(gzFile file)
+{
+    char buffer[CHUNK];
+    if (gzgets(file, buffer, sizeof(buffer)) == NULL)
+    {
+        perror("Error reading header line");
+        gzclose(file);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void write_rdtsc(gzFile file, unsigned long long rdtsc)
+{
+    gzprintf(file, "%llu\n", rdtsc);
+}
 
 void run_tests()
 {
-    initialize_perf();
-    char filename[256];
-    char filename_gmp[256];
-    char time_filename[256];
-    char time_filename_gmp[256];
+    // read the test cases from the file
+    // path: ../test/cases/<num_bits>/<test_case>.csv.gz
+    // there are four test cases: random.csv.gz, equal.csv.gz, greater.csv.gz, smaller.csv.gz
+    // first line contains a header: a, b, result
+    // next line onwards contains the test cases, 1000000 test cases
+    // verify the results of the subtraction of a and b with the result
 
-    snprintf(filename, sizeof(filename), "experiments/sub_64_aligned_mavx512f_%d_%d.csv", NUM_BITS, CORE_NO);
-    snprintf(filename_gmp, sizeof(filename_gmp), "experiments/GMP_sub_64_aligned_mavx512f%d_%d.csv", NUM_BITS, CORE_NO);
-    snprintf(time_filename, sizeof(time_filename), "experiments/sub_64_aligned_mavx512f_my_time_%d_%d.csv", NUM_BITS, CORE_NO);
-    snprintf(time_filename_gmp, sizeof(time_filename_gmp), "experiments/sub_64_mavx512f_nonO3_gmp_time_%d_%d.csv", NUM_BITS, CORE_NO);
-    FILE *file = open_file(filename);
-    FILE *file_gmp = open_file(filename_gmp);
-    FILE *time_file = fopen(time_filename, "w");
-    FILE *time_file_gmp = fopen(time_filename_gmp, "w");
+    // Create directories for the results
+    create_directory("experiments/results");
+    create_directory("experiments/perf_data");
+    create_directory("experiments/rdtsc_data");
 
+    unsigned long long start_rdtsc, end_rdtsc;
+    unsigned long long total_rdtsc = 0;
+    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
     long long values[MAX_EVENTS];
-
-    // By using GMP, we can generate random numbers to get the length of the numbers according to the number of bits
-    mpz_t sample_num;
-    mpz_init(sample_num);
-    gmp_randstate_t state;
-    unsigned long seed = generate_seed();
-    gmp_randinit_default(state);
-    gmp_randseed_ui(state, seed);
-    mpz_urandomb(sample_num, state, NUM_BITS);
-    char *sample_num_str = mpz_get_str(NULL, 10, sample_num);
-    int n = strlen(sample_num_str);
-
-    int sub_size;
-    // uint32_t *sub;
-    aligned_uint64_ptr sub;
-
-    printf("Number of bits = %d\n", NUM_BITS);
-    printf("Number of digits = %d\n", n);
-
-    printf("Running tests\n");
 
     memset(sub_space, 0, (1 << 30));
     sub_space_ptr = 0;
@@ -890,165 +758,136 @@ void run_tests()
     memset(borrow_space, 0, (1 << 30));
     borrow_space_ptr = 0;
 
-    printf("Test 1: No Borrow-Propagation\n");
-    double test1_time = 0;
-    double test1_gmp_time = 0;
+    // open the perf events
+    initialize_perf();
 
-    unsigned long long start_rdtsc, end_rdtsc;
-    unsigned long long start_rdtsc_gmp, end_rdtsc_gmp;
-    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
-    unsigned long flags;
-    uint64_t start, end;
+    // testcase: random.txt
+    // Open the file for writing the perf experiment data
+    char perf_filename_random[100];
+    snprintf(perf_filename_random, sizeof(perf_filename_random), "experiments/perf_data/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile perf_file_random = open_gzfile(perf_filename_random, "wb");
 
-    unsigned long long test1_rdtsc = 0, test1_rdtsc_gmp = 0;
-    printf("Running test 1, with %d iterations\n", ITERATIONS);
+    // open file to write the rdtsc values
+    char rdtsc_filename_random[100];
+    snprintf(rdtsc_filename_random, sizeof(rdtsc_filename_random), "experiments/rdtsc_data/random_%d_%d.csv", NUM_BITS, CORE_NO);
+    gzFile rdtsc_file_random = open_gzfile(rdtsc_filename_random, "wb");
+
+    char test_case[100];
+    snprintf(test_case, sizeof(test_case), "../test/cases/%d/random.csv.gz", NUM_BITS);
+    gzFile random_file = open_gzfile(test_case, "rb");
+
+    // skip the first line, header
+    skip_first_line(random_file);
+
+    // Read ITERATIONS test cases
+    char buffer[CHUNK];
     for (int i = 0; i < ITERATIONS; i++)
     {
-        // Test 1: No Borrow-Propagation,  remember, numbers will grouped into 9 digits
-        aligned_uint64_ptr a1_test1, b1_test1;
+        // Read the next line
+        if (gzgets(random_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(random_file))
+            {
+                break; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(random_file);
+                exit(EXIT_FAILURE);
+            }
+        }
 
-        // intialize a1_test1 and b1_test1 with no borrow-propagation case
+        // Extract a, b, result from the line
+        char *a_str = strtok(buffer, ",");
+        char *b_str = strtok(NULL, ",");
+        char *result_str = strtok(NULL, ",");
+        if (a_str == NULL || b_str == NULL || result_str == NULL)
+        {
+            fprintf(stderr, "Error parsing line: %s\n", buffer);
+            gzclose(random_file);
+            exit(EXIT_FAILURE);
+        }
 
-        // auto generate the numbers
-        generate_no_borrow_propagation(&a1_test1, &b1_test1, n);
+        int n_1 = strlen(a_str);
+        int n_2 = strlen(b_str);
 
-        char *a1_str_test1 = convert_digits_to_string(a1_test1, n);
-        char *b1_str_test1 = convert_digits_to_string(b1_test1, n);
+        // convert a and b into digits
+        uint64_t *a = convert_string_to_digits(a_str, &n_1);
+        uint64_t *b = convert_string_to_digits(b_str, &n_2);
 
-        // Make the two numbers equidistant
-        make_equidistant(&a1_test1, &b1_test1, &n, &n);
+        // convert a and b into limbs using returnLimbs
+        aligned_uint64_ptr a_limbs = returnLimbs(a, &n_1);
+        aligned_uint64_ptr b_limbs = returnLimbs(b, &n_2);
+        // make a and b equidistant
 
-        // format the numbers into limbs
-        int n_limb = n;
-        int m_limb = n;
+        make_equidistant(&a_limbs, &b_limbs, &n_1, &n_2);
 
-        // uint32_t *a1_limbs = returnLimbs(a1_test1, &n_limb);
-        aligned_uint64_ptr a1_limbs = returnLimbs(a1_test1, &n_limb);
-        // uint32_t *b1_limbs = returnLimbs(b1_test1, &m_limb);
-        aligned_uint64_ptr b1_limbs = returnLimbs(b1_test1, &m_limb);
+        int n_limb = n_1;
+
+        __builtin_assume_aligned(a_limbs, 64);
+        __builtin_assume_aligned(b_limbs, 64);
 
         // allocate from scratch space
-        // uint32_t *sub_test1 = sub_space + sub_space_ptr;
-        aligned_uint64_ptr sub_test1 = sub_space + sub_space_ptr;
-        int sub_size_test1 = n_limb;
+        aligned_uint64_ptr sub = sub_space + sub_space_ptr;
+        int sub_size = n_limb;
         sub_space_ptr += (n_limb + 31) & ~31;
         borrow_space_ptr += (n_limb + 31) & ~31;
 
-        // warmup for rdtsc
-        warmup_rdtsc();
+        __builtin_assume_aligned(a_limbs, 64);
+        __builtin_assume_aligned(b_limbs, 64);
+        aligned_uint64_ptr result;
 
-        // // Disable preemption
-        // preempt_disable();
-
-        // // Disable hardware interrupts
-        // raw_local_irq_save(flags); /*we disable hard interrupts on our CPU*/
-        /*at this stage we exclusively own the CPU*/
-
-        // Start the perf events
+        // start the perf events
         start_perf();
 
-        // preempt_disable();
-        // raw_local_irq_save(flags);
+        // warm up the rdtsc
+        warmup_rdtsc();
+
+        // measure the start rdtsc
         start_rdtsc = measure_rdtsc_start();
 
-        // Run the sub function
-        sub_n(a1_limbs, b1_limbs, &sub_test1, n_limb, &sub_size_test1);
+        sub_n(a_limbs, b_limbs, &sub, n_limb, &sub_size);
 
+        // measure the end rdtsc
         end_rdtsc = measure_rdtscp_end();
 
-        // raw_local_irq_restore(flags);
-        // preempt_enable();
-
-        // Stop the perf events
+        // stop the perf events
         stop_perf();
 
-        // read the perf events
+        // read the values of the perf events
         read_perf(values);
 
         if (end_rdtsc < start_rdtsc)
         {
-            perror("Error in rdtsc\n");
+            perror("Error: RDTSC end time is less than start time\n");
             exit(EXIT_FAILURE);
         }
+        // write the rdtsc values to the file
+        write_rdtsc(rdtsc_file_random, end_rdtsc - start_rdtsc);
 
-        // Write the perf events to the file
-        write_perf(file, values);
+        total_rdtsc += (end_rdtsc - start_rdtsc);
 
-        test1_rdtsc += (end_rdtsc - start_rdtsc);
+        // write the perf events to the file
+        write_perf(perf_file_random, values);
 
-        // Use GMP to sub the two numbers
-        mpz_t a1_test1_gmp, b1_test1_gmp, sub_gmp_test1;
-        mpz_init(a1_test1_gmp);
-        mpz_init(b1_test1_gmp);
-        mpz_init(sub_gmp_test1);
-        mpz_set_str(a1_test1_gmp, a1_str_test1, 10);
-        mpz_set_str(b1_test1_gmp, b1_str_test1, 10);
+        // convert the result into a string
+        char *sub_str = formatResult(sub, &sub_size);
 
-        // warmup for rdtsc
-        warmup_rdtsc();
-
-        // // Disable preemption
-        // preempt_disable();
-
-        // // Disable hardware interrupts
-        // raw_local_irq_save(flags); /*we disable hard interrupts on our CPU*/
-        /*at this stage we exclusively own the CPU*/
-
-        // Start the perf events
-        start_perf();
-
-        // measure rdtsc
-        start_rdtsc_gmp = measure_rdtsc_start();
-
-        // Run the sub function
-        mpz_sub(sub_gmp_test1, a1_test1_gmp, b1_test1_gmp);
-
-        end_rdtsc_gmp = measure_rdtscp_end();
-        // raw_local_irq_restore(flags);
-        // preempt_enable();
-
-        // Stop the perf events
-        stop_perf();
-
-        // read the perf events
-        read_perf(values);
-
-        if (end_rdtsc_gmp < start_rdtsc_gmp)
+        // verify the converted string with result
+        if (!check_result(sub_str, result_str, sub_size))
         {
-            perror("Error in rdtsc\n");
+            printf("Test case failed\n");
+            printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
+            printf("Subtraction result = %s\n", sub_str);
             exit(EXIT_FAILURE);
         }
-
-        // Write the perf events to the file
-        write_perf(file_gmp, values);
-
-        test1_rdtsc_gmp += (end_rdtsc_gmp - start_rdtsc_gmp);
-
-        // convert sub's output sub into a string
-        char *sub_str_test1 = formatResult(sub_test1, &sub_size_test1);
-
-        // convert gmp's output sub into a string
-        char *sub_gmp_str_test1 = mpz_get_str(NULL, 10, sub_gmp_test1);
-
-        // check if the two subs are equal
-        if (!check_result(sub_str_test1, sub_gmp_str_test1, sub_size_test1))
-        {
-            printf("Test 1 failed, at iteration %d\n", i);
-            printf("a1_str_test1 = %s\n", a1_str_test1);
-            printf("b1_str_test1 = %s\n", b1_str_test1);
-            printf("sub_str_test1 = %s\n", sub_str_test1);
-            printf("sub_gmp_str_test1 = %s\n", sub_gmp_str_test1);
-            return;
-        }
-        else
-        {
-            printf("Test 1 iteration %d passed\n", i);
-        }
-        printf("Test 1 iteration %d passed\n", i);
-        sleep(0.1);
     }
-    printf("Test 1 completed\n");
-    printf("rdtsc for test 1 = %llu, rdtsc for test 1 gmp = %llu\n", test1_rdtsc, test1_rdtsc_gmp);
-    double speedup = (double)test1_rdtsc_gmp / test1_rdtsc;
-    printf("RDTSC Speedup: %f\n", speedup);
+    printf("Random test cases passed\n");
+    printf("Total RDTSC cycles: %llu\n", total_rdtsc);
+    gzclose(perf_file_random);
+    gzclose(rdtsc_file_random);
+    gzclose(random_file);
+    _mm_free(sub_space);
+    _mm_free(borrow_space);
 }
