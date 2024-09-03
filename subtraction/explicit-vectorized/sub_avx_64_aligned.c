@@ -32,9 +32,9 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <x86intrin.h>
 #include <linux/sched.h>
 
-#define MAX_EVENTS 6      // Number of events to monitor
-#define LIMB_SIZE 19      // Number of digits in each limb
-#define ITERATIONS 100000 // Number of iterations for each test
+#define MAX_EVENTS 6    // Number of events to monitor
+#define LIMB_SIZE 19    // Number of digits in each limb
+#define ITERATIONS 1000 // Number of iterations for each test
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
