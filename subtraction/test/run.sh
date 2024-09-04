@@ -8,5 +8,5 @@ done
 
 # Step 2: Loop through each bit-size and run the Python script
 for bit_size in "${bit_sizes[@]}"; do
-    python3 gen_testcases.py $bit_size 1000 -1
+    python3 gen_testcases.py $bit_size 100000 -1
 done

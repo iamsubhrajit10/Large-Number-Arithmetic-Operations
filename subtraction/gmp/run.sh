@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Step 1: Compile the C file
-gcc sub_64_aligned.c -o sub -lm -lgmp -lz -O3 -funroll-all-loops -ffast-math
+gcc gmp_sub.c -o sub -lm -lgmp -lz -O3 -funroll-all-loops -ffast-math
 
 # Step 2: Create the directory for logs if it doesn't exist
 mkdir -p experiments/console_logs

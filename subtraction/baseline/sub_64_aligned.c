@@ -34,11 +34,13 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <linux/sched.h>
 #include <zlib.h>
 #include <sys/stat.h>
+#include <libgen.h>
+#include <ctype.h>
 
 #define MAX_EVENTS 6      // Number of events to monitor
-#define LIMB_SIZE 19      // Number of digits in each limb
+#define LIMB_SIZE 18      // Number of digits in each limb
 #define ITERATIONS 100000 // Number of iterations for each test
-#define CHUNK 16384       // Chunk size for reading the file
+#define CHUNK 65536       // Chunk size for reading the file
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -53,7 +55,7 @@ aligned_uint64_ptr borrow_space;
 int sub_space_ptr = 0;    // pointer to the next available space in sub_space
 int borrow_space_ptr = 0; // pointer to the next available space in borrow_space
 
-aligned_uint64 LIMB_DIGITS = 10000000000000000000ULL; // 10^19, used for borrow-propagation, as we're using 64-bit integers
+aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^19, used for borrow-propagation, as we're using 64-bit integers
 
 int CORE_NO; // Core number to run the tests on
 
@@ -192,6 +194,7 @@ void logical_left_shift_by_one(uint64_t *borrow_array, int n)
 /* To be modified for 64 Bytes Alignment */
 inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restrict result_ptr, int n, int *result_size)
 {
+
     __builtin_assume_aligned(a, 64);
     __builtin_assume_aligned(b, 64);
 
@@ -217,7 +220,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
     {
         result[i] = a[i] - b[i];
 
-        if ((int64_t)result[i] < 0)
+        if (result[i] > a[i])
         {
             result[i] = result[i] + LIMB_DIGITS;
             borrow_array[i] = 1;
@@ -229,15 +232,18 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
     }
 
     // left shift the borrow array by 1
-    logical_left_shift_by_one(borrow_array, n);
+    // logical_left_shift_by_one(borrow_array, n);
+    borrow_array = borrow_array + 1;
+    borrow_array[n - 1] = 0;
 
     int last_borrow_block = -1;
     __builtin_assume_aligned(borrow_array, 64);
 
     for (i = 0; i < n; i++)
     {
-        result[i] = result[i] - borrow_array[i];
-        if ((int64_t)result[i] < 0)
+        uint64_t temp = result[i];
+        result[i] = temp - borrow_array[i];
+        if (result[i] > temp)
         {
             last_borrow_block = i;
             borrow_array[i] = 1;
@@ -250,7 +256,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
 
     if (unlikely(last_borrow_block != -1))
     {
-
+        printf("Last Borrow Block: %d\n", last_borrow_block);
         i = (last_borrow_block + 15);
         i = (i > n - 1) ? (n - 1) : i;
 
@@ -269,6 +275,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
             }
         }
     }
+
     i = 0;
     while ((int64_t)result[i] == 0 && i < n)
     {
@@ -356,7 +363,6 @@ char *formatResult(uint64_t *result, int *result_length)
 {
     if (*result_length == 0)
     {
-        printf("Result length is 0\n");
         char *temp = (char *)calloc(2, sizeof(char));
         temp[0] = '0';
         temp[1] = '\0';
@@ -371,11 +377,17 @@ char *formatResult(uint64_t *result, int *result_length)
     }
     int i = 0;
     // Handle the first element separately (without leading zeros)
-    sprintf(result_str, "%" PRIu64, result[0]);
-    // check if the first element is negative and it has sucessive zeros after the sign
-    if (result[0] < 0)
+    if (result[0] > LIMB_DIGITS)
     {
-        printf("Result[0]: %" PRIu64 "\n", result[0]);
+        sprintf(result_str, "%" PRId64, (int64_t)result[0]); // Print as signed
+    }
+    else
+    {
+        sprintf(result_str, "%" PRIu64, result[0]); // Print as unsigned
+    }
+    // check if the first element is negative and it has sucessive zeros after the sign
+    if (result[0] > LIMB_DIGITS)
+    {
         i = 1;
         while (result_str[i] == '0')
         {
@@ -394,7 +406,7 @@ char *formatResult(uint64_t *result, int *result_length)
     for (int i = 1; i < *result_length; i++)
     {
         char temp[25];
-        snprintf(temp, sizeof(temp), "%019" PRIu64, result[i]); // Print with leading zeros
+        snprintf(temp, sizeof(temp), "%018" PRIu64, result[i]); // Print with leading zeros
         strcat(result_str, temp);
     }
     // remove leading zeroes
@@ -653,28 +665,77 @@ void stop_perf()
     }
 }
 
+// Function to trim leading zeros and whitespace characters
+char *trim_leading_zeros_and_whitespace(char *str)
+{
+    while (*str == '0' || isspace(*str))
+    {
+        str++;
+    }
+    return str;
+}
+
+// Function to trim trailing newline characters
+void trim_trailing_newline(char *str)
+{
+    size_t len = strlen(str);
+    if (len > 0 && str[len - 1] == '\n')
+    {
+        str[len - 1] = '\0';
+    }
+}
+
 // Function to check if the result of the subtraction is correct
 bool check_result(char *result, char *result_gmp, int result_size)
 {
-    // check if the two subs lengths are equal
+
+    // Check if both results start with a negative symbol
+    bool result_negative = (result[0] == '-');
+    bool result_gmp_negative = (result_gmp[0] == '-');
+
+    // Adjust pointers to skip the negative symbol for comparison
+    if (result_negative)
+        result++;
+    if (result_gmp_negative)
+        result_gmp++;
+
+    // Trim leading zeros and whitespace characters from both strings
+    result = trim_leading_zeros_and_whitespace(result);
+    result_gmp = trim_leading_zeros_and_whitespace(result_gmp);
+
+    // Trim trailing newline characters from both strings
+    trim_trailing_newline(result);
+    trim_trailing_newline(result_gmp);
+
+    // Check if the lengths of the adjusted strings are equal
     if (strlen(result) != strlen(result_gmp))
     {
-        // printf("The two subs are not equal, lengths are different\n");
-        // printf("Length of result = %d, length of result_gmp = %ld\n", result_size, strlen(result_gmp));
-        // printf("result = %s\n result_gmp = %s\n", result, result_gmp);
+        printf("The two subs are not equal, lengths are different\n");
+        printf("Length of result = %ld, length of result_gmp = %ld\n", strlen(result), strlen(result_gmp));
+        printf("result = %s\n result_gmp = %s\n", result, result_gmp);
         return false;
     }
-    for (int i = 0; i < result_size; i++)
+
+    // Compare the adjusted strings character by character
+    for (size_t i = 0; i < strlen(result); i++)
     {
         if (result[i] != result_gmp[i])
         {
-            // printf("The two subs are not equal\n");
-            // printf("Mismatch at index %d\n", i);
-            // printf("result[%d] = %c, result_gmp[%d] = %c\n", i, result[i], i, result_gmp[i]);
-            // printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
+            printf("The two subs are not equal\n");
+            printf("Mismatch at index %ld\n", i);
+            printf("result[%ld] = %c, result_gmp[%ld] = %c\n", i, result[i], i, result_gmp[i]);
+            printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
             return false;
         }
     }
+
+    // If both results were negative, ensure the negative symbol is accounted for
+    if (result_negative != result_gmp_negative)
+    {
+        printf("The two subs are not equal, one is negative and the other is not\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -698,6 +759,18 @@ uint64_t *convert_string_to_digits(char *str, int *n)
 // Function to create a directory
 void create_directory(const char *path)
 {
+    char *path_copy = strdup(path);
+    char *parent_dir = dirname(path_copy);
+
+    // Recursively create parent directories
+    if (strcmp(parent_dir, ".") != 0 && strcmp(parent_dir, "/") != 0)
+    {
+        create_directory(parent_dir);
+    }
+
+    free(path_copy);
+
+    // Create the final directory
     if (mkdir(path, 0777) && errno != EEXIST)
     {
         fprintf(stderr, "Error creating directory %s: %s\n", path, strerror(errno));
@@ -739,7 +812,7 @@ void run_tests()
     // path: ../test/cases/<num_bits>/<test_case>.csv.gz
     // there are four test cases: random.csv.gz, equal.csv.gz, greater.csv.gz, smaller.csv.gz
     // first line contains a header: a, b, result
-    // next line onwards contains the test cases, 1000000 test cases
+    // next line onwards contains the test cases, 100000 test cases
     // verify the results of the subtraction of a and b with the result
 
     // Create directories for the results
@@ -769,7 +842,7 @@ void run_tests()
 
     // open file to write the rdtsc values
     char rdtsc_filename_random[100];
-    snprintf(rdtsc_filename_random, sizeof(rdtsc_filename_random), "experiments/rdtsc_data/random_%d_%d.csv", NUM_BITS, CORE_NO);
+    snprintf(rdtsc_filename_random, sizeof(rdtsc_filename_random), "experiments/rdtsc_data/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
     gzFile rdtsc_file_random = open_gzfile(rdtsc_filename_random, "wb");
 
     char test_case[100];
@@ -877,7 +950,7 @@ void run_tests()
         // verify the converted string with result
         if (!check_result(sub_str, result_str, sub_size))
         {
-            printf("Test case failed\n");
+            printf("Test case failed, at iteration %d\n", i);
             printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
             printf("Subtraction result = %s\n", sub_str);
             exit(EXIT_FAILURE);
