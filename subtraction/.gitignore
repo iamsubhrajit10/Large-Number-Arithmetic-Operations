@@ -1,0 +1,21 @@
+# Ignore all files
+*
+
+# Allow .gitignore file
+!.gitignore
+
+# Allow C source and header files
+!*.c
+!*.h
+
+# Allow Python files
+!*.py
+
+# Allow shell script files
+!*.sh
+!*.bash
+
+# Allow directories
+!*/
+
+# Ignore all other files
