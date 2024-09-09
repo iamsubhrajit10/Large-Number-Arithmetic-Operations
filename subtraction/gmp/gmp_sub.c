@@ -492,4 +492,331 @@ void run_tests()
     gzclose(perf_file_random);
     gzclose(rdtsc_file_random);
     gzclose(random_file);
+
+    // testcase: equal.txt
+    // Open the file for writing the perf experiment data
+    char perf_filename_equal[100];
+    snprintf(perf_filename_equal, sizeof(perf_filename_equal), "experiments/perf_data/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile perf_file_equal = open_gzfile(perf_filename_equal, "wb");
+
+    // open file to write the rdtsc values
+    char rdtsc_filename_equal[100];
+    snprintf(rdtsc_filename_equal, sizeof(rdtsc_filename_equal), "experiments/rdtsc_data/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile rdtsc_file_equal = open_gzfile(rdtsc_filename_equal, "wb");
+
+    snprintf(test_case, sizeof(test_case), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+    gzFile equal_file = open_gzfile(test_case, "rb");
+
+    // skip the first line, header
+    skip_first_line(equal_file);
+
+    // Read ITERATIONS test cases
+    total_rdtsc = 0;
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        // Read the next line
+        if (gzgets(equal_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(equal_file))
+            {
+                break; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(equal_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Extract a, b, result from the line
+        char *a_str = strtok(buffer, ",");
+        char *b_str = strtok(NULL, ",");
+        char *result_str = strtok(NULL, ",");
+        if (a_str == NULL || b_str == NULL || result_str == NULL)
+        {
+            fprintf(stderr, "Error parsing line: %s\n", buffer);
+            gzclose(equal_file);
+            exit(EXIT_FAILURE);
+        }
+
+        // convert the strings to mpz_t
+        mpz_t a, b, result_gmp;
+        mpz_init(a);
+        mpz_init(b);
+
+        // convert the strings to mpz_t
+        mpz_set_str(a, a_str, 10);
+        mpz_set_str(b, b_str, 10);
+
+        // start the perf events
+        start_perf();
+
+        // warm up the rdtsc
+        warmup_rdtsc();
+
+        // measure the start rdtsc
+        start_rdtsc = measure_rdtsc_start();
+
+        // perform the subtraction
+        mpz_sub(result_gmp, a, b);
+
+        // measure the end rdtsc
+        end_rdtsc = measure_rdtscp_end();
+
+        // stop the perf events
+        stop_perf();
+
+        // read the values of the perf events
+        read_perf(values);
+
+        if (end_rdtsc < start_rdtsc)
+        {
+            perror("Error: RDTSC end time is less than start time\n");
+            exit(EXIT_FAILURE);
+        }
+        // write the rdtsc values to the file
+        write_rdtsc(rdtsc_file_equal, end_rdtsc - start_rdtsc);
+
+        total_rdtsc += (end_rdtsc - start_rdtsc);
+
+        // write the perf events to the file
+        write_perf(perf_file_equal, values);
+
+        // convert the result into a string
+        char *sub_str = mpz_get_str(NULL, 10, result_gmp);
+        int sub_size = strlen(sub_str);
+
+        // verify the converted string with result
+        if (!check_result(sub_str, result_str, sub_size))
+        {
+            printf("Test case failed\n");
+            printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
+            printf("Subtraction result = %s\n", sub_str);
+            exit(EXIT_FAILURE);
+        }
+    }
+    printf("Equal test cases passed\n");
+    printf("Total RDTSC cycles: %llu\n", total_rdtsc);
+    gzclose(perf_file_equal);
+    gzclose(rdtsc_file_equal);
+    gzclose(equal_file);
+
+    // testcase: greater.txt
+    // Open the file for writing the perf experiment data
+    char perf_filename_greater[100];
+    snprintf(perf_filename_greater, sizeof(perf_filename_greater), "experiments/perf_data/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile perf_file_greater = open_gzfile(perf_filename_greater, "wb");
+
+    // open file to write the rdtsc values
+    char rdtsc_filename_greater[100];
+    snprintf(rdtsc_filename_greater, sizeof(rdtsc_filename_greater), "experiments/rdtsc_data/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile rdtsc_file_greater = open_gzfile(rdtsc_filename_greater, "wb");
+
+    snprintf(test_case, sizeof(test_case), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+    gzFile greater_file = open_gzfile(test_case, "rb");
+
+    // skip the first line, header
+    skip_first_line(greater_file);
+
+    // Read ITERATIONS test cases
+    total_rdtsc = 0;
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        // Read the next line
+        if (gzgets(greater_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(greater_file))
+            {
+                break; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(greater_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Extract a, b, result from the line
+        char *a_str = strtok(buffer, ",");
+        char *b_str = strtok(NULL, ",");
+        char *result_str = strtok(NULL, ",");
+        if (a_str == NULL || b_str == NULL || result_str == NULL)
+        {
+            fprintf(stderr, "Error parsing line: %s\n", buffer);
+            gzclose(greater_file);
+            exit(EXIT_FAILURE);
+        }
+
+        // convert the strings to mpz_t
+        mpz_t a, b, result_gmp;
+        mpz_init(a);
+        mpz_init(b);
+
+        // convert the strings to mpz_t
+        mpz_set_str(a, a_str, 10);
+        mpz_set_str(b, b_str, 10);
+
+        // start the perf events
+        start_perf();
+
+        // warm up the rdtsc
+        warmup_rdtsc();
+
+        // measure the start rdtsc
+        start_rdtsc = measure_rdtsc_start();
+
+        // perform the subtraction
+        mpz_sub(result_gmp, a, b);
+
+        // measure the end rdtsc
+        end_rdtsc = measure_rdtscp_end();
+
+        // stop the perf events
+        stop_perf();
+
+        // read the values of the perf events
+        read_perf(values);
+
+        if (end_rdtsc < start_rdtsc)
+        {
+            perror("Error: RDTSC end time is less than start time\n");
+            exit(EXIT_FAILURE);
+        }
+        // write the rdtsc values to the file
+        write_rdtsc(rdtsc_file_greater, end_rdtsc - start_rdtsc);
+
+        total_rdtsc += (end_rdtsc - start_rdtsc);
+
+        // write the perf events to the file
+        write_perf(perf_file_greater, values);
+
+        // convert the result into a string
+        char *sub_str = mpz_get_str(NULL, 10, result_gmp);
+        int sub_size = strlen(sub_str);
+
+        // verify the converted string with result
+        if (!check_result(sub_str, result_str, sub_size))
+        {
+            printf("Test case failed\n");
+            printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
+            printf("Subtraction result = %s\n", sub_str);
+            exit(EXIT_FAILURE);
+        }
+    }
+    printf("Greater test cases passed\n");
+    printf("Total RDTSC cycles: %llu\n", total_rdtsc);
+    gzclose(perf_file_greater);
+    gzclose(rdtsc_file_greater);
+    gzclose(greater_file);
+
+    // testcase: smaller.txt
+    // Open the file for writing the perf experiment data
+    char perf_filename_smaller[100];
+    snprintf(perf_filename_smaller, sizeof(perf_filename_smaller), "experiments/perf_data/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile perf_file_smaller = open_gzfile(perf_filename_smaller, "wb");
+
+    // open file to write the rdtsc values
+    char rdtsc_filename_smaller[100];
+    snprintf(rdtsc_filename_smaller, sizeof(rdtsc_filename_smaller), "experiments/rdtsc_data/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+    gzFile rdtsc_file_smaller = open_gzfile(rdtsc_filename_smaller, "wb");
+
+    snprintf(test_case, sizeof(test_case), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+    gzFile smaller_file = open_gzfile(test_case, "rb");
+
+    // skip the first line, header
+    skip_first_line(smaller_file);
+
+    // Read ITERATIONS test cases
+    total_rdtsc = 0;
+    for (int i = 0; i < ITERATIONS; i++)
+    {
+        // Read the next line
+        if (gzgets(smaller_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(smaller_file))
+            {
+                break; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(smaller_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Extract a, b, result from the line
+        char *a_str = strtok(buffer, ",");
+        char *b_str = strtok(NULL, ",");
+        char *result_str = strtok(NULL, ",");
+        if (a_str == NULL || b_str == NULL || result_str == NULL)
+        {
+            fprintf(stderr, "Error parsing line: %s\n", buffer);
+            gzclose(smaller_file);
+            exit(EXIT_FAILURE);
+        }
+
+        // convert the strings to mpz_t
+        mpz_t a, b, result_gmp;
+        mpz_init(a);
+        mpz_init(b);
+
+        // convert the strings to mpz_t
+        mpz_set_str(a, a_str, 10);
+        mpz_set_str(b, b_str, 10);
+
+        // start the perf events
+        start_perf();
+
+        // warm up the rdtsc
+        warmup_rdtsc();
+
+        // measure the start rdtsc
+        start_rdtsc = measure_rdtsc_start();
+
+        // perform the subtraction
+        mpz_sub(result_gmp, a, b);
+
+        // measure the end rdtsc
+        end_rdtsc = measure_rdtscp_end();
+
+        // stop the perf events
+        stop_perf();
+
+        // read the values of the perf events
+        read_perf(values);
+
+        if (end_rdtsc < start_rdtsc)
+        {
+            perror("Error: RDTSC end time is less than start time\n");
+            exit(EXIT_FAILURE);
+        }
+        // write the rdtsc values to the file
+        write_rdtsc(rdtsc_file_smaller, end_rdtsc - start_rdtsc);
+
+        total_rdtsc += (end_rdtsc - start_rdtsc);
+
+        // write the perf events to the file
+        write_perf(perf_file_smaller, values);
+
+        // convert the result into a string
+        char *sub_str = mpz_get_str(NULL, 10, result_gmp);
+        int sub_size = strlen(sub_str);
+
+        // verify the converted string with result
+        if (!check_result(sub_str, result_str, sub_size))
+        {
+            printf("Test case failed\n");
+            printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
+            printf("Subtraction result = %s\n", sub_str);
+            exit(EXIT_FAILURE);
+        }
+    }
+    printf("Smaller test cases passed\n");
+    printf("Total RDTSC cycles: %llu\n", total_rdtsc);
+    gzclose(perf_file_smaller);
+    gzclose(rdtsc_file_smaller);
+    gzclose(smaller_file);
 }

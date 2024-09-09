@@ -1,21 +1,23 @@
+# Ignore any directory named experiments in any sub-directory
+**/experiments/
+**/cases/
+
 # Ignore all files
 *
 
 # Allow .gitignore file
 !.gitignore
 
-# Allow C source and header files
-!*.c
-!*.h
+# Allow C source and header files in any directory except experiments
+!**/*.c
+!**/*.h
 
-# Allow Python files
-!*.py
+# Allow Python files in any directory except experiments
+!**/*.py
 
-# Allow shell script files
-!*.sh
-!*.bash
+# Allow shell script files in any directory except experiments
+!**/*.sh
+!**/*.bash
 
 # Allow directories
 !*/
-
-# Ignore all other files

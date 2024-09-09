@@ -1,8 +1,0 @@
-Number of bits = 512
-Number of digits = 154
-Running tests
-Test 1: No Borrow-Propagation
-Running test 1, with 100000 iterations
-Test 1 completed
-rdtsc for test 1 = 32495824, rdtsc for test 1 gmp = 25967749
-RDTSC Speedup: 0.799110
