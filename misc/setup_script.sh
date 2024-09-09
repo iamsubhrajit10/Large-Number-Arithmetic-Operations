@@ -34,10 +34,10 @@ sudo systemctl restart sshd
 
 # // write shell command to install perf
 sudo apt-get install -y linux-tools-common linux-tools-generic linux-tools-`uname -r`
-git config --global credential.helper 'cache --timeout=3600'
+# git config --global credential.helper 'cache --timeout=3600'
 # chmod +x git_push.sh
 # nohup ./git_push.sh > ~/nohup.out 2>&1 &
 # sudo chmod -R 777 .
 # Add git config user names and emails
-git config --global user.email "iamsubhrajit10@gmail.com"
-git config --global user.name "iamsubhrajit10"
+# git config --global user.email "iamsubhrajit10@gmail.com"
+# git config --global user.name "iamsubhrajit10"
