@@ -41,3 +41,5 @@ sudo apt-get install -y linux-tools-common linux-tools-generic linux-tools-`unam
 # Add git config user names and emails
 # git config --global user.email "iamsubhrajit10@gmail.com"
 # git config --global user.name "iamsubhrajit10"
+sudo apt install -y python3-pip
+pip3 install gmpy2
