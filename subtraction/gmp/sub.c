@@ -101,6 +101,43 @@ inline unsigned long long measure_rdtscp_end()
     return ticks;
 }
 
+// function to get the timespec stamp
+inline struct timespec get_timespec()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return ts;
+}
+
+// function to compute the difference between two timespec stamps
+inline struct timespec diff_timespec(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+    if ((end.tv_nsec - start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+    }
+    else
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec;
+        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+    }
+    return temp;
+}
+
+// function to convert a timespec stamp to nanoseconds
+inline long long timespec_to_ns(struct timespec ts)
+{
+    return ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+// function to write timespec(ns) to a file
+inline void write_timespec(gzFile file, struct timespec ts)
+{
+    gzprintf(file, "%lld\n", timespec_to_ns(ts));
+}
+
 // perf_event_open system call
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
@@ -113,9 +150,9 @@ long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int g
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
-    if (argc != 4)
+    if (argc != 5)
     {
-        printf("Usage: %s <number of bits> <core number> <test case number>\n", argv[0]);
+        printf("Usage: %s <number of bits> <core number> <test-case number> <measure_type>\n", argv[0]);
         return 1;
     }
 
@@ -123,8 +160,9 @@ int main(int argc, char *argv[])
     NUM_BITS = atoi(argv[1]);
     CORE_NO = atoi(argv[2]);
     int test_case = atoi(argv[3]);
+    int measure_type = atoi(argv[4]);
 
-    run_tests(test_case);
+    run_tests(test_case, measure_type);
 
     return 0;
 }
@@ -362,7 +400,7 @@ void write_rdtsc(gzFile file, unsigned long long rdtsc)
     gzprintf(file, "%llu\n", rdtsc);
 }
 
-void run_tests(int test_case)
+void run_tests(int test_case, int measure_type)
 {
     // read the test cases from the file
     // path: ../test/cases/<num_bits>/<test_case>.csv.gz
@@ -373,56 +411,215 @@ void run_tests(int test_case)
 
     // Create directories for the results
     create_directory("experiments/results");
-    create_directory("experiments/perf_data");
-    create_directory("experiments/rdtsc_data");
+    // create_directory("experiments/perf_data");
+    // create_directory("experiments/rdtsc_data");
+    // open the perf file
+    gzFile perf_file, timespec_file, rdtsc_file;
+    switch (measure_type)
+    {
+    case 0:
+        printf("Running the tests without any measurements\n");
+        create_directory("experiments/results/without_measurements");
+        break;
+    case 1:
+        printf("Running the tests with RDTSC measurements\n");
+        create_directory("experiments/results/rdtsc_measurements");
+        break;
+    case 2:
+        printf("Running the tests with perf measurements\n");
+        create_directory("experiments/results/perf_measurements");
+        break;
+    case 3:
+        printf("Running the tests with timespec measurements\n");
+        create_directory("experiments/results/timespec_measurements");
+        break;
+    default:
+        printf("Invalid measure type\n");
+        exit(EXIT_FAILURE);
+    }
 
     unsigned long long start_rdtsc, end_rdtsc;
     unsigned long long total_rdtsc = 0;
     unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
     long long values[MAX_EVENTS];
 
-    // open the perf events
-    initialize_perf();
     char perf_filename[100];
     char rdtsc_filename[100];
     char test_filename[100];
+    char timespec_filename[100];
 
     switch (test_case)
     {
     case 0:
         printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-        snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+        // snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        if (measure_type == 0)
+        {
+            break;
+        }
+        else if (measure_type == 1)
+        {
+            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
+            if (rdtsc_file == NULL)
+            {
+                perror("Error opening rdtsc file");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (measure_type == 2)
+        {
+            snprintf(perf_filename, sizeof(perf_filename), "experiments/results/perf_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            perf_file = open_gzfile(perf_filename, "wb");
+            if (perf_file == NULL)
+            {
+                perror("Error opening perf file");
+                exit(EXIT_FAILURE);
+            }
+            // open the perf events
+            initialize_perf();
+        }
+        else if (measure_type == 3)
+        {
+            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            timespec_file = open_gzfile(timespec_filename, "wb");
+            if (timespec_file == NULL)
+            {
+                perror("Error opening timespec file");
+                exit(EXIT_FAILURE);
+            }
+        }
         break;
     case 1:
         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-        snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+        if (measure_type == 0)
+        {
+            break;
+        }
+        else if (measure_type == 1)
+        {
+            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
+            if (rdtsc_file == NULL)
+            {
+                perror("Error opening rdtsc file");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (measure_type == 2)
+        {
+            snprintf(perf_filename, sizeof(perf_filename), "experiments/results/perf_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            perf_file = open_gzfile(perf_filename, "wb");
+            if (perf_file == NULL)
+            {
+                perror("Error opening perf file");
+                exit(EXIT_FAILURE);
+            }
+            initialize_perf();
+        }
+        else if (measure_type == 3)
+        {
+            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            timespec_file = open_gzfile(timespec_filename, "wb");
+            if (timespec_file == NULL)
+            {
+                perror("Error opening timespec file");
+                exit(EXIT_FAILURE);
+            }
+        }
         break;
     case 2:
         printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-        snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+        if (measure_type == 0)
+        {
+            break;
+        }
+        else if (measure_type == 1)
+        {
+            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
+            if (rdtsc_file == NULL)
+            {
+                perror("Error opening rdtsc file");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (measure_type == 2)
+        {
+            snprintf(perf_filename, sizeof(perf_filename), "experiments/results/perf_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            perf_file = open_gzfile(perf_filename, "wb");
+            if (perf_file == NULL)
+            {
+                perror("Error opening perf file");
+                exit(EXIT_FAILURE);
+            }
+            initialize_perf();
+        }
+        else if (measure_type == 3)
+        {
+            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            timespec_file = open_gzfile(timespec_filename, "wb");
+            if (timespec_file == NULL)
+            {
+                perror("Error opening timespec file");
+                exit(EXIT_FAILURE);
+            }
+        }
         break;
     case 3:
         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-        snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(perf_filename, sizeof(perf_filename), "experiments/perf_data/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+        // snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/rdtsc_data/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+        if (measure_type == 0)
+        {
+            break;
+        }
+        else if (measure_type == 1)
+        {
+            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
+            if (rdtsc_file == NULL)
+            {
+                perror("Error opening rdtsc file");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (measure_type == 2)
+        {
+            snprintf(perf_filename, sizeof(perf_filename), "experiments/results/perf_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            perf_file = open_gzfile(perf_filename, "wb");
+            if (perf_file == NULL)
+            {
+                perror("Error opening perf file");
+                exit(EXIT_FAILURE);
+            }
+            initialize_perf();
+        }
+        else if (measure_type == 3)
+        {
+            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            timespec_file = open_gzfile(timespec_filename, "wb");
+            if (timespec_file == NULL)
+            {
+                perror("Error opening timespec file");
+                exit(EXIT_FAILURE);
+            }
+        }
+
         break;
     default:
         printf("Invalid test case\n");
         exit(EXIT_FAILURE);
     }
-
-    // open the perf file
-    gzFile perf_file = open_gzfile(perf_filename, "wb");
-
-    // open the rdtsc file
-    gzFile rdtsc_file = open_gzfile(rdtsc_filename, "wb");
 
     // open the test file
     gzFile test_file = open_gzfile(test_filename, "rb");
@@ -430,6 +627,8 @@ void run_tests(int test_case)
     // skip the first line, header
     skip_first_line(test_file);
     total_rdtsc = 0;
+    struct timespec start_timespec, end_timespec;
+    struct timespec total_timespec;
 
     // Read ITERATIONS test cases
     for (int i = 0; i < ITERATIONS; i++)
@@ -462,6 +661,7 @@ void run_tests(int test_case)
             gzclose(test_file);
             exit(EXIT_FAILURE);
         }
+
         // convert the strings to mpz_t
         mpz_t a, b, result_gmp;
         mpz_init(a);
@@ -471,39 +671,56 @@ void run_tests(int test_case)
         mpz_set_str(a, a_str, 10);
         mpz_set_str(b, b_str, 10);
 
-        // start the perf events
-        start_perf();
-
-        // warm up the rdtsc
-        warmup_rdtsc();
-
-        // measure the start rdtsc
-        start_rdtsc = measure_rdtsc_start();
+        switch (measure_type)
+        {
+        case 0:
+            break;
+        case 1:
+            warmup_rdtsc();
+            start_rdtsc = measure_rdtsc_start();
+            break;
+        case 2:
+            start_perf();
+            break;
+        case 3:
+            start_timespec = get_timespec();
+            break;
+        default:
+            printf("Invalid measure type\n");
+            exit(EXIT_FAILURE);
+        }
 
         // perform the subtraction
         mpz_sub(result_gmp, a, b);
 
-        // measure the end rdtsc
-        end_rdtsc = measure_rdtscp_end();
-
-        // stop the perf events
-        stop_perf();
-
-        // read the values of the perf events
-        read_perf(values);
-
-        if (end_rdtsc < start_rdtsc)
+        // measure the end
+        switch (measure_type)
         {
-            perror("Error: RDTSC end time is less than start time\n");
+        case 0:
+            break;
+        case 1:
+            end_rdtsc = measure_rdtscp_end();
+            if (end_rdtsc < start_rdtsc)
+            {
+                perror("Error: RDTSC end time is less than start time\n");
+                exit(EXIT_FAILURE);
+            }
+            total_rdtsc += (end_rdtsc - start_rdtsc);
+            write_rdtsc(rdtsc_file, end_rdtsc - start_rdtsc);
+            break;
+        case 2:
+            stop_perf();
+            read_perf(values);
+            write_perf(perf_file, values);
+            break;
+        case 3:
+            end_timespec = get_timespec();
+            write_timespec(timespec_file, diff_timespec(start_timespec, end_timespec));
+            break;
+        default:
+            printf("Invalid measure type\n");
             exit(EXIT_FAILURE);
         }
-        // write the rdtsc values to the file
-        write_rdtsc(rdtsc_file, end_rdtsc - start_rdtsc);
-
-        total_rdtsc += (end_rdtsc - start_rdtsc);
-
-        // write the perf events to the file
-        write_perf(perf_file, values);
 
         // convert the result into a string
         char *sub_str = mpz_get_str(NULL, 10, result_gmp);
@@ -512,7 +729,7 @@ void run_tests(int test_case)
         // verify the converted string with result
         if (!check_result(sub_str, result_str, sub_size))
         {
-            printf("Test case failed\n");
+            printf("Test case failed, at iteration %d\n", i);
             printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
             printf("Subtraction result = %s\n", sub_str);
             exit(EXIT_FAILURE);
@@ -533,8 +750,17 @@ void run_tests(int test_case)
         printf("Smaller test cases completed\n");
         break;
     }
-    printf("Total RDTSC: %llu\n", total_rdtsc);
-    gzclose(perf_file);
-    gzclose(rdtsc_file);
     gzclose(test_file);
+    if (measure_type == 1)
+    {
+        gzclose(rdtsc_file);
+    }
+    else if (measure_type == 2)
+    {
+        gzclose(perf_file);
+    }
+    else if (measure_type == 3)
+    {
+        gzclose(timespec_file);
+    }
 }
