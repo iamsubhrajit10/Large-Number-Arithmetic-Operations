@@ -1,9 +1,17 @@
 # Ignore any directory named experiments in any sub-directory
 **/experiments/
 **/cases/
-
 # Ignore all files
 *
+
+# Allow directory and all its contents "central-tendencies"
+!central-tendencies/
+
+# Allow txt and xls files in "central-tendencies" directory
+!**/central-tendencies/*.txt
+!**/central-tendencies/*.xlsx
+
+
 
 # Allow .gitignore file
 !.gitignore
