@@ -10,7 +10,7 @@ for dir in "${directories[@]}"; do
         if [ -f "run.sh" ]; then
             echo "Running sudo ./run.sh in $dir"
             sudo ./run.sh
-            if [$? -ne 0]; then
+            if [ $? -ne 0 ]; then
                 echo "Error running sudo ./run.sh in $dir"
             fi
         else
