@@ -11,6 +11,10 @@
 !**/central-tendencies/*.txt
 !**/central-tendencies/*.xlsx
 
+# Allow directory "cdf-charts" and all its contents
+!**/cdf-charts/
+!**/cdf-charts/**/*
+
 
 
 # Allow .gitignore file

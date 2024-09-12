@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Step 1: Compile the C file
-gcc sub.c -o sub -lm -lgmp -lz -mavx512f -O3 -funroll-all-loops -ffast-math -flto
+gcc sub.c -o sub -lm -lgmp -lz -mavx512f -O3 -funroll-all-loops -ffast-math -flto -march=native
 
 # Step 2: Create the directory for logs if it doesn't exist
 mkdir -p experiments/console_logs

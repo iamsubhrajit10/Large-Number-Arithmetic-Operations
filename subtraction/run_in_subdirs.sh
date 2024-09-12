@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the directories to process
-directories=("test" "baseline" "auto-vectorized" "explicit-vectorized" "gmp")
+directories=("explicit-vectorized" "gmp")
 
 # Loop through each directory and run the script if it exists
 for dir in "${directories[@]}"; do

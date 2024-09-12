@@ -1,4 +1,4 @@
-/* This is the baseline version, without explicit SIMD */
+/* This is the version with explicit SIMD (AVX512) */
 /*
 This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
@@ -9,7 +9,6 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 */
 
 /****  All the data, stored in arrays and used for computation are aligned to 64 Bytes ****/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +35,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <sys/stat.h>
 #include <libgen.h>
 #include <ctype.h>
+#include <cpuid.h>
 
 #define MAX_EVENTS 6      // Number of events to monitor
 #define LIMB_SIZE 18      // Number of digits in each limb
@@ -216,31 +216,9 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
     } while (unlikely(i < n));
 }
 
-// Function to left shift the borrow array by 1
-void logical_left_shift_by_one(uint64_t *borrow_array, int n)
+inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, int n, int *result_size)
 {
-    // Check if the array is not empty
-    if (n <= 1)
-    {
-        memset(borrow_array, 0, n * sizeof(uint64_t)); // Clear the array if it's empty or has only one element
-        return;
-    }
-
-    // Shift elements left
-    memmove(borrow_array, borrow_array + 1, (n - 1) * sizeof(uint64_t));
-
-    // Set the last element to zero
-    borrow_array[n - 1] = 0;
-}
-
-inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restrict result_ptr, int n, int *result_size)
-{
-    __builtin_assume_aligned(a, 64);
-    __builtin_assume_aligned(b, 64);
-
     aligned_uint64_ptr result = sub_space + sub_space_ptr;
-    __builtin_assume_aligned(result, 64);
-
     bool is_less = is_less_than(a, b, n);
     if (is_less)
     {
@@ -249,35 +227,37 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
         a = b;
         b = temp;
     }
-    aligned_uint64_ptr borrow_array = borrow_space + borrow_space_ptr;
-    // borrow_space_ptr += n + 1;
-    __m512i a_vec, b_vec, result_vec;
-    int i;
 
-    for (i = 0; i < n; i += 8)
+    aligned_uint64_ptr borrow_array = borrow_space + borrow_space_ptr;
+    __builtin_assume_aligned(a, 64);
+    __builtin_assume_aligned(b, 64);
+    __builtin_assume_aligned(result, 64);
+    __builtin_assume_aligned(borrow_array, 64);
+
+    for (int i = 0; i < n; i += 8)
     {
         // load 8 64-bit integers from a and b
-        a_vec = _mm512_load_si512(a + i);
-        b_vec = _mm512_load_si512(b + i);
+        __m512i a_vec = _mm512_load_si512(a + i);
+        __m512i b_vec = _mm512_load_si512(b + i);
 
         // subtract a and b
-        result_vec = _mm512_sub_epi64(a_vec, b_vec);
+        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);
 
         // if result_vec[j] < 0, set borrow mask to 1
         __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
 
-        // based on borrow mask, result_vec[j] =  result_vec[j] + limb_digits
-        result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
-
         // store the borrow directly using the mask
         _mm512_mask_store_epi64(borrow_array + i, borrow_mask, ones);
+
+        // based on borrow mask, result_vec[j] =  result_vec[j] + limb_digits
+        result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
 
         // store the result
         _mm512_store_si512(result + i, result_vec);
     }
     // zero out
-    _mm512_storeu_si512(borrow_array + n, zeros);
     _mm512_storeu_si512(result + n, zeros);
+    _mm512_storeu_si512(borrow_array + n, zeros);
 
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
@@ -285,11 +265,10 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
 
     int last_borrow_block = -1;
 
-    for (i = 0; i < n; i += 8)
+    for (int i = 0; i < n; i += 8)
     {
         __m512i borrow_vec = _mm512_loadu_epi64(borrow_array + i);
-
-        result_vec = _mm512_load_si512(result + i);
+        __m512i result_vec = _mm512_load_si512(result + i);
         result_vec = _mm512_sub_epi64(result_vec, borrow_vec);
         _mm512_store_si512(result + i, result_vec);
 
@@ -298,18 +277,16 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
 
         if (unlikely(borrow_mask))
         {
+            printf("Borrow propagation is there\n");
             last_borrow_block = i;
             // update the borrow array
             _mm512_mask_storeu_epi64(borrow_array + i, borrow_mask, ones);
         }
-        else
-        {
-            _mm512_mask_storeu_epi64(borrow_array + i, borrow_mask, zeros);
-        }
     }
     if (unlikely(last_borrow_block != -1))
     {
-        i = (last_borrow_block + 15);
+        printf("Borrow propagation\n");
+        int i = (last_borrow_block + 15);
         i = (i > n - 1) ? (n - 1) : i;
 
         for (; i >= 1; i--)
@@ -327,7 +304,7 @@ inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restric
             }
         }
     }
-    i = 0;
+    int i = 0;
     while (result[i] == 0 && i < n)
     {
         i++;
@@ -676,12 +653,17 @@ void initialize_perf()
         if (fd[i] == -1)
         {
             fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
+            // Close previously opened file descriptors
+            for (int j = 0; j < i; j++)
+            {
+                close(fd[j]);
+            }
             exit(EXIT_FAILURE);
         }
     }
 }
 
-void read_perf(long long values[])
+void read_perf(uint64_t values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
@@ -693,24 +675,43 @@ void read_perf(long long values[])
     }
 }
 
-void write_perf(gzFile file, long long values[])
+void write_perf(gzFile file, uint64_t values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        gzprintf(file, "%llu,", values[j]);
+        if (gzprintf(file, "%" PRIu64 ",", values[j]) <= 0)
+        {
+            int errnum;
+            const char *errmsg = gzerror(file, &errnum);
+            fprintf(stderr, "Error writing to gzFile: %s\n", errmsg);
+            exit(EXIT_FAILURE);
+        }
     }
-    gzprintf(file, "\n");
+    if (gzprintf(file, "\n") <= 0)
+    {
+        int errnum;
+        const char *errmsg = gzerror(file, &errnum);
+        fprintf(stderr, "Error writing newline to gzFile: %s\n", errmsg);
+        exit(EXIT_FAILURE);
+    }
 }
 
 void start_perf()
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-        ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        if (ioctl(fd[j], PERF_EVENT_IOC_RESET, 0) == -1)
+        {
+            perror("Error resetting perf event");
+            exit(EXIT_FAILURE);
+        }
+        if (ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0) == -1)
+        {
+            perror("Error enabling perf event");
+            exit(EXIT_FAILURE);
+        }
     }
 }
-
 void stop_perf()
 {
     for (int j = 0; j < MAX_EVENTS; j++)
@@ -875,8 +876,6 @@ void run_tests(int test_case, int measure_type)
 
     // Create directories for the results
     create_directory("experiments/results");
-    // create_directory("experiments/perf_data");
-    // create_directory("experiments/rdtsc_data");
     // open the perf file
     gzFile perf_file, timespec_file, rdtsc_file;
     switch (measure_type)
@@ -905,7 +904,7 @@ void run_tests(int test_case, int measure_type)
     unsigned long long start_rdtsc, end_rdtsc;
     unsigned long long total_rdtsc = 0;
     unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
-    long long values[MAX_EVENTS];
+    uint64_t values[MAX_EVENTS];
 
     memset(sub_space, 0, (1 << 30));
     sub_space_ptr = 0;
@@ -1162,6 +1161,22 @@ void run_tests(int test_case, int measure_type)
         __builtin_assume_aligned(b_limbs, 64);
         aligned_uint64_ptr result;
 
+        memset(sub, 0, n_limb * sizeof(uint64_t));
+        memset(borrow_space, 0, n_limb * sizeof(uint64_t));
+
+        // clear cache content for a_limbs, b_limbs
+        for (int i = 0; i < n_limb; i += 64)
+        {
+            _mm_clflush((char *)a_limbs + i);
+            _mm_clflush((char *)b_limbs + i);
+        }
+
+        // Ensure that the cache flush operations are completed
+        _mm_mfence();
+        // Ensure the flush is completed
+        int cpu_info[4];
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
+
         switch (measure_type)
         {
         case 0:
@@ -1222,6 +1237,14 @@ void run_tests(int test_case, int measure_type)
             printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
             printf("Subtraction result = %s\n", sub_str);
             exit(EXIT_FAILURE);
+        }
+
+        // Clear out all the cache contents from each level using _mm_clflush
+        for (int i = 0; i < n_limb; i += 64)
+        {
+            _mm_clflush((char *)a_limbs + i);
+            _mm_clflush((char *)b_limbs + i);
+            _mm_clflush((char *)sub + i);
         }
     }
     switch (test_case)

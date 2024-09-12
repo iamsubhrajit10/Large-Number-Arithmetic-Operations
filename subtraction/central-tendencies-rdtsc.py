@@ -36,9 +36,15 @@ def process_directory(subdir):
     os.makedirs(output_base_dir, exist_ok=True)
     
     print(f"Processing directory: {input_dir}")
+    # Check if the input directory exists
+    if not os.path.isdir(input_dir):
+        print(f"Input directory does not exist: {input_dir}")
+        return
     
     # Iterate over all files in the input directory
     for file_name in os.listdir(input_dir):
+        if not os.path.isdir(input_dir):
+            continue
         if file_name.endswith('.csv.gz'):
             # Parse the file name to extract test-case, bit-size, and core-number
             parts = file_name.split('_')

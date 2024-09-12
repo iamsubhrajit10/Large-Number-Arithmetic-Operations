@@ -41,6 +41,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <sys/stat.h>
 #include <libgen.h>
 #include <ctype.h>
+#include <cpuid.h>
 
 #define MAX_EVENTS 6      // Number of events to monitor
 #define LIMB_SIZE 19      // Number of digits in each limb
@@ -668,8 +669,36 @@ void run_tests(int test_case, int measure_type)
         mpz_init(b);
 
         // convert the strings to mpz_t
-        mpz_set_str(a, a_str, 10);
-        mpz_set_str(b, b_str, 10);
+        if (mpz_set_str(a, a_str, 10) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string a_str");
+            exit(EXIT_FAILURE);
+        }
+        if (mpz_set_str(b, b_str, 10) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string b_str");
+            exit(EXIT_FAILURE);
+        }
+
+        // clear cache before each test case
+        size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
+        size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
+
+        for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
+        {
+            _mm_clflush((char *)a->_mp_d + i);
+        }
+
+        for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
+        {
+            _mm_clflush((char *)b->_mp_d + i);
+        }
+
+        // Ensure that the cache flush operations are completed
+        _mm_mfence();
+        // Ensure the flush is completed
+        int cpu_info[4];
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
         switch (measure_type)
         {
@@ -733,6 +762,16 @@ void run_tests(int test_case, int measure_type)
             printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
             printf("Subtraction result = %s\n", sub_str);
             exit(EXIT_FAILURE);
+        }
+
+        for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
+        {
+            _mm_clflush((char *)a->_mp_d + i);
+        }
+
+        for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
+        {
+            _mm_clflush((char *)b->_mp_d + i);
         }
     }
     switch (test_case)
