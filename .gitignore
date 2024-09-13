@@ -24,6 +24,9 @@
 !**/*.c
 !**/*.h
 
+# Allow assembly source files in any directory except experiments
+!**/*.s
+
 # Allow Python files in any directory except experiments
 !**/*.py
 

@@ -236,7 +236,7 @@ void initialize_perf()
     }
 }
 
-void read_perf(long long values[])
+void read_perf(uint64_t values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
@@ -248,13 +248,25 @@ void read_perf(long long values[])
     }
 }
 
-void write_perf(gzFile file, long long values[])
+void write_perf(gzFile file, uint64_t values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        gzprintf(file, "%llu,", values[j]);
+        if (gzprintf(file, "%" PRIu64 ",", values[j]) <= 0)
+        {
+            int errnum;
+            const char *errmsg = gzerror(file, &errnum);
+            fprintf(stderr, "Error writing to gzFile: %s\n", errmsg);
+            exit(EXIT_FAILURE);
+        }
     }
-    gzprintf(file, "\n");
+    if (gzprintf(file, "\n") <= 0)
+    {
+        int errnum;
+        const char *errmsg = gzerror(file, &errnum);
+        fprintf(stderr, "Error writing newline to gzFile: %s\n", errmsg);
+        exit(EXIT_FAILURE);
+    }
 }
 
 void start_perf()
@@ -442,7 +454,7 @@ void run_tests(int test_case, int measure_type)
     unsigned long long start_rdtsc, end_rdtsc;
     unsigned long long total_rdtsc = 0;
     unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
-    long long values[MAX_EVENTS];
+    uint64_t values[MAX_EVENTS];
 
     char perf_filename[100];
     char rdtsc_filename[100];
