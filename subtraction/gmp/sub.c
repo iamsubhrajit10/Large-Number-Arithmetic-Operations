@@ -231,6 +231,11 @@ void initialize_perf()
         if (fd[i] == -1)
         {
             fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
+            // Close previously opened file descriptors
+            for (int j = 0; j < i; j++)
+            {
+                close(fd[j]);
+            }
             exit(EXIT_FAILURE);
         }
     }
@@ -273,11 +278,18 @@ void start_perf()
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-        ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        if (ioctl(fd[j], PERF_EVENT_IOC_RESET, 0) == -1)
+        {
+            perror("Error resetting perf event");
+            exit(EXIT_FAILURE);
+        }
+        if (ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0) == -1)
+        {
+            perror("Error enabling perf event");
+            exit(EXIT_FAILURE);
+        }
     }
 }
-
 void stop_perf()
 {
     for (int j = 0; j < MAX_EVENTS; j++)

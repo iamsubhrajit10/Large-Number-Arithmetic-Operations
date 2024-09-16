@@ -36,6 +36,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <sys/stat.h>
 #include <libgen.h>
 #include <ctype.h>
+#include <cpuid.h>
 
 #define MAX_EVENTS 6      // Number of events to monitor
 #define LIMB_SIZE 18      // Number of digits in each limb
@@ -657,12 +658,17 @@ void initialize_perf()
         if (fd[i] == -1)
         {
             fprintf(stderr, "Error opening event %d: %s\n", i, strerror(errno));
+            // Close previously opened file descriptors
+            for (int j = 0; j < i; j++)
+            {
+                close(fd[j]);
+            }
             exit(EXIT_FAILURE);
         }
     }
 }
 
-void read_perf(long long values[])
+void read_perf(uint64_t values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
@@ -674,24 +680,43 @@ void read_perf(long long values[])
     }
 }
 
-void write_perf(gzFile file, long long values[])
+void write_perf(gzFile file, uint64_t values[])
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        gzprintf(file, "%llu,", values[j]);
+        if (gzprintf(file, "%" PRIu64 ",", values[j]) <= 0)
+        {
+            int errnum;
+            const char *errmsg = gzerror(file, &errnum);
+            fprintf(stderr, "Error writing to gzFile: %s\n", errmsg);
+            exit(EXIT_FAILURE);
+        }
     }
-    gzprintf(file, "\n");
+    if (gzprintf(file, "\n") <= 0)
+    {
+        int errnum;
+        const char *errmsg = gzerror(file, &errnum);
+        fprintf(stderr, "Error writing newline to gzFile: %s\n", errmsg);
+        exit(EXIT_FAILURE);
+    }
 }
 
 void start_perf()
 {
     for (int j = 0; j < MAX_EVENTS; j++)
     {
-        ioctl(fd[j], PERF_EVENT_IOC_RESET, 0);
-        ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0);
+        if (ioctl(fd[j], PERF_EVENT_IOC_RESET, 0) == -1)
+        {
+            perror("Error resetting perf event");
+            exit(EXIT_FAILURE);
+        }
+        if (ioctl(fd[j], PERF_EVENT_IOC_ENABLE, 0) == -1)
+        {
+            perror("Error enabling perf event");
+            exit(EXIT_FAILURE);
+        }
     }
 }
-
 void stop_perf()
 {
     for (int j = 0; j < MAX_EVENTS; j++)
@@ -886,7 +911,7 @@ void run_tests(int test_case, int measure_type)
     unsigned long long start_rdtsc, end_rdtsc;
     unsigned long long total_rdtsc = 0;
     unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
-    long long values[MAX_EVENTS];
+    uint64_t values[MAX_EVENTS];
 
     memset(sub_space, 0, (1 << 30));
     sub_space_ptr = 0;
@@ -1143,6 +1168,19 @@ void run_tests(int test_case, int measure_type)
         __builtin_assume_aligned(b_limbs, 64);
         aligned_uint64_ptr result;
 
+        // Clear cache before each test case
+        for (size_t i = 0; i < n_limb; i += 64)
+        {
+            _mm_clflush((char *)a_limbs + i);
+            _mm_clflush((char *)b_limbs + i);
+        }
+
+        // ensure that the cache is cleared
+        _mm_mfence();
+
+        // double sure with interrrupt, cpuID
+        int cpu_info[4];
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
         switch (measure_type)
         {
         case 0:
@@ -1203,6 +1241,13 @@ void run_tests(int test_case, int measure_type)
             printf("a = %s, b = %s, result = %s\n", a_str, b_str, result_str);
             printf("Subtraction result = %s\n", sub_str);
             exit(EXIT_FAILURE);
+        }
+        // Clear out all the cache contents from each level using _mm_clflush
+        for (int i = 0; i < n_limb; i += 64)
+        {
+            _mm_clflush((char *)a_limbs + i);
+            _mm_clflush((char *)b_limbs + i);
+            _mm_clflush((char *)sub + i);
         }
     }
     switch (test_case)

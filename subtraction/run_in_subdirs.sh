@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the directories to process
-directories=("explicit-vectorized" "gmp")
+directories=("test" "baseline" "auto-vectorized" "explicit-vectorized" "gmp")
 
 # Loop through each directory and run the script if it exists
 for dir in "${directories[@]}"; do
@@ -21,3 +21,9 @@ for dir in "${directories[@]}"; do
         echo "$dir directory not found"
     fi
 done
+
+# execute following python scripts
+python3 cdf-rdtsc.py
+python3 cdf-timespec.py
+python3 linear-average-rdtsc.py
+python3 linear-average-timespec.py
