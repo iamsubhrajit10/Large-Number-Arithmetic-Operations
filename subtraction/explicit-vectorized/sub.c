@@ -68,11 +68,11 @@ int NUM_BITS; // Number of bits for the numbers
 
 // Function prototypes
 uint64_t *returnLimbs(uint64_t *number, int *length);                                  // Function to group digits into limbs
-char *formatResult(uint64_t *result, size_t *result_length);                           // Function to format the result as a string
+char *formatResult(uint64_t *result, size_t *result_length, bool sign);                // Function to format the result as a string
 void make_equidistant(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to make the two numbers equidistant, by adding leading zeros
 void run_tests(int, int);                                                              // Function to run the tests
 void initialize_perf();                                                                // Function to initialize the perf events
-inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restrict result_ptr, size_t n, size_t *result_size) __attribute__((always_inline));
+inline bool sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n) __attribute__((always_inline));
 inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n) __attribute__((always_inline));
 inline void warmup_rdtsc() __attribute__((always_inline));
 inline unsigned long long measure_rdtsc_start() __attribute__((always_inline));
@@ -216,7 +216,7 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
     } while (unlikely(i < n));
 }
 
-inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n, size_t *result_size)
+inline bool sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
 {
     aligned_uint64_ptr result = sub_space + sub_space_ptr;
     size_t j = 0;
@@ -240,10 +240,8 @@ inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n, siz
         if (unlikely(j == n))
         {
             // a and b are equal
-            *result = 0;
-            *result_ptr = result;
-            *result_size = 1;
-            return;
+            // *result = 0;
+            return is_less;
         }
     } while (j < n);
 
@@ -317,15 +315,8 @@ inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n, siz
             }
         }
     }
-    i = 0;
-    while (unlikely(result[i] == 0 && i < n))
-    {
-        i++;
-    }
-    result[i] = (is_less) ? -result[i] : result[i];
-    // update to result_ptr
-    *result_ptr = result + i;
-    *result_size = *result_size - i;
+    *result_ptr = result;
+    return is_less;
 }
 
 // main function with cmd arguments
@@ -406,8 +397,25 @@ uint64_t *returnLimbs(uint64_t *number, int *length)
     return limbs;
 }
 
-char *formatResult(uint64_t *result, size_t *result_length)
+char *formatResult(uint64_t *result, size_t *result_length, bool sign)
 {
+    // remove leading zeroes
+    // while (*result_length > 0 && result[*result_length - 1] == 0)
+    // {
+    //     (*result_length)--;
+    // }
+    int i = 0;
+    while (result[i] == 0 && i < *result_length)
+    {
+        i++;
+    }
+    *result_length = *result_length - i;
+    result = result + i;
+    if (sign)
+    {
+        result[0] = -result[0];
+    }
+
     if (*result_length == 0)
     {
         char *temp = (char *)calloc(2, sizeof(char));
@@ -416,13 +424,14 @@ char *formatResult(uint64_t *result, size_t *result_length)
         *result_length = 1;
         return temp;
     }
+
     char *result_str = (char *)calloc(*result_length * 25 + 1, sizeof(char)); // 25 digits + null terminator per number
     if (result_str == NULL)
     {
         perror("Memory allocation failed for result_str\n");
         exit(0);
     }
-    int i = 0;
+    i = 0;
     // Handle the first element separately (without leading zeros)
     if (result[0] > LIMB_DIGITS)
     {
@@ -1208,7 +1217,7 @@ void run_tests(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
-        sub_n(a_limbs, b_limbs, &sub, n_limb, &sub_size);
+        bool sign = sub_n(a_limbs, b_limbs, &sub, n_limb);
 
         // measure the end
         switch (measure_type)
@@ -1240,7 +1249,7 @@ void run_tests(int test_case, int measure_type)
         }
 
         // convert the result into a string
-        char *sub_str = formatResult(sub, &sub_size);
+        char *sub_str = formatResult(sub, &sub_size, sign);
 
         // verify the converted string with result
         if (!check_result(sub_str, result_str, sub_size))
