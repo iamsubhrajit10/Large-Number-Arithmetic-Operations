@@ -68,11 +68,11 @@ int NUM_BITS; // Number of bits for the numbers
 
 // Function prototypes
 uint64_t *returnLimbs(uint64_t *number, int *length);                                  // Function to group digits into limbs
-char *formatResult(uint64_t *result, int *result_length);                              // Function to format the result as a string
+char *formatResult(uint64_t *result, size_t *result_length);                           // Function to format the result as a string
 void make_equidistant(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to make the two numbers equidistant, by adding leading zeros
 void run_tests(int, int);                                                              // Function to run the tests
 void initialize_perf();                                                                // Function to initialize the perf events
-inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restrict result_ptr, int n, int *result_size) __attribute__((always_inline));
+inline void sub_n(uint64_t *restrict a, uint64_t *restrict b, uint64_t **restrict result_ptr, size_t n, size_t *result_size) __attribute__((always_inline));
 inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n) __attribute__((always_inline));
 inline void warmup_rdtsc() __attribute__((always_inline));
 inline unsigned long long measure_rdtsc_start() __attribute__((always_inline));
@@ -216,25 +216,40 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
     } while (unlikely(i < n));
 }
 
-inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, int n, int *result_size)
+inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n, size_t *result_size)
 {
     aligned_uint64_ptr result = sub_space + sub_space_ptr;
-    bool is_less = is_less_than(a, b, n);
-    if (is_less)
+    size_t j = 0;
+    bool is_less = false;
+    do
     {
-        // swap a and b
-        aligned_uint64_ptr temp = a;
-        a = b;
-        b = temp;
-    }
+        if (likely(a[j] > b[j]))
+        {
+            break;
+        }
+        if (unlikely(a[j] < b[j]))
+        {
+            is_less = true;
+            // swap a and b
+            aligned_uint64_ptr temp = a;
+            a = b;
+            b = temp;
+            break;
+        }
+        j++;
+        if (unlikely(j == n))
+        {
+            // a and b are equal
+            *result = 0;
+            *result_ptr = result;
+            *result_size = 1;
+            return;
+        }
+    } while (j < n);
 
     aligned_uint64_ptr borrow_array = borrow_space + borrow_space_ptr;
-    __builtin_assume_aligned(a, 64);
-    __builtin_assume_aligned(b, 64);
-    __builtin_assume_aligned(result, 64);
-    __builtin_assume_aligned(borrow_array, 64);
-
-    for (int i = 0; i < n; i += 8)
+    size_t i = 0;
+    do
     {
         // load 8 64-bit integers from a and b
         __m512i a_vec = _mm512_load_si512(a + i);
@@ -246,47 +261,45 @@ inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, int n, int *r
         // if result_vec[j] < 0, set borrow mask to 1
         __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
 
-        // store the borrow directly using the mask
-        _mm512_mask_store_epi64(borrow_array + i, borrow_mask, ones);
-
         // based on borrow mask, result_vec[j] =  result_vec[j] + limb_digits
         result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
 
+        // store the borrow directly using the mask
+        _mm512_mask_store_epi64(borrow_array + i, borrow_mask, ones);
+
         // store the result
         _mm512_store_si512(result + i, result_vec);
-    }
+        i += 8;
+    } while (likely(i < n));
     // zero out
     _mm512_storeu_si512(result + n, zeros);
     _mm512_storeu_si512(borrow_array + n, zeros);
 
     // left shift the borrow array by 1
     borrow_array = borrow_array + 1;
-    borrow_array[n - 1] = 0;
 
     int last_borrow_block = -1;
-
-    for (int i = 0; i < n; i += 8)
+    i = 0;
+    do
     {
         __m512i borrow_vec = _mm512_loadu_epi64(borrow_array + i);
         __m512i result_vec = _mm512_load_si512(result + i);
         result_vec = _mm512_sub_epi64(result_vec, borrow_vec);
-        _mm512_store_si512(result + i, result_vec);
-
         // check if result_vec[j] < 0
         __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
-
+        _mm512_store_si512(result + i, result_vec);
         if (unlikely(borrow_mask))
         {
-            printf("Borrow propagation is there\n");
             last_borrow_block = i;
             // update the borrow array
             _mm512_mask_storeu_epi64(borrow_array + i, borrow_mask, ones);
         }
-    }
+        i += 8;
+    } while (likely(i < n));
+
     if (unlikely(last_borrow_block != -1))
     {
-        printf("Borrow propagation\n");
-        int i = (last_borrow_block + 15);
+        size_t i = (last_borrow_block + 15);
         i = (i > n - 1) ? (n - 1) : i;
 
         for (; i >= 1; i--)
@@ -304,12 +317,11 @@ inline void sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, int n, int *r
             }
         }
     }
-    int i = 0;
-    while (result[i] == 0 && i < n)
+    i = 0;
+    while (unlikely(result[i] == 0 && i < n))
     {
         i++;
     }
-
     result[i] = (is_less) ? -result[i] : result[i];
     // update to result_ptr
     *result_ptr = result + i;
@@ -394,7 +406,7 @@ uint64_t *returnLimbs(uint64_t *number, int *length)
     return limbs;
 }
 
-char *formatResult(uint64_t *result, int *result_length)
+char *formatResult(uint64_t *result, size_t *result_length)
 {
     if (*result_length == 0)
     {
@@ -1153,7 +1165,7 @@ void run_tests(int test_case, int measure_type)
 
         // allocate from scratch space
         aligned_uint64_ptr sub = sub_space + sub_space_ptr;
-        int sub_size = n_limb;
+        size_t sub_size = n_limb;
         sub_space_ptr += (n_limb + 31) & ~31;
         borrow_space_ptr += (n_limb + 31) & ~31;
 
