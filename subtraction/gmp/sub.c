@@ -42,11 +42,12 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <libgen.h>
 #include <ctype.h>
 #include <cpuid.h>
+#include <sys/resource.h>
 
-#define MAX_EVENTS 6      // Number of events to monitor
-#define LIMB_SIZE 19      // Number of digits in each limb
-#define ITERATIONS 100000 // Number of iterations for each test
-#define CHUNK 65536       // Chunk size for reading the file
+#define MAX_EVENTS 6    // Number of events to monitor
+#define LIMB_SIZE 19    // Number of digits in each limb
+#define ITERATIONS 1000 // Number of iterations for each test
+#define CHUNK 65536     // Chunk size for reading the file
 
 int CORE_NO; // Core number to run the tests on
 
@@ -425,6 +426,40 @@ void write_rdtsc(gzFile file, unsigned long long rdtsc)
     gzprintf(file, "%llu\n", rdtsc);
 }
 
+// Function to measure CPU time
+int cputime()
+{
+    struct rusage rus;
+    getrusage(RUSAGE_SELF, &rus);
+    return rus.ru_utime.tv_sec * 1000 + rus.ru_utime.tv_usec / 1000;
+}
+
+inline void write_cputime(gzFile file, int cpu_time)
+{
+    gzprintf(file, "%d\n", cpu_time);
+}
+
+#define TIME(t, func)                           \
+    do                                          \
+    {                                           \
+        long int __t0, __times, __t, __tmp;     \
+        __times = 1;                            \
+        {                                       \
+            func;                               \
+        }                                       \
+        do                                      \
+        {                                       \
+            __times <<= 1;                      \
+            __t0 = cputime();                   \
+            for (__t = 0; __t < __times; __t++) \
+            {                                   \
+                func;                           \
+            }                                   \
+            __tmp = cputime() - __t0;           \
+        } while (__tmp < 250);                  \
+        (t) = (double)__tmp / __times;          \
+    } while (0)
+
 void run_tests(int test_case, int measure_type)
 {
     // read the test cases from the file
@@ -436,10 +471,8 @@ void run_tests(int test_case, int measure_type)
 
     // Create directories for the results
     create_directory("experiments/results");
-    // create_directory("experiments/perf_data");
-    // create_directory("experiments/rdtsc_data");
     // open the perf file
-    gzFile perf_file, timespec_file, rdtsc_file;
+    gzFile perf_file, timespec_file, rdtsc_file, cputime_file;
     switch (measure_type)
     {
     case 0:
@@ -458,6 +491,10 @@ void run_tests(int test_case, int measure_type)
         printf("Running the tests with timespec measurements\n");
         create_directory("experiments/results/timespec_measurements");
         break;
+    case 4:
+        printf("Running the tests with cpu time measurements\n");
+        create_directory("experiments/results/cputime_measurements");
+        break;
     default:
         printf("Invalid measure type\n");
         exit(EXIT_FAILURE);
@@ -466,12 +503,14 @@ void run_tests(int test_case, int measure_type)
     unsigned long long start_rdtsc, end_rdtsc;
     unsigned long long total_rdtsc = 0;
     unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
+    unsigned long long start, end;
     uint64_t values[MAX_EVENTS];
 
     char perf_filename[100];
     char rdtsc_filename[100];
     char test_filename[100];
     char timespec_filename[100];
+    char cputime_filename[100];
 
     switch (test_case)
     {
@@ -516,6 +555,16 @@ void run_tests(int test_case, int measure_type)
                 exit(EXIT_FAILURE);
             }
         }
+        else if (measure_type == 4)
+        {
+            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            cputime_file = open_gzfile(cputime_filename, "wb");
+            if (cputime_file == NULL)
+            {
+                perror("Error opening cputime file");
+                exit(EXIT_FAILURE);
+            }
+        }
         break;
     case 1:
         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
@@ -554,6 +603,16 @@ void run_tests(int test_case, int measure_type)
             if (timespec_file == NULL)
             {
                 perror("Error opening timespec file");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (measure_type == 4)
+        {
+            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            cputime_file = open_gzfile(cputime_filename, "wb");
+            if (cputime_file == NULL)
+            {
+                perror("Error opening cputime file");
                 exit(EXIT_FAILURE);
             }
         }
@@ -598,6 +657,16 @@ void run_tests(int test_case, int measure_type)
                 exit(EXIT_FAILURE);
             }
         }
+        else if (measure_type == 4)
+        {
+            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            cputime_file = open_gzfile(cputime_filename, "wb");
+            if (cputime_file == NULL)
+            {
+                perror("Error opening cputime file");
+                exit(EXIT_FAILURE);
+            }
+        }
         break;
     case 3:
         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
@@ -636,6 +705,16 @@ void run_tests(int test_case, int measure_type)
             if (timespec_file == NULL)
             {
                 perror("Error opening timespec file");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else if (measure_type == 4)
+        {
+            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
+            cputime_file = open_gzfile(cputime_filename, "wb");
+            if (cputime_file == NULL)
+            {
+                perror("Error opening cputime file");
                 exit(EXIT_FAILURE);
             }
         }
@@ -738,6 +817,19 @@ void run_tests(int test_case, int measure_type)
         case 3:
             start_timespec = get_timespec();
             break;
+        case 4:
+
+            // for cpu-time, we'll use the TIME macro and print the time
+            double time_taken;
+            TIME(time_taken, mpz_sub(result_gmp, a, b));
+            printf("Average time taken: %f ms\n", time_taken);
+            // number of operations per second
+            // first convert time to seconds
+            // then divide by the time taken
+            double time_taken_seconds = time_taken / 1000;
+            double ops_per_sec = 1 / time_taken_seconds;
+            printf("Number of operations per second: %f\n", ops_per_sec);
+            exit(EXIT_SUCCESS);
         default:
             printf("Invalid measure type\n");
             exit(EXIT_FAILURE);
@@ -769,6 +861,10 @@ void run_tests(int test_case, int measure_type)
         case 3:
             end_timespec = get_timespec();
             write_timespec(timespec_file, diff_timespec(start_timespec, end_timespec));
+            break;
+        case 4:
+            end = cputime();
+            write_cputime(cputime_file, end - start);
             break;
         default:
             printf("Invalid measure type\n");
@@ -825,5 +921,9 @@ void run_tests(int test_case, int measure_type)
     else if (measure_type == 3)
     {
         gzclose(timespec_file);
+    }
+    else if (measure_type == 4)
+    {
+        gzclose(cputime_file);
     }
 }
