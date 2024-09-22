@@ -34,5 +34,8 @@
 !**/*.sh
 !**/*.bash
 
+# allow all files in the misc directory
+!**/misc/**
+
 # Allow directories
 !*/
