@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 def extract_data(file_path):
     with gzip.open(file_path, 'rt') as f:
-        data = [int(line.strip()) for line in f if line.strip()]
+        data = [float(line.strip()) for line in f if line.strip()]
     return np.array(data)
 
 def plot_cdf(data1, label1, data2, label2, output_path, test_case, bit_size):
@@ -23,17 +23,19 @@ def plot_cdf(data1, label1, data2, label2, output_path, test_case, bit_size):
     
     # Plot CDFs
     plt.figure()
-    plt.plot(data1_sorted, cdf1, label=f"{label1} (min: {min1}, avg: {avg1}, max: {max1})")
-    plt.plot(data2_sorted, cdf2, label=f"{label2} (min: {min2}, avg: {avg2}, max: {max2})")
+    plt.plot(data1_sorted, cdf1, label=f"{label1} (min: {min1:.2e}, avg: {avg1:.2e}, max: {max1:.2e})")
+    plt.plot(data2_sorted, cdf2, label=f"{label2} (min: {min2:.2e}, avg: {avg2:.2e}, max: {max2:.2e})")
     plt.xlabel('RDTSC Value')
     plt.ylabel('CDF')
     plt.xscale('log')  # Use log scale for x-axis
-    plt.legend(loc='best')
     plt.grid(True)
     plt.title(f'CDF Comparison: {label1} vs {label2}\nTest Case: {test_case}, Bit Size: {bit_size}')
     
+    # Move the legend outside the plot
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    
     # Save the plot
-    plt.savefig(output_path)
+    plt.savefig(output_path, bbox_inches='tight')
     plt.close()
 
 def process_directory(subdir, gmp_dir):
@@ -94,7 +96,8 @@ def process_directory(subdir, gmp_dir):
                 plot_cdf(other_data, subdir, gmp_data, 'GMP', output_path, test_case, bit_size)
 
 def main():
-    subdirectories = ["baseline", "auto-vectorized", "explicit-vectorized"]
+    # subdirectories = ["baseline", "auto-vectorized", "explicit-vectorized"]
+    subdirectories = ["explicit-vectorized"]
     gmp_dir = "gmp"
     
     for subdir in subdirectories:

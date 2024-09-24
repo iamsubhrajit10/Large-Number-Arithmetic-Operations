@@ -44,10 +44,9 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <cpuid.h>
 #include <sys/resource.h>
 
-#define MAX_EVENTS 6    // Number of events to monitor
-#define LIMB_SIZE 19    // Number of digits in each limb
-#define ITERATIONS 1000 // Number of iterations for each test
-#define CHUNK 65536     // Chunk size for reading the file
+#define MAX_EVENTS 6      // Number of events to monitor
+#define ITERATIONS 100000 // Number of iterations for each test
+#define CHUNK 65536       // Chunk size for reading the file
 
 int CORE_NO; // Core number to run the tests on
 
@@ -878,10 +877,18 @@ void run_benchmarking_test(int test_case, int measure_type)
     // pick a random i from 0 to ITERATIONS-1; keep it as random as possible
     unsigned long seed = generate_seed();
     srand(seed);
-    int i = rand() % ITERATIONS;
+    int iter_count = 0;
+    printf("Running %d iterations...\n", ITERATIONS / 1000);
+    for (int iter_count = 0; iter_count < (ITERATIONS / 1000); ++iter_count)
     {
+        int i = rand() % ITERATIONS;
+        printf("Iteration %d, reading test case %d\n", iter_count, i);
         // buffer to read the test case
         char buffer[CHUNK];
+        // reset the file pointer to the beginning of the file
+        gzrewind(test_file);
+        // skip the first line, header
+        skip_first_line(test_file);
         // read ith line from the test_file
         for (int j = 0; j < i; j++)
         {

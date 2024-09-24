@@ -56,13 +56,13 @@ uint8_t *borrow_masks; // Array to store the borrow masks
 
 __m512i zeros;             // 0 as chunk of 8 64-bit integers
 __m512i ones;              // 1 as chunk of 8 64-bit integers
-__m512i limb_digits;       // 10^19 as chunk of 8 64-bit integers
-__m512i minus_limb_digits; // -10^19 as chunk of 8 64-bit integers
+__m512i limb_digits;       // 10^18 as chunk of 8 64-bit integers
+__m512i minus_limb_digits; // -10^18 as chunk of 8 64-bit integers
 
 int sub_space_ptr = 0;    // pointer to the next available space in sub_space
 int borrow_space_ptr = 0; // pointer to the next available space in borrow_space
 
-aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^19, used for borrow-propagation, as we're using 64-bit integers
+aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^18, used for borrow-propagation, as we're using 64-bit integers
 
 int CORE_NO; // Core number to run the tests on
 
@@ -996,6 +996,7 @@ void skip_first_line(gzFile file)
 */
 void run_correctness_test(int test_case)
 {
+    printf("Running correctness test\n");
     // Create directories for the results
     create_directory("experiments/results");
     // open the perf file
@@ -1354,10 +1355,18 @@ void run_benchmarking_test(int test_case, int measure_type)
     // pick a random i from 0 to ITERATIONS-1; keep it as random as possible
     unsigned long seed = generate_seed();
     srand(seed);
-    int i = rand() % ITERATIONS;
+    int iter_count = 0;
+    printf("Running %d iterations...\n", ITERATIONS / 1000);
+    for (int iter_count = 0; iter_count < (ITERATIONS / 1000); ++iter_count)
     {
+        int i = rand() % ITERATIONS;
+        printf("Iteration %d, reading test case %d\n", iter_count, i);
         // buffer to read the test case
         char buffer[CHUNK];
+        // reset the file pointer to the beginning of the file
+        gzrewind(test_file);
+        // skip the first line, header
+        skip_first_line(test_file);
         // read ith line from the test_file
         for (int j = 0; j < i; j++)
         {
@@ -1412,6 +1421,9 @@ void run_benchmarking_test(int test_case, int measure_type)
 
         // allocate from scratch space
         aligned_uint64_ptr sub = sub_space + sub_space_ptr;
+        sub_space_ptr += (n_limb + 31) & ~31;
+        borrow_space_ptr += (n_limb + 31) & ~31;
+
         size_t sub_size = n_limb;
 
         __builtin_assume_aligned(a_limbs, 64);
