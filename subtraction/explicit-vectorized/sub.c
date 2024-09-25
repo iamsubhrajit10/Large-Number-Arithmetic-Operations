@@ -82,6 +82,7 @@ inline unsigned long long measure_rdtsc_start() __attribute__((always_inline));
 inline unsigned long long measure_rdtscp_end() __attribute__((always_inline));
 inline bool check_result(char *result, char *result_gmp, int result_size) __attribute__((always_inline));
 inline void write_time(gzFile file, double time) __attribute__((always_inline));
+void init_limbs_from_digits(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to initialize the limbs from the string
 
 // inline function for warming up rdstcp ticks
 inline void warmup_rdtsc()
@@ -386,8 +387,8 @@ int main(int argc, char *argv[])
     limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi64(-LIMB_DIGITS);
 
-    // run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    run_correctness_test(test_case);
+    // run_benchmarking_test(test_case, measure_type);
 
     // free the allocated memory
     _mm_free(sub_space);
@@ -397,250 +398,191 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-// This function, given a number represented as an array of digits, groups 18 digits together and returns the number of groups
-// Starts grouping from the least significant digit, and also appends zeros to the number if the number of digits is not a multiple of 18
-uint64_t *returnLimbs(uint64_t *number, int *length)
+aligned_uint64_ptr aligned_realloc(aligned_uint64_ptr ptr, size_t old_size, size_t new_size, size_t alignment)
 {
-    aligned_uint64_ptr limbs;
-    int n = *length;
-    int num_limbs = (n + LIMB_SIZE - 1) / LIMB_SIZE; // Calculate the number of limbs needed
-    limbs = (aligned_uint64_ptr)_mm_malloc(num_limbs * sizeof(uint64_t), 64);
-    if (limbs == NULL)
+    aligned_uint64_ptr new_ptr = (aligned_uint64_ptr)_mm_malloc(new_size, alignment);
+    if (new_ptr == NULL)
+    {
+        return NULL;
+    }
+    memcpy(new_ptr, ptr, old_size);
+    _mm_free(ptr);
+    return new_ptr;
+}
+
+// This function combines the functionality of both returning limbs and making them equidistant
+void init_limbs_from_digits(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2)
+{
+    int n1 = *n_1;
+    int n2 = *n_2;
+
+    // Calculate the number of limbs required for both numbers
+    int num_limbs_1 = (n1 + LIMB_SIZE - 1) / LIMB_SIZE;
+    int num_limbs_2 = (n2 + LIMB_SIZE - 1) / LIMB_SIZE;
+
+    // Determine the maximum number of limbs required for both numbers to be equidistant
+    int max_limbs = num_limbs_1 > num_limbs_2 ? num_limbs_1 : num_limbs_2;
+
+    // Allocate memory for the limbs
+    aligned_uint64_ptr limbs1 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+    aligned_uint64_ptr limbs2 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+
+    if (limbs1 == NULL || limbs2 == NULL)
     {
         printf("Memory could not be allocated for limbs\n");
         exit(1);
     }
-    memset(limbs, 0, num_limbs * sizeof(uint64_t));
-    int i = n - 1;
-    int k = num_limbs - 1;
+
+    memset(limbs1, 0, max_limbs * sizeof(uint64_t));
+    memset(limbs2, 0, max_limbs * sizeof(uint64_t));
+
+    // Populate limbs for num1
+    int i = n1 - 1;
+    int k = num_limbs_1 - 1;
     while (i >= 0)
     {
         aligned_uint64 limb = 0;
         uint64_t power = 1;
         for (int j = 0; j < LIMB_SIZE && i >= 0; j++, i--)
         {
-            limb += number[i] * power;
+            limb += (*num1_base)[i] * power;
             power *= 10;
         }
-        limbs[k] = limb;
+        limbs1[k] = limb;
         k--;
     }
-    *length = num_limbs;
-    return limbs;
+
+    // Populate limbs for num2
+    i = n2 - 1;
+    k = num_limbs_2 - 1;
+    while (i >= 0)
+    {
+        aligned_uint64 limb = 0;
+        uint64_t power = 1;
+        for (int j = 0; j < LIMB_SIZE && i >= 0; j++, i--)
+        {
+            limb += (*num2_base)[i] * power;
+            power *= 10;
+        }
+        limbs2[k] = limb;
+        k--;
+    }
+
+    // Adjust the numbers to be equidistant by padding with leading zeros
+    if (num_limbs_1 < max_limbs)
+    {
+        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+        memset(temp, 0, max_limbs * sizeof(uint64_t));
+        memcpy(temp + (max_limbs - num_limbs_1), limbs1, num_limbs_1 * sizeof(uint64_t));
+        _mm_free(limbs1);
+        limbs1 = temp;
+    }
+
+    if (num_limbs_2 < max_limbs)
+    {
+        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+        memset(temp, 0, max_limbs * sizeof(uint64_t));
+        memcpy(temp + (max_limbs - num_limbs_2), limbs2, num_limbs_2 * sizeof(uint64_t));
+        _mm_free(limbs2);
+        limbs2 = temp;
+    }
+
+    // Set the updated arrays and their new lengths
+    *num1_base = limbs1;
+    *num2_base = limbs2;
+    *n_1 = max_limbs;
+    *n_2 = max_limbs;
 }
 
 char *formatResult(uint64_t *result, size_t *result_length, bool sign)
 {
-    // remove leading zeroes
-    // while (*result_length > 0 && result[*result_length - 1] == 0)
-    // {
-    //     (*result_length)--;
-    // }
-    int i = 0;
-    while (result[i] == 0 && i < *result_length)
+    // Remove leading zeros
+    size_t i = 0;
+    while (i < *result_length && result[i] == 0)
     {
         i++;
     }
-    *result_length = *result_length - i;
-    result = result + i;
-    if (sign)
-    {
-        result[0] = -result[0];
-    }
+
+    *result_length -= i;
+    result += i;
 
     if (*result_length == 0)
     {
         char *temp = (char *)calloc(2, sizeof(char));
+        if (temp == NULL)
+        {
+            perror("Memory allocation failed for temp\n");
+            exit(0);
+        }
         temp[0] = '0';
         temp[1] = '\0';
         *result_length = 1;
         return temp;
     }
 
-    char *result_str = (char *)calloc(*result_length * 25 + 1, sizeof(char)); // 25 digits + null terminator per number
+    if (sign)
+    {
+        result[0] = -result[0];
+    }
+
+    // Calculate the required size for the result string
+    size_t alloc_size = (*result_length) * 20 + 2; // 20 digits per number + sign + null terminator
+    char *result_str = (char *)calloc(alloc_size, sizeof(char));
     if (result_str == NULL)
     {
         perror("Memory allocation failed for result_str\n");
         exit(0);
     }
-    i = 0;
-    // Handle the first element separately (without leading zeros)
+
+    // Format the first element separately (without leading zeros)
+    char *ptr = result_str;
     if (result[0] > LIMB_DIGITS)
     {
-        sprintf(result_str, "%" PRId64, (int64_t)result[0]); // Print as signed
+        ptr += sprintf(ptr, "%" PRId64, (int64_t)result[0]); // Print as signed
     }
     else
     {
-        sprintf(result_str, "%" PRIu64, result[0]); // Print as unsigned
-    }
-    // check if the first element is negative and it has sucessive zeros after the sign
-    if (result[0] > LIMB_DIGITS)
-    {
-        i = 1;
-        while (result_str[i] == '0')
-        {
-            i++;
-        }
-        if (i == strlen(result_str))
-        {
-            char *temp = (char *)calloc(2, sizeof(char));
-            temp[0] = '0';
-            temp[1] = '\0';
-            return temp;
-        }
+        ptr += sprintf(ptr, "%" PRIu64, result[0]); // Print as unsigned
     }
 
     // Handle the rest of the elements (with leading zeros)
-    for (int i = 1; i < *result_length; i++)
+    for (size_t j = 1; j < *result_length; j++)
     {
-        char temp[25];
-        snprintf(temp, sizeof(temp), "%018" PRIu64, result[i]); // Print with leading zeros
-        strcat(result_str, temp);
+        ptr += sprintf(ptr, "%018" PRIu64, result[j]); // Print with leading zeros
     }
-    // remove leading zeroes
-    i = 0;
-    while (result_str[i] == '0')
+
+    // Remove leading zeros from the final result
+    ptr = result_str;
+    while (*ptr == '0')
     {
-        i++;
+        ptr++;
     }
-    if (i == strlen(result_str))
+
+    if (*ptr == '\0')
     {
+        free(result_str);
         char *temp = (char *)calloc(2, sizeof(char));
+        if (temp == NULL)
+        {
+            perror("Memory allocation failed for temp\n");
+            exit(0);
+        }
         temp[0] = '0';
         temp[1] = '\0';
+        *result_length = 1;
         return temp;
     }
-    char *final_result = (char *)calloc(strlen(result_str) - i + 1, sizeof(char));
+
+    char *final_result = strdup(ptr);
     if (final_result == NULL)
     {
         perror("Memory allocation failed for final_result\n");
         exit(0);
     }
-    int j = 0;
-    while (result_str[i] != '\0')
-    {
-        final_result[j] = result_str[i];
-        i++;
-        j++;
-    }
-    final_result[j] = '\0';
+
     free(result_str);
     *result_length = strlen(final_result);
     return final_result;
-}
-// Function to make the two number strings equidistant by subing zeroes in front of the smaller number, and reallocate space for the smaller number
-void make_equidistant(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2)
-{
-    if (*n_1 == *n_2)
-        return;
-
-    int n1 = *n_1;
-    int n2 = *n_2;
-
-    __builtin_assume_aligned(*num1_base, 64);
-    __builtin_assume_aligned(*num2_base, 64);
-
-    aligned_uint64_ptr num1 = *num1_base;
-    aligned_uint64_ptr num2 = *num2_base;
-
-    if (n1 > n2)
-    {
-        // printf("Num1 is greater\n");
-        // uint32_t *temp = (uint32_t *)calloc(n1, sizeof(uint32_t));
-        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(n1 * sizeof(uint64_t), 64);
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-        // copy from the LSB to MSB of num2 into temp
-        // hint the compiler to assume the alignment of the pointers
-        __builtin_assume_aligned(temp, 64);
-        __builtin_assume_aligned(num2, 64);
-        for (int i = n2 - 1; i >= 0; i--)
-        {
-            // printf("Copying %d into temp index of %d\n", num2[i], i + n1 - n2);
-            temp[i + n1 - n2] = num2[i];
-        }
-        // fill the remaining MSB with zeroes in temp
-        // hint the compiler to assume the alignment of the pointers
-        __builtin_assume_aligned(temp, 64);
-        for (int i = 0; i < n1 - n2; i++)
-        {
-            temp[i] = 0;
-        }
-
-        // reallocate space for num2 using realloc
-        // num2 = (uint32_t *)realloc(num2, n1 * sizeof(uint32_t));
-        num2 = (aligned_uint64_ptr)_mm_malloc(n1 * sizeof(uint64_t), 64);
-        if (num2 == NULL)
-        {
-            perror("Memory reallocation failed for num2\n");
-            exit(0);
-        }
-        // copy the temp into num2
-        // hint the compiler to assume the alignment of the pointers
-        __builtin_assume_aligned(num2, 64);
-        __builtin_assume_aligned(temp, 64);
-        for (int i = 0; i < n1; i++)
-        {
-            num2[i] = temp[i];
-        }
-        // copy the temp into num2
-        *n_2 = n1;
-        *num2_base = num2;
-        // free(temp);
-        _mm_free(temp);
-    }
-    else if (n2 > n1)
-    {
-        // printf("Num2 is greater\n");
-        // uint32_t *temp = (uint32_t *)calloc(n2, sizeof(uint32_t));
-        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(n2 * sizeof(uint64_t), 64);
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-
-        // copy from the LSB to MSB of num1 into temp
-        // hint the compiler to assume the alignment of the pointers
-        __builtin_assume_aligned(temp, 64);
-        __builtin_assume_aligned(num1, 64);
-        for (int i = n1 - 1; i >= 0; i--)
-        {
-            // printf("Copying %d into temp index of %d\n", num1[i], i + n2 - n1);
-            temp[i + n2 - n1] = num1[i];
-        }
-
-        // fill the remaining MSB with zeroes in temp
-        // hint the compiler to assume the alignment of the pointers
-        __builtin_assume_aligned(temp, 64);
-        for (int i = 0; i < n2 - n1; i++)
-        {
-            temp[i] = 0;
-        }
-        // reallocate space for num1 using realloc
-        // num1 = (uint32_t *)realloc(num1, n2 * sizeof(uint32_t));
-        num1 = (aligned_uint64_ptr)_mm_malloc(n2 * sizeof(uint64_t), 64);
-        if (num1 == NULL)
-        {
-            perror("Memory reallocation failed for num1\n");
-            exit(0);
-        }
-        // copy the temp into num1
-        // hint the compiler to assume the alignment of the pointers
-        __builtin_assume_aligned(num1, 64);
-        __builtin_assume_aligned(temp, 64);
-        for (int i = 0; i < n2; i++)
-        {
-            num1[i] = temp[i];
-        }
-        *n_1 = n2;
-        *num1_base = num1;
-        // free(temp);
-        _mm_free(temp);
-    }
 }
 
 struct perf_event_attr pe[MAX_EVENTS];
@@ -833,10 +775,10 @@ bool check_result(char *result, char *result_gmp, int result_size)
     {
         if (result[i] != result_gmp[i])
         {
-            // printf("The two subs are not equal\n");
-            // printf("Mismatch at index %ld\n", i);
-            // printf("result[%ld] = %c, result_gmp[%ld] = %c\n", i, result[i], i, result_gmp[i]);
-            // printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
+            printf("The two subs are not equal\n");
+            printf("Mismatch at index %ld\n", i);
+            printf("result[%ld] = %c, result_gmp[%ld] = %c\n", i, result[i], i, result_gmp[i]);
+            printf("result = %s\nresult_gmp = %s\n", result, result_gmp);
             return false;
         }
     }
@@ -1080,37 +1022,26 @@ void run_correctness_test(int test_case)
         int n_2 = strlen(b_str);
 
         // convert a and b into digits
-        uint64_t *a = convert_string_to_digits(a_str, &n_1);
-        uint64_t *b = convert_string_to_digits(b_str, &n_2);
+        aligned_uint64_ptr a = convert_string_to_digits(a_str, &n_1);
+        aligned_uint64_ptr b = convert_string_to_digits(b_str, &n_2);
 
-        // convert a and b into limbs using returnLimbs
-        aligned_uint64_ptr a_limbs = returnLimbs(a, &n_1);
-        aligned_uint64_ptr b_limbs = returnLimbs(b, &n_2);
-        // make a and b equidistant
-
-        make_equidistant(&a_limbs, &b_limbs, &n_1, &n_2);
-
-        int n_limb = n_1;
-
-        __builtin_assume_aligned(a_limbs, 64);
-        __builtin_assume_aligned(b_limbs, 64);
+        init_limbs_from_digits(&a, &b, &n_1, &n_2);
+        int n = n_1;
 
         // allocate from scratch space
         aligned_uint64_ptr sub = sub_space + sub_space_ptr;
-        size_t sub_size = n_limb;
-        sub_space_ptr += (n_limb + 31) & ~31;
-        borrow_space_ptr += (n_limb + 31) & ~31;
+        size_t sub_size = n;
+        sub_space_ptr += (n + 31) & ~31;
+        borrow_space_ptr += (n + 31) & ~31;
 
-        __builtin_assume_aligned(a_limbs, 64);
-        __builtin_assume_aligned(b_limbs, 64);
         aligned_uint64_ptr result;
 
-        memset(sub, 0, n_limb * sizeof(uint64_t));
-        memset(borrow_space, 0, n_limb * sizeof(uint64_t));
+        memset(sub, 0, n * sizeof(uint64_t));
+        memset(borrow_space, 0, n * sizeof(uint64_t));
 
         /***** Start of subtraction *****/
 
-        bool sign = sub_n(a_limbs, b_limbs, &sub, n_limb);
+        bool sign = sub_n(a, b, &sub, n);
 
         /***** End of subtraction *****/
 
@@ -1403,43 +1334,35 @@ void run_benchmarking_test(int test_case, int measure_type)
         int n_1 = strlen(a_str);
         int n_2 = strlen(b_str);
 
-        // convert a and b into digits
-        uint64_t *a = convert_string_to_digits(a_str, &n_1);
-        uint64_t *b = convert_string_to_digits(b_str, &n_2);
+        aligned_uint64_ptr a = convert_string_to_digits(a_str, &n_1);
+        aligned_uint64_ptr b = convert_string_to_digits(b_str, &n_2);
 
-        // convert a and b into limbs using returnLimbs
-        aligned_uint64_ptr a_limbs = returnLimbs(a, &n_1);
-        aligned_uint64_ptr b_limbs = returnLimbs(b, &n_2);
-        // make a and b equidistant
+        init_limbs_from_digits(&a, &b, &n_1, &n_2);
 
-        make_equidistant(&a_limbs, &b_limbs, &n_1, &n_2);
+        int n = n_1;
 
-        int n_limb = n_1;
-
-        __builtin_assume_aligned(a_limbs, 64);
-        __builtin_assume_aligned(b_limbs, 64);
+        __builtin_assume_aligned(a, 64);
+        __builtin_assume_aligned(b, 64);
 
         // allocate from scratch space
         aligned_uint64_ptr sub = sub_space + sub_space_ptr;
-        sub_space_ptr += (n_limb + 31) & ~31;
-        borrow_space_ptr += (n_limb + 31) & ~31;
+        sub_space_ptr += (n + 31) & ~31;
+        borrow_space_ptr += (n + 31) & ~31;
 
-        size_t sub_size = n_limb;
+        size_t sub_size = n;
 
-        __builtin_assume_aligned(a_limbs, 64);
-        __builtin_assume_aligned(b_limbs, 64);
         aligned_uint64_ptr result;
 
-        memset(sub, 0, n_limb * sizeof(uint64_t));
-        memset(borrow_space, 0, n_limb * sizeof(uint64_t));
+        memset(sub, 0, n * sizeof(uint64_t));
+        memset(borrow_space, 0, n * sizeof(uint64_t));
 
         double time_taken;
 
         // clear cache content for a_limbs, b_limbs
-        for (int i = 0; i < n_limb; i += 64)
+        for (int i = 0; i < n; i += 64)
         {
-            _mm_clflush((char *)a_limbs + i);
-            _mm_clflush((char *)b_limbs + i);
+            _mm_clflush((char *)a + i);
+            _mm_clflush((char *)b + i);
         }
 
         // Ensure that the cache flush operations are completed
@@ -1453,25 +1376,27 @@ void run_benchmarking_test(int test_case, int measure_type)
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_RDTSC(time_taken, sub_n(a_limbs, b_limbs, &sub, n_limb));
+            TIME_RDTSC(time_taken, sub_n(a, b, &sub, n));
             write_time(rdtsc_file, time_taken);
             break;
         case 1:             // Timespec
             time_taken = 0; // initialize time taken
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_TIMESPEC(time_taken, sub_n(a_limbs, b_limbs, &sub, n_limb));
+            TIME_TIMESPEC(time_taken, sub_n(a, b, &sub, n));
             write_time(timespec_file, time_taken);
             break;
         case 2:             // Rusage
             time_taken = 0; // initialize time taken
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_RUSAGE(time_taken, sub_n(a_limbs, b_limbs, &sub, n_limb));
+            TIME_RUSAGE(time_taken, sub_n(a, b, &sub, n));
             write_time(cputime_file, time_taken);
             break;
         default:
             printf("Invalid measure type\n");
             exit(EXIT_FAILURE);
         }
+        _mm_free(a);
+        _mm_free(b);
     }
     // close the test file
     gzclose(test_file);
