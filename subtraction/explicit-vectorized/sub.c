@@ -1,14 +1,14 @@
-/* This is the version with explicit SIMD (AVX512) */
-/*
-This code subs two numbers, represented as array of digits.
-a --> array of digits of first number, of length n
-b --> array of digits of second number, of length m
-#Pre-processing:
-1. Equalize the length of both arrays by subing leading zeros to the smaller array.
-Note: For pre-processing, we can use the realloc function to sub leading zeros to the smaller array.
-*/
+/* This is the version with explicit SIMD (AVX512)
+ * Author: Subhrajit Das (IIT Gandhinagar)
+ * This code subs two numbers, represented as array of digits, while benchmarking the performance
+ * a --> array of digits of first number, of length n
+ * b --> array of digits of second number, of length m
+ * result --> array to store the result of subtraction
+ */
 
 /****  All the data, stored in arrays and used for computation are aligned to 64 Bytes ****/
+
+// Include the necessary header files
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +38,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <cpuid.h>
 #include <sys/resource.h>
 
+// Define the constants
 #define MAX_EVENTS 6      // Number of events to monitor
 #define LIMB_SIZE 18      // Number of digits in each limb
 #define ITERATIONS 100000 // Number of iterations for each test
@@ -46,129 +47,51 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
 
+// Define the aligned data types
 typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
 typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
 
 // Declare 64-byte aligned global pointers
 aligned_uint64_ptr sub_space;
 aligned_uint64_ptr borrow_space;
-uint8_t *borrow_masks; // Array to store the borrow masks
+// uint8_t *borrow_masks; // Array to store the borrow masks
 
+// Declare the SIMD constants
 __m512i zeros;             // 0 as chunk of 8 64-bit integers
 __m512i ones;              // 1 as chunk of 8 64-bit integers
 __m512i limb_digits;       // 10^18 as chunk of 8 64-bit integers
 __m512i minus_limb_digits; // -10^18 as chunk of 8 64-bit integers
 
+// Declare the global variables
 int sub_space_ptr = 0;    // pointer to the next available space in sub_space
 int borrow_space_ptr = 0; // pointer to the next available space in borrow_space
 
-aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^18, used for borrow-propagation, as we're using 64-bit integers
+// Declare threshold for borrow propagation and limb digits
+aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^18, used for borrow-propagation, as we're using 64-bit integers; mostly saturated
 
-int CORE_NO; // Core number to run the tests on
-
+int CORE_NO;  // Core number to run the tests on
 int NUM_BITS; // Number of bits for the numbers
 
-// Function prototypes
-uint64_t *returnLimbs(uint64_t *number, int *length);                                  // Function to group digits into limbs
-char *formatResult(uint64_t *result, size_t *result_length, bool sign);                // Function to format the result as a string
-void make_equidistant(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to make the two numbers equidistant, by adding leading zeros
-void run_benchmarking_test(int, int);                                                  // Function to run the benchmarking tests
-void run_correctness_test(int);                                                        // Function to run the correctness tests
-void initialize_perf();                                                                // Function to initialize the perf events
-inline bool sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n) __attribute__((always_inline));
+// function prototypes
+void init_limbs_from_digits(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to initialize the limbs from the string
+void write_time(gzFile file, double time);                                                   // Function to write the time to the file
+void run_benchmarking_test(int, int);                                                        // Function to run the benchmarking tests
+void run_correctness_test(int);                                                              // Function to run the correctness tests
+void initialize_perf();                                                                      // Function to initialize the perf events
+void limb_set_str(char *, char *, aligned_uint64_ptr *, aligned_uint64_ptr *, int *, int *); // Function to set the limbs from the string
+char *limb_get_str(uint64_t *result, size_t *result_length, bool sign);                      // Function to get the string from the limbs
+
+// inline function prototypes
+inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n) __attribute__((always_inline));
 inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n) __attribute__((always_inline));
 inline void warmup_rdtsc() __attribute__((always_inline));
 inline unsigned long long measure_rdtsc_start() __attribute__((always_inline));
 inline unsigned long long measure_rdtscp_end() __attribute__((always_inline));
 inline bool check_result(char *result, char *result_gmp, int result_size) __attribute__((always_inline));
-inline void write_time(gzFile file, double time) __attribute__((always_inline));
-void init_limbs_from_digits(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to initialize the limbs from the string
-
-// inline function for warming up rdstcp ticks
-inline void warmup_rdtsc()
-{
-    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
-    asm volatile("CPUID\n\t"
-                 "RDTSC\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
-    asm volatile("RDTSCP\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t"
-                 "CPUID\n\t" : "=r"(cycles_high1), "=r"(cycles_low1)::"%rax",
-                               "%rbx", "%rcx", "%rdx");
-}
-
-// inline function for measuring rdstc ticks
-inline unsigned long long measure_rdtsc_start()
-{
-    unsigned cycles_low, cycles_high;
-    unsigned long long ticks;
-    asm volatile("CPUID\n\t"
-                 "RDTSC\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
-    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
-    return ticks;
-}
-
-// inline function for measuring rdstcp ticks
-inline unsigned long long measure_rdtscp_end()
-{
-    unsigned cycles_low, cycles_high;
-    unsigned long long ticks;
-    asm volatile("RDTSCP\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t"
-                 "CPUID\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax",
-                               "%rbx", "%rcx", "%rdx");
-    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
-    return ticks;
-}
-
-// function to get the timespec stamp
-inline struct timespec get_timespec()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-    return ts;
-}
-
-// function to compute the difference between two timespec stamps
-inline long diff_timespec_ns(struct timespec start, struct timespec end)
-{
-    struct timespec temp;
-    if ((end.tv_nsec - start.tv_nsec) < 0)
-    {
-        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
-        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
-    }
-    else
-    {
-        temp.tv_sec = end.tv_sec - start.tv_sec;
-        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
-    }
-    // return in ns
-    return temp.tv_sec * 1000000000 + temp.tv_nsec;
-}
-
-// Function to measure CPU time
-int cputime()
-{
-    struct rusage rus;
-    getrusage(RUSAGE_SELF, &rus);
-    return rus.ru_utime.tv_sec * 1000 + rus.ru_utime.tv_usec / 1000;
-}
-
-inline void write_time(gzFile file, double time)
-{
-    if (gzprintf(file, "%f\n", time) < 0)
-    {
-        perror("Error writing to file\n");
-        exit(EXIT_FAILURE);
-    }
-}
-
+inline int cputime() __attribute__((always_inline));
+inline void left_shift(__mmask8 *borrow_mask, size_t n) __attribute__((always_inline));
+inline struct timespec get_timespec() __attribute__((always_inline));
+inline long diff_timespec_ns(struct timespec start, struct timespec end) __attribute__((always_inline));
 // perf_event_open system call
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
@@ -239,7 +162,7 @@ void left_shift(__mmask8 *borrow_mask, size_t n)
     }
 }
 
-inline bool sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
+inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
 {
     aligned_uint64_ptr result = sub_space + sub_space_ptr;
     size_t j = 0;
@@ -348,6 +271,13 @@ int main(int argc, char *argv[])
     if (argc != 5)
     {
         printf("Usage: %s <number of bits> <core number> <test-case number> <measure_type>\n", argv[0]);
+        printf("test-case number: 0 --> Random numbers\n");
+        printf("test-case number: 1 --> Random numbers with a < b\n");
+        printf("test-case number: 2 --> Random numbers with a > b\n");
+        printf("test-case number: 3 --> Random numbers with a = b\n");
+        printf("measure_type: 0 --> RDTSC\n");
+        printf("measure_type: 1 --> Timespec\n");
+        printf("measure_type: 2 --> RUSAGE\n");
         return 1;
     }
 
@@ -366,7 +296,7 @@ int main(int argc, char *argv[])
     // Use _mm_malloc to allocate memory aligned to 64 bytes
     sub_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
     borrow_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    borrow_masks = (uint8_t *)malloc(1 << 30);
+    // borrow_masks = (uint8_t *)malloc(1 << 30);
 
     if (sub_space == NULL || borrow_space == NULL)
     {
@@ -390,10 +320,7 @@ int main(int argc, char *argv[])
     run_correctness_test(test_case);
     // run_benchmarking_test(test_case, measure_type);
 
-    // free the allocated memory
-    _mm_free(sub_space);
-    _mm_free(borrow_space);
-    free(borrow_masks);
+    // free(borrow_masks);
 
     return 0;
 }
@@ -410,91 +337,7 @@ aligned_uint64_ptr aligned_realloc(aligned_uint64_ptr ptr, size_t old_size, size
     return new_ptr;
 }
 
-// This function combines the functionality of both returning limbs and making them equidistant
-void init_limbs_from_digits(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2)
-{
-    int n1 = *n_1;
-    int n2 = *n_2;
-
-    // Calculate the number of limbs required for both numbers
-    int num_limbs_1 = (n1 + LIMB_SIZE - 1) / LIMB_SIZE;
-    int num_limbs_2 = (n2 + LIMB_SIZE - 1) / LIMB_SIZE;
-
-    // Determine the maximum number of limbs required for both numbers to be equidistant
-    int max_limbs = num_limbs_1 > num_limbs_2 ? num_limbs_1 : num_limbs_2;
-
-    // Allocate memory for the limbs
-    aligned_uint64_ptr limbs1 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-    aligned_uint64_ptr limbs2 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-
-    if (limbs1 == NULL || limbs2 == NULL)
-    {
-        printf("Memory could not be allocated for limbs\n");
-        exit(1);
-    }
-
-    memset(limbs1, 0, max_limbs * sizeof(uint64_t));
-    memset(limbs2, 0, max_limbs * sizeof(uint64_t));
-
-    // Populate limbs for num1
-    int i = n1 - 1;
-    int k = num_limbs_1 - 1;
-    while (i >= 0)
-    {
-        aligned_uint64 limb = 0;
-        uint64_t power = 1;
-        for (int j = 0; j < LIMB_SIZE && i >= 0; j++, i--)
-        {
-            limb += (*num1_base)[i] * power;
-            power *= 10;
-        }
-        limbs1[k] = limb;
-        k--;
-    }
-
-    // Populate limbs for num2
-    i = n2 - 1;
-    k = num_limbs_2 - 1;
-    while (i >= 0)
-    {
-        aligned_uint64 limb = 0;
-        uint64_t power = 1;
-        for (int j = 0; j < LIMB_SIZE && i >= 0; j++, i--)
-        {
-            limb += (*num2_base)[i] * power;
-            power *= 10;
-        }
-        limbs2[k] = limb;
-        k--;
-    }
-
-    // Adjust the numbers to be equidistant by padding with leading zeros
-    if (num_limbs_1 < max_limbs)
-    {
-        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-        memset(temp, 0, max_limbs * sizeof(uint64_t));
-        memcpy(temp + (max_limbs - num_limbs_1), limbs1, num_limbs_1 * sizeof(uint64_t));
-        _mm_free(limbs1);
-        limbs1 = temp;
-    }
-
-    if (num_limbs_2 < max_limbs)
-    {
-        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-        memset(temp, 0, max_limbs * sizeof(uint64_t));
-        memcpy(temp + (max_limbs - num_limbs_2), limbs2, num_limbs_2 * sizeof(uint64_t));
-        _mm_free(limbs2);
-        limbs2 = temp;
-    }
-
-    // Set the updated arrays and their new lengths
-    *num1_base = limbs1;
-    *num2_base = limbs2;
-    *n_1 = max_limbs;
-    *n_2 = max_limbs;
-}
-
-char *formatResult(uint64_t *result, size_t *result_length, bool sign)
+char *limb_get_str(uint64_t *result, size_t *result_length, bool sign)
 {
     // Remove leading zeros
     size_t i = 0;
@@ -583,6 +426,116 @@ char *formatResult(uint64_t *result, size_t *result_length, bool sign)
     free(result_str);
     *result_length = strlen(final_result);
     return final_result;
+}
+
+// This function combines the functionality of both returning limbs and making them equidistant
+void limb_set_str(char *str1, char *str2, aligned_uint64_ptr *limbs1_base, aligned_uint64_ptr *limbs2_base, int *n_1, int *n_2)
+{
+    // Convert strings to digit arrays
+    int len1 = strlen(str1);
+    int len2 = strlen(str2);
+    *n_1 = len1;
+    *n_2 = len2;
+
+    uint64_t *digits1 = (uint64_t *)_mm_malloc(len1 * sizeof(uint64_t), 64);
+    uint64_t *digits2 = (uint64_t *)_mm_malloc(len2 * sizeof(uint64_t), 64);
+
+    if (digits1 == NULL || digits2 == NULL)
+    {
+        perror("Memory allocation failed for digits\n");
+        exit(0);
+    }
+
+    for (int i = 0; i < len1; i++)
+    {
+        digits1[i] = str1[i] - '0';
+    }
+
+    for (int i = 0; i < len2; i++)
+    {
+        digits2[i] = str2[i] - '0';
+    }
+
+    // Calculate the number of limbs required for both numbers
+    int num_limbs_1 = (len1 + LIMB_SIZE - 1) / LIMB_SIZE;
+    int num_limbs_2 = (len2 + LIMB_SIZE - 1) / LIMB_SIZE;
+
+    // Determine the maximum number of limbs required for both numbers to be equidistant
+    int max_limbs = num_limbs_1 > num_limbs_2 ? num_limbs_1 : num_limbs_2;
+
+    // Allocate memory for the limbs
+    aligned_uint64_ptr limbs1 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+    aligned_uint64_ptr limbs2 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+
+    if (limbs1 == NULL || limbs2 == NULL)
+    {
+        printf("Memory could not be allocated for limbs\n");
+        exit(1);
+    }
+
+    memset(limbs1, 0, max_limbs * sizeof(uint64_t));
+    memset(limbs2, 0, max_limbs * sizeof(uint64_t));
+
+    // Populate limbs for num1
+    int i = len1 - 1;
+    int k = num_limbs_1 - 1;
+    while (i >= 0)
+    {
+        uint64_t limb = 0;
+        uint64_t power = 1;
+        for (int j = 0; j < LIMB_SIZE && i >= 0; j++, i--)
+        {
+            limb += digits1[i] * power;
+            power = (power << 3) + (power << 1); // power *= 10
+        }
+        limbs1[k] = limb;
+        k--;
+    }
+
+    // Populate limbs for num2
+    i = len2 - 1;
+    k = num_limbs_2 - 1;
+    while (i >= 0)
+    {
+        uint64_t limb = 0;
+        uint64_t power = 1;
+        for (int j = 0; j < LIMB_SIZE && i >= 0; j++, i--)
+        {
+            limb += digits2[i] * power;
+            power = (power << 3) + (power << 1); // power *= 10
+        }
+        limbs2[k] = limb;
+        k--;
+    }
+
+    // Adjust the numbers to be equidistant by padding with leading zeros
+    if (num_limbs_1 < max_limbs)
+    {
+        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+        memset(temp, 0, max_limbs * sizeof(uint64_t));
+        memcpy(temp + (max_limbs - num_limbs_1), limbs1, num_limbs_1 * sizeof(uint64_t));
+        _mm_free(limbs1);
+        limbs1 = temp;
+    }
+
+    if (num_limbs_2 < max_limbs)
+    {
+        aligned_uint64_ptr temp = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
+        memset(temp, 0, max_limbs * sizeof(uint64_t));
+        memcpy(temp + (max_limbs - num_limbs_2), limbs2, num_limbs_2 * sizeof(uint64_t));
+        _mm_free(limbs2);
+        limbs2 = temp;
+    }
+
+    // Set the updated arrays and their new lengths
+    *limbs1_base = limbs1;
+    *limbs2_base = limbs2;
+    *n_1 = max_limbs;
+    *n_2 = max_limbs;
+
+    // Free the digit arrays
+    _mm_free(digits1);
+    _mm_free(digits2);
 }
 
 struct perf_event_attr pe[MAX_EVENTS];
@@ -764,9 +717,7 @@ bool check_result(char *result, char *result_gmp, int result_size)
     // Check if the lengths of the adjusted strings are equal
     if (strlen(result) != strlen(result_gmp))
     {
-        // printf("The two subs are not equal, lengths are different\n");
-        // printf("Length of result = %ld, length of result_gmp = %ld\n", strlen(result), strlen(result_gmp));
-        // printf("result = %s\n result_gmp = %s\n", result, result_gmp);
+        printf("The two subs are not equal, lengths are different\n");
         return false;
     }
 
@@ -791,23 +742,6 @@ bool check_result(char *result, char *result_gmp, int result_size)
     }
 
     return true;
-}
-
-uint64_t *convert_string_to_digits(char *str, int *n)
-{
-    int len = strlen(str);
-    *n = len;
-    uint64_t *digits = (uint64_t *)_mm_malloc(len * sizeof(uint64_t), 64);
-    if (digits == NULL)
-    {
-        perror("Memory allocation failed for digits\n");
-        exit(0);
-    }
-    for (int i = 0; i < len; i++)
-    {
-        digits[i] = str[i] - '0';
-    }
-    return digits;
 }
 
 // Function to create a directory
@@ -939,20 +873,14 @@ void skip_first_line(gzFile file)
 void run_correctness_test(int test_case)
 {
     printf("Running correctness test\n");
-    // Create directories for the results
-    create_directory("experiments/results");
-    // open the perf file
-    gzFile timespec_file, rdtsc_file, cputime_file;
 
-    uint64_t values[MAX_EVENTS];
+    gzFile timespec_file, rdtsc_file, cputime_file;
 
     memset(sub_space, 0, (1 << 30));
     sub_space_ptr = 0;
 
     memset(borrow_space, 0, (1 << 30));
     borrow_space_ptr = 0;
-
-    memset(borrow_masks, 0, (1 << 30));
 
     char test_filename[100];
 
@@ -1021,11 +949,9 @@ void run_correctness_test(int test_case)
         int n_1 = strlen(a_str);
         int n_2 = strlen(b_str);
 
-        // convert a and b into digits
-        aligned_uint64_ptr a = convert_string_to_digits(a_str, &n_1);
-        aligned_uint64_ptr b = convert_string_to_digits(b_str, &n_2);
-
-        init_limbs_from_digits(&a, &b, &n_1, &n_2);
+        // convert a and b into limbs
+        aligned_uint64_ptr a, b;
+        limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
         int n = n_1;
 
         // allocate from scratch space
@@ -1034,19 +960,17 @@ void run_correctness_test(int test_case)
         sub_space_ptr += (n + 31) & ~31;
         borrow_space_ptr += (n + 31) & ~31;
 
-        aligned_uint64_ptr result;
-
         memset(sub, 0, n * sizeof(uint64_t));
         memset(borrow_space, 0, n * sizeof(uint64_t));
 
         /***** Start of subtraction *****/
 
-        bool sign = sub_n(a, b, &sub, n);
+        bool sign = limb_sub_n(a, b, &sub, n);
 
         /***** End of subtraction *****/
 
         // convert the result into a string
-        char *sub_str = formatResult(sub, &sub_size, sign);
+        char *sub_str = limb_get_str(sub, &sub_size, sign);
 
         // verify the converted string with result
         if (!check_result(sub_str, result_str, sub_size))
@@ -1057,25 +981,42 @@ void run_correctness_test(int test_case)
             exit(EXIT_FAILURE);
             gzclose(test_file);
         }
+        _mm_free(a);
+        _mm_free(b);
+        free(sub_str);
     }
 
     switch (test_case)
     {
     case 0:
-        printf("Random test cases completed\n");
+        printf("Passed random test cases for bit-size %d\n", NUM_BITS);
         break;
     case 1:
-        printf("Equal test cases completed\n");
+        printf("Passed equal test cases for bit-size %d\n", NUM_BITS);
         break;
     case 2:
-        printf("Greater test cases completed\n");
+        printf("Passed greater test cases for bit-size %d\n", NUM_BITS);
         break;
     case 3:
-        printf("Smaller test cases completed\n");
+        printf("Passed smaller test cases for bit-size %d\n", NUM_BITS);
         break;
     }
+    if (sub_space_ptr > (1 << 30) || borrow_space_ptr > (1 << 30))
+    {
+        printf("Memory leak detected\n");
+        exit(EXIT_FAILURE);
+    }
+    if (sub_space_ptr && borrow_space_ptr)
+    {
+        _mm_free(sub_space);
+        _mm_free(borrow_space);
+    }
     // close the test file
-    gzclose(test_file);
+    if (gzclose(test_file) != Z_OK)
+    {
+        perror("Error closing test file");
+        exit(EXIT_FAILURE);
+    }
 }
 
 /*
@@ -1287,8 +1228,9 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
-    printf("Running %d iterations...\n", ITERATIONS / 1000);
-    for (int iter_count = 0; iter_count < (ITERATIONS / 1000); ++iter_count)
+    int max_iter = ITERATIONS / 1000;
+    printf("Running %d iterations...\n", max_iter);
+    for (int iter_count = 0; iter_count < max_iter; ++iter_count)
     {
         int i = rand() % ITERATIONS;
         printf("Iteration %d, reading test case %d\n", iter_count, i);
@@ -1299,7 +1241,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         // skip the first line, header
         skip_first_line(test_file);
         // read ith line from the test_file
-        for (int j = 0; j < i; j++)
+        for (int j = 0; j < i; ++j)
         {
             // flush the buffer
             memset(buffer, 0, CHUNK);
@@ -1334,30 +1276,25 @@ void run_benchmarking_test(int test_case, int measure_type)
         int n_1 = strlen(a_str);
         int n_2 = strlen(b_str);
 
-        aligned_uint64_ptr a = convert_string_to_digits(a_str, &n_1);
-        aligned_uint64_ptr b = convert_string_to_digits(b_str, &n_2);
-
-        init_limbs_from_digits(&a, &b, &n_1, &n_2);
-
-        int n = n_1;
-
+        // convert a and b into limbs
+        aligned_uint64_ptr a, b;
+        limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
         __builtin_assume_aligned(a, 64);
         __builtin_assume_aligned(b, 64);
+
+        int n = n_1;
 
         // allocate from scratch space
         aligned_uint64_ptr sub = sub_space + sub_space_ptr;
         sub_space_ptr += (n + 31) & ~31;
         borrow_space_ptr += (n + 31) & ~31;
-
         size_t sub_size = n;
-
-        aligned_uint64_ptr result;
 
         memset(sub, 0, n * sizeof(uint64_t));
         memset(borrow_space, 0, n * sizeof(uint64_t));
 
-        double time_taken;
-
+        double time_taken = 0;
+        int cpu_info[4];
         // clear cache content for a_limbs, b_limbs
         for (int i = 0; i < n; i += 64)
         {
@@ -1367,28 +1304,23 @@ void run_benchmarking_test(int test_case, int measure_type)
 
         // Ensure that the cache flush operations are completed
         _mm_mfence();
-        // Ensure the flush is completed
-        int cpu_info[4];
 
         // perform the measurement
         switch (measure_type)
         {
-        case 0:             // RDTSC
-            time_taken = 0; // initialize time taken
+        case 0: // RDTSC
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_RDTSC(time_taken, sub_n(a, b, &sub, n));
+            TIME_RDTSC(time_taken, limb_sub_n(a, b, &sub, n));
             write_time(rdtsc_file, time_taken);
             break;
-        case 1:             // Timespec
-            time_taken = 0; // initialize time taken
+        case 1: // Timespec
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_TIMESPEC(time_taken, sub_n(a, b, &sub, n));
+            TIME_TIMESPEC(time_taken, limb_sub_n(a, b, &sub, n));
             write_time(timespec_file, time_taken);
             break;
-        case 2:             // Rusage
-            time_taken = 0; // initialize time taken
+        case 2: // Rusage
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_RUSAGE(time_taken, sub_n(a, b, &sub, n));
+            TIME_RUSAGE(time_taken, limb_sub_n(a, b, &sub, n));
             write_time(cputime_file, time_taken);
             break;
         default:
@@ -1400,7 +1332,6 @@ void run_benchmarking_test(int test_case, int measure_type)
     }
     // close the test file
     gzclose(test_file);
-
     // close the benchmarking file
     if (measure_type == 0)
     {
@@ -1414,9 +1345,106 @@ void run_benchmarking_test(int test_case, int measure_type)
     {
         gzclose(cputime_file);
     }
+    // free the memory
+    if (sub_space_ptr > (1 << 30) || borrow_space_ptr > (1 << 30))
+    {
+        printf("Memory leak detected\n");
+        exit(EXIT_FAILURE);
+    }
+    if (sub_space_ptr && borrow_space_ptr)
+    {
+        _mm_free(sub_space);
+        _mm_free(borrow_space);
+    }
 }
 
 // void run_profiling_test(int test_case)
 // {
 //     // read the test cases from the file
 // }
+
+// inline function for warming up rdstcp ticks
+inline void warmup_rdtsc()
+{
+    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
+    asm volatile("CPUID\n\t"
+                 "RDTSC\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
+    asm volatile("RDTSCP\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t"
+                 "CPUID\n\t" : "=r"(cycles_high1), "=r"(cycles_low1)::"%rax",
+                               "%rbx", "%rcx", "%rdx");
+}
+
+// inline function for measuring rdstc ticks
+inline unsigned long long measure_rdtsc_start()
+{
+    unsigned cycles_low, cycles_high;
+    unsigned long long ticks;
+    asm volatile("CPUID\n\t"
+                 "RDTSC\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
+    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
+    return ticks;
+}
+
+// inline function for measuring rdstcp ticks
+inline unsigned long long measure_rdtscp_end()
+{
+    unsigned cycles_low, cycles_high;
+    unsigned long long ticks;
+    asm volatile("RDTSCP\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t"
+                 "CPUID\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax",
+                               "%rbx", "%rcx", "%rdx");
+    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
+    return ticks;
+}
+
+// function to get the timespec stamp
+inline struct timespec get_timespec()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return ts;
+}
+
+// function to compute the difference between two timespec stamps
+inline long diff_timespec_ns(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+    if ((end.tv_nsec - start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+    }
+    else
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec;
+        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+    }
+    // return in ns
+    return temp.tv_sec * 1000000000 + temp.tv_nsec;
+}
+
+// Function to measure CPU time
+inline int cputime()
+{
+    struct rusage rus;
+    getrusage(RUSAGE_SELF, &rus);
+    return rus.ru_utime.tv_sec * 1000 + rus.ru_utime.tv_usec / 1000;
+}
+
+// Function to write the time to the file
+inline void write_time(gzFile file, double time)
+{
+    if (gzprintf(file, "%f\n", time) < 0)
+    {
+        perror("Error writing to file\n");
+        exit(EXIT_FAILURE);
+    }
+}

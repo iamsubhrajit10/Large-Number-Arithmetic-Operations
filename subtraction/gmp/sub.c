@@ -622,7 +622,6 @@ void run_correctness_test(int test_case)
             exit(EXIT_FAILURE);
         }
 
-        // convert the strings to mpz_t
         mpz_t a, b, result_gmp;
         mpz_init(a);
         mpz_init(b);
