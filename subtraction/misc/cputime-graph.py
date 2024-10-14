@@ -16,7 +16,8 @@ def read_data(file_path):
     return data
 
 def calculate_ops_per_second(times_ns):
-    return [1e9 / time_ns for time_ns in times_ns]
+    # return [1e9 / time_ns for time_ns in times_ns]
+    return times_ns
 
 def plot_graph(bit_sizes, test_case, measure_type, gmp_ops, explicit_avx_ops, speedups):
     plt.figure(figsize=(10, 6))

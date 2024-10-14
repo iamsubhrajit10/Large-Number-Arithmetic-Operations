@@ -488,7 +488,6 @@ inline void write_cputime(gzFile file, int cpu_time)
             }                                   \
             __tmp = cputime() - __t0;           \
         } while (__tmp < 250);                  \
-        __tmp = __tmp * 1000000;                \
         (t) = (double)__tmp / __times;          \
     } while (0)
 
@@ -877,8 +876,8 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
-    printf("Running %d iterations...\n", ITERATIONS / 1000);
-    for (int iter_count = 0; iter_count < (ITERATIONS / 1000); ++iter_count)
+    printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
+    for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
     {
         int i = rand() % ITERATIONS;
         printf("Iteration %d, reading test case %d\n", iter_count, i);
@@ -955,28 +954,119 @@ void run_benchmarking_test(int test_case, int measure_type)
         // Ensure that the cache flush operations are completed
         _mm_mfence();
         // Ensure the flush is completed
-        int cpu_info[4];
+        int cpu_info[4], decimals;
+        unsigned long long int t0, t1;
+        int niter;
+        double f, ops_per_sec, time_taken_ms;
 
-        // perform the measurement
         switch (measure_type)
         {
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
+            printf("Calibrating CPU speed...\n");
+            fflush(stdout);
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
             TIME_RDTSC(time_taken, mpz_sub(result_gmp, a, b));
-            write_time(rdtsc_file, time_taken);
+            time_taken_ms = time_taken / 1e6;
+            // write_time(rdtsc_file, time_taken);
+            printf("done\n");
+            printf("Calibrated time: %f\n", time_taken_ms);
+            niter = 1 + (unsigned long)(1e4 / time_taken_ms);
+            printf("Subtracting %d times\n", niter);
+            fflush(stdout);
+
+            t0 = measure_rdtsc_start();
+            for (int i = 0; i < niter; i++)
+            {
+                mpz_sub(result_gmp, a, b);
+            }
+            t1 = measure_rdtscp_end();
+            t1 = t1 - t0;
+            t1 = t1 * 0.4; // t*f -> ns
+            t1 = t1 / 1e6; // ns -> ms
+            printf("done!\n");
+
+            ops_per_sec = 1000.0 * niter / t1;
+            f = 100.0;
+            for (decimals = 0;; decimals++)
+            {
+                if (ops_per_sec > f)
+                    break;
+                f = f * 0.1;
+            }
+            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            gzprintf(rdtsc_file, "%.*f\n", decimals, ops_per_sec);
             break;
         case 1:             // Timespec
             time_taken = 0; // initialize time taken
+            printf("Calibrating CPU speed...\n");
+            fflush(stdout);
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
             TIME_TIMESPEC(time_taken, mpz_sub(result_gmp, a, b));
-            write_time(timespec_file, time_taken);
+            time_taken_ms = time_taken / 1e6;
+            // write_time(timespec_file, time_taken);
+            printf("done\n");
+            printf("Calibrated time: %f\n", time_taken_ms);
+            niter = 1 + (unsigned long)(1e4 / time_taken_ms);
+            printf("Subtracting %d times\n", niter);
+            fflush(stdout);
+            struct timespec ts_0, ts_1;
+            ts_0 = get_timespec();
+            for (int i = 0; i < niter; i++)
+            {
+                mpz_sub(result_gmp, a, b);
+            }
+            ts_1 = get_timespec();
+            t1 = diff_timespec_ns(ts_0, ts_1);
+            t1 = t1 / 1e6; // ns -> ms
+
+            printf("done!\n");
+            ops_per_sec = 1000.0 * niter / t1;
+            f = 100.0;
+            for (decimals = 0;; decimals++)
+            {
+                if (ops_per_sec > f)
+                    break;
+                f = f * 0.1;
+            }
+            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            gzprintf(timespec_file, "%.*f\n", decimals, ops_per_sec);
             break;
         case 2:             // Rusage
             time_taken = 0; // initialize time taken
+            printf("Calibrating CPU speed...\n");
+            fflush(stdout);
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
             TIME_RUSAGE(time_taken, mpz_sub(result_gmp, a, b));
-            write_time(cputime_file, time_taken);
+            printf("done\n");
+            printf("Calibrated time: %f\n", time_taken);
+            niter = 1 + (unsigned long)(1e4 / time_taken);
+            printf("Subtracting %d times\n", niter);
+            fflush(stdout);
+
+            t0 = cputime();
+            for (int i = 0; i < niter; i++)
+            {
+                mpz_sub(result_gmp, a, b);
+            }
+            t1 = cputime() - t0;
+            printf("done!\n");
+
+            ops_per_sec = 1000.0 * niter / t1;
+            f = 100.0;
+
+            for (decimals = 0;; decimals++)
+            {
+                if (ops_per_sec > f)
+                    break;
+                f = f * 0.1;
+            }
+
+            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            // fprintf(cputime_file, "%.*f\n", decimals, ops_per_sec);
+            // cputime_file is of gzFile type
+            gzprintf(cputime_file, "%.*f\n", decimals, ops_per_sec);
+
             break;
         default:
             printf("Invalid measure type\n");

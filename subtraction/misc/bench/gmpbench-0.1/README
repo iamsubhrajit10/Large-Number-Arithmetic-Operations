@@ -1,0 +1,80 @@
+GMPbench 0.1
+
+Copyright 2003 Free Software Foundation, Inc.
+
+This file is part of GMPbench.
+
+GMPbench is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2.1 of the License, or (at your option) any later
+version.
+
+The GMPbench is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+the GMPbench; see the file COPYING.  If not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+
+The idea is to have a hierarchy of benchmarks, with benchmark results
+computed for the entire "GMPbench", and for "GMPbench.app.mersenne",
+"GMPbench.app.RSA", "GMPbench.app.RSA.encrypt", etc, separately.
+
+For GMPbench 0.1, there are just three parts:
+
+	[Multiply large numbers]
+	base.multiply			128
+					512
+					8192
+					131072
+					2097152
+
+	[Divide numbers of different sizes by small primes]
+	base.divide			8192/32			preinv
+					8192/64			preinv
+					8192/128
+					8192/4096
+					8192/8064		clever
+					131072/8192		barrett repeat
+					131072/65536
+					8388608/4194304		newton+barrett
+
+	[Run the RSA encryption algorithm]
+	app.RSA		encrypt/verify	512
+					1024
+					2048
+			decrypt/sign	512
+					1024
+					2048
+
+
+Result scores are computed as a geometric mean.  Please use the included
+script runbench for running the benchmarks and computing benchmark scores.
+
+Rules:
+
+  1. If benchmark code is changed, results are invalid and should not be
+     reported as GMPbench results.  Compilation parameters may be changed,
+     as long as the same parameters are used for all GMP source files and
+     for all benchmark files.
+  2. If GMP source is changed, results should not be reported as GMPbench
+     results unless the following three conditions are met:
+     A. It is clearly stated that GMP was changed when reporting results.
+     B. The changes are generic and reasonable and not specifically target
+	towards improving some aspect singularly exercised by the benchmark
+	suite.
+     C. All rights to the changes are assigned to the Free Software
+	Foundation prior to publication of the benchmark results.
+  3. As long as these rules are followed, results may be freely used.
+     Please also report results to the GMP developer's mailing list
+     gmp-devel@swox.com.
+  4. When reporting results, these data should be included:
+     A. Machine type and model
+     B. CPU type and clock frequency
+     C. GMP version used
+     D. Modifications as permitted above
+     E. Compiler and compiler version used
+     F. Compiler options used
+  5. The benchmark suite should be used with GMP 4.1 or later.

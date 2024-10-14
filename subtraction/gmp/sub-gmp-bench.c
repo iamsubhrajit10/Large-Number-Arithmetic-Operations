@@ -1,14 +1,20 @@
-/* This is the version with explicit SIMD (AVX512)
- * Author: Subhrajit Das (IIT Gandhinagar)
- * This code subs two numbers, represented as array of digits, while benchmarking the performance
- * a --> array of digits of first number, of length n
- * b --> array of digits of second number, of length m
- * result --> array to store the result of subtraction
- */
+/*
+ This program computes subtraction of two numbers using GMP library, with the test cases for the same.
+ Also, it writes various data like performance counters, rdtsc values to files, for analysis.
+*/
+
+/* This is the baseline version, without explicit SIMD */
+/*
+This code subs two numbers, represented as array of digits.
+a --> array of digits of first number, of length n
+b --> array of digits of second number, of length m
+#Pre-processing:
+1. Equalize the length of both arrays by subing leading zeros to the smaller array.
+Note: For pre-processing, we can use the realloc function to sub leading zeros to the smaller array.
+*/
 
 /****  All the data, stored in arrays and used for computation are aligned to 64 Bytes ****/
 
-// Include the necessary header files
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,60 +44,101 @@
 #include <cpuid.h>
 #include <sys/resource.h>
 
-// Define the constants
 #define MAX_EVENTS 6      // Number of events to monitor
-#define LIMB_SIZE 18      // Number of digits in each limb
 #define ITERATIONS 100000 // Number of iterations for each test
 #define CHUNK 65536       // Chunk size for reading the file
 
-#define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
-#define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
+int CORE_NO; // Core number to run the tests on
 
-// Define the aligned data types
-typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
-typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
-
-// Declare 64-byte aligned global pointers
-aligned_uint64_ptr sub_space;
-aligned_uint64_ptr borrow_space;
-// uint8_t *borrow_masks; // Array to store the borrow masks
-
-// Declare the SIMD constants
-__m512i zeros;             // 0 as chunk of 8 64-bit integers
-__m512i ones;              // 1 as chunk of 8 64-bit integers
-__m512i limb_digits;       // 10^18 as chunk of 8 64-bit integers
-__m512i minus_limb_digits; // -10^18 as chunk of 8 64-bit integers
-
-// Declare the global variables
-int sub_space_ptr = 0;    // pointer to the next available space in sub_space
-int borrow_space_ptr = 0; // pointer to the next available space in borrow_space
-
-// Declare threshold for borrow propagation and limb digits
-aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^18, used for borrow-propagation, as we're using 64-bit integers; mostly saturated
-
-int CORE_NO;  // Core number to run the tests on
 int NUM_BITS; // Number of bits for the numbers
 
-// function prototypes
-void init_limbs_from_digits(uint64_t **num1_base, uint64_t **num2_base, int *n_1, int *n_2); // Function to initialize the limbs from the string
-void write_time(gzFile file, double time);                                                   // Function to write the time to the file
-void run_benchmarking_test(int, int);                                                        // Function to run the benchmarking tests
-void run_correctness_test(int);                                                              // Function to run the correctness tests
-void initialize_perf();                                                                      // Function to initialize the perf events
-void limb_set_str(char *, char *, aligned_uint64_ptr *, aligned_uint64_ptr *, int *, int *); // Function to set the limbs from the string
-char *limb_get_str(uint64_t *result, size_t *result_length, bool sign);                      // Function to get the string from the limbs
-
-// inline function prototypes
-inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n) __attribute__((always_inline));
-inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n) __attribute__((always_inline));
+// Function prototypes
+void run_benchmarking_test(int, int); // Function to run the benchmarking tests
+void run_correctness_test(int);
+void initialize_perf(); // Function to initialize the perf events
 inline void warmup_rdtsc() __attribute__((always_inline));
 inline unsigned long long measure_rdtsc_start() __attribute__((always_inline));
 inline unsigned long long measure_rdtscp_end() __attribute__((always_inline));
 inline bool check_result(char *result, char *result_gmp, int result_size) __attribute__((always_inline));
-inline int cputime() __attribute__((always_inline));
-inline void left_shift(__mmask8 *borrow_mask, size_t n) __attribute__((always_inline));
-inline struct timespec get_timespec() __attribute__((always_inline));
-inline long diff_timespec_ns(struct timespec start, struct timespec end) __attribute__((always_inline));
+inline void write_time(gzFile file, double time) __attribute__((always_inline));
+
+// inline function for warming up rdstcp ticks
+inline void warmup_rdtsc()
+{
+    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
+    asm volatile("CPUID\n\t"
+                 "RDTSC\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
+    asm volatile("RDTSCP\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t"
+                 "CPUID\n\t" : "=r"(cycles_high1), "=r"(cycles_low1)::"%rax",
+                               "%rbx", "%rcx", "%rdx");
+}
+
+// inline function for measuring rdstc ticks
+inline unsigned long long measure_rdtsc_start()
+{
+    unsigned cycles_low, cycles_high;
+    unsigned long long ticks;
+    asm volatile("CPUID\n\t"
+                 "RDTSC\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
+    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
+    return ticks;
+}
+
+// inline function for measuring rdstcp ticks
+inline unsigned long long measure_rdtscp_end()
+{
+    unsigned cycles_low, cycles_high;
+    unsigned long long ticks;
+    asm volatile("RDTSCP\n\t"
+                 "mov %%edx, %0\n\t"
+                 "mov %%eax, %1\n\t"
+                 "CPUID\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax",
+                               "%rbx", "%rcx", "%rdx");
+    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
+    return ticks;
+}
+
+// function to get the timespec stamp
+inline struct timespec get_timespec()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return ts;
+}
+
+// function to compute the difference between two timespec stamps
+inline long diff_timespec_ns(struct timespec start, struct timespec end)
+{
+    struct timespec temp;
+    if ((end.tv_nsec - start.tv_nsec) < 0)
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+    }
+    else
+    {
+        temp.tv_sec = end.tv_sec - start.tv_sec;
+        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+    }
+    // return in ns
+    return temp.tv_sec * 1000000000 + temp.tv_nsec;
+}
+
+inline void write_time(gzFile file, double time)
+{
+    if (gzprintf(file, "%f\n", time) < 0)
+    {
+        perror("Error writing to file\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
 // perf_event_open system call
 long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
@@ -131,366 +178,25 @@ unsigned long generate_seed()
     return ts1.tv_nsec ^ ts2.tv_nsec ^ urandom_value ^ pid ^ tid;
 }
 
-inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
-{
-    int i = 0;
-    __builtin_assume_aligned(a, 64);
-    __builtin_assume_aligned(b, 64);
-    do
-    {
-        if (*(a + i) < *(b + i))
-        {
-            return true;
-        }
-        else if (*(a + i) > *(b + i))
-        {
-            return false;
-        }
-        i++;
-    } while (unlikely(i < n));
-}
-
-// function to left shift the borrow_mask array by one bit
-void left_shift(__mmask8 *borrow_mask, size_t n)
-{
-    uint8_t carry = 0;
-    for (int i = n - 1; i >= 0; i--)
-    {
-        uint8_t temp = borrow_mask[i];
-        borrow_mask[i] = (temp << 1) | carry;
-        carry = temp >> 7;
-    }
-}
-
-inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
-{
-    aligned_uint64_ptr result = sub_space + sub_space_ptr;
-    size_t j = 0;
-    bool is_less = false;
-    do
-    {
-        if (likely(a[j] > b[j]))
-        {
-            break;
-        }
-        if (unlikely(a[j] < b[j]))
-        {
-            is_less = true;
-            // swap a and b
-            aligned_uint64_ptr temp = a;
-            a = b;
-            b = temp;
-            break;
-        }
-        j++;
-        if (unlikely(j == n))
-        {
-            // a and b are equal
-            // *result = 0;
-            return is_less;
-        }
-    } while (j < n);
-
-    aligned_uint64_ptr borrow_array = borrow_space + borrow_space_ptr;
-    size_t i = 0;
-    do
-    {
-        // load 8 64-bit integers from a and b
-        __m512i a_vec = _mm512_load_si512(a + i);
-        __m512i b_vec = _mm512_load_si512(b + i);
-
-        // subtract a and b
-        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);
-
-        // if result_vec[j] < 0, set borrow mask to 1
-        __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
-
-        // based on borrow mask, result_vec[j] =  result_vec[j] + limb_digits
-        result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
-
-        // store the borrow directly using the mask
-        _mm512_mask_store_epi64(borrow_array + i, borrow_mask, ones);
-
-        // store the result
-        _mm512_store_si512(result + i, result_vec);
-        i += 8;
-    } while (likely(i < n));
-    // zero out
-    _mm512_storeu_si512(result + n, zeros);
-    _mm512_storeu_si512(borrow_array + n, zeros);
-
-    // left shift the borrow array by 1
-    borrow_array = borrow_array + 1;
-
-    int last_borrow_block = -1;
-    i = 0;
-    do
-    {
-        __m512i borrow_vec = _mm512_loadu_epi64(borrow_array + i);
-        __m512i result_vec = _mm512_load_si512(result + i);
-        result_vec = _mm512_sub_epi64(result_vec, borrow_vec);
-        // check if result_vec[j] < 0
-        __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
-        _mm512_store_si512(result + i, result_vec);
-        if (unlikely(borrow_mask))
-        {
-            last_borrow_block = i;
-            // update the borrow array
-            _mm512_mask_storeu_epi64(borrow_array + i, borrow_mask, ones);
-        }
-        i += 8;
-    } while (likely(i < n));
-
-    if (unlikely(last_borrow_block != -1))
-    {
-        size_t i = (last_borrow_block + 15);
-        i = (i > n - 1) ? (n - 1) : i;
-
-        for (; i >= 1; i--)
-        {
-            if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
-            {
-                result[i] = result[i] + LIMB_DIGITS;
-                result[i - 1] = result[i - 1] - 1;
-
-                if (unlikely(result[i - 1] > LIMB_DIGITS))
-                {
-                    borrow_array[i - 1] = 1;
-                }
-                borrow_array[i] = 0;
-            }
-        }
-    }
-    *result_ptr = result;
-    return is_less;
-}
-
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
     if (argc != 5)
     {
         printf("Usage: %s <number of bits> <core number> <test-case number> <measure_type>\n", argv[0]);
-        printf("test-case number: 0 --> Random numbers\n");
-        printf("test-case number: 1 --> Random numbers with a < b\n");
-        printf("test-case number: 2 --> Random numbers with a > b\n");
-        printf("test-case number: 3 --> Random numbers with a = b\n");
-        printf("measure_type: 0 --> RDTSC\n");
-        printf("measure_type: 1 --> Timespec\n");
-        printf("measure_type: 2 --> RUSAGE\n");
         return 1;
     }
 
     assert(atoi(argv[1]) > 0);
     NUM_BITS = atoi(argv[1]);
-
-    assert(atoi(argv[2]) >= 0 && atoi(argv[2]) < sysconf(_SC_NPROCESSORS_ONLN));
     CORE_NO = atoi(argv[2]);
-
-    assert(atoi(argv[3]) >= 0 && atoi(argv[3]) < 4);
     int test_case = atoi(argv[3]);
-
-    assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
-
-    // Use _mm_malloc to allocate memory aligned to 64 bytes
-    sub_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    borrow_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    // borrow_masks = (uint8_t *)malloc(1 << 30);
-
-    if (sub_space == NULL || borrow_space == NULL)
-    {
-        perror("Memory allocation failed for sub_space or borrow_space\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // set sub_space_ptr and borrow_space_ptr to 0
-    sub_space_ptr = 0;
-    borrow_space_ptr = 0;
-
-    // set sub_space and borrow_space to 0
-    memset(sub_space, 0, 1 << 30);
-    memset(borrow_space, 0, 1 << 30);
-
-    zeros = _mm512_set1_epi64(0);
-    ones = _mm512_set1_epi64(1);
-    limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
-    minus_limb_digits = _mm512_set1_epi64(-LIMB_DIGITS);
 
     // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
-    // free(borrow_masks);
-
     return 0;
-}
-
-aligned_uint64_ptr aligned_realloc(aligned_uint64_ptr ptr, size_t old_size, size_t new_size, size_t alignment)
-{
-    aligned_uint64_ptr new_ptr = (aligned_uint64_ptr)_mm_malloc(new_size, alignment);
-    if (new_ptr == NULL)
-    {
-        return NULL;
-    }
-    memcpy(new_ptr, ptr, old_size);
-    _mm_free(ptr);
-    return new_ptr;
-}
-
-char *limb_get_str(uint64_t *result, size_t *result_length, bool sign)
-{
-    // Remove leading zeros
-    size_t i = 0;
-    while (i < *result_length && result[i] == 0)
-    {
-        i++;
-    }
-
-    *result_length -= i;
-    result += i;
-
-    if (*result_length == 0)
-    {
-        char *temp = (char *)calloc(2, sizeof(char));
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-        temp[0] = '0';
-        temp[1] = '\0';
-        *result_length = 1;
-        return temp;
-    }
-
-    if (sign)
-    {
-        result[0] = -result[0];
-    }
-
-    // Calculate the required size for the result string
-    size_t alloc_size = (*result_length) * 20 + 2; // 20 digits per number + sign + null terminator
-    char *result_str = (char *)calloc(alloc_size, sizeof(char));
-    if (result_str == NULL)
-    {
-        perror("Memory allocation failed for result_str\n");
-        exit(0);
-    }
-
-    // Format the first element separately (without leading zeros)
-    char *ptr = result_str;
-    if (result[0] > LIMB_DIGITS)
-    {
-        ptr += sprintf(ptr, "%" PRId64, (int64_t)result[0]); // Print as signed
-    }
-    else
-    {
-        ptr += sprintf(ptr, "%" PRIu64, result[0]); // Print as unsigned
-    }
-
-    // Handle the rest of the elements (with leading zeros)
-    for (size_t j = 1; j < *result_length; j++)
-    {
-        ptr += sprintf(ptr, "%018" PRIu64, result[j]); // Print with leading zeros
-    }
-
-    // Remove leading zeros from the final result
-    ptr = result_str;
-    while (*ptr == '0')
-    {
-        ptr++;
-    }
-
-    if (*ptr == '\0')
-    {
-        free(result_str);
-        char *temp = (char *)calloc(2, sizeof(char));
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-        temp[0] = '0';
-        temp[1] = '\0';
-        *result_length = 1;
-        return temp;
-    }
-
-    char *final_result = strdup(ptr);
-    if (final_result == NULL)
-    {
-        perror("Memory allocation failed for final_result\n");
-        exit(0);
-    }
-
-    free(result_str);
-    *result_length = strlen(final_result);
-    return final_result;
-}
-
-void limb_set_str(char *str1, char *str2, aligned_uint64_ptr *limbs1_base, aligned_uint64_ptr *limbs2_base, int *n_1, int *n_2)
-{
-    int len1 = strlen(str1);
-    int len2 = strlen(str2);
-
-    *n_1 = len1;
-    *n_2 = len2;
-
-    // Calculate number of limbs required for both numbers
-    int num_limbs_1 = (len1 + LIMB_SIZE - 1) / LIMB_SIZE;
-    int num_limbs_2 = (len2 + LIMB_SIZE - 1) / LIMB_SIZE;
-    int max_limbs = num_limbs_1 > num_limbs_2 ? num_limbs_1 : num_limbs_2;
-
-    // Allocate memory for the limbs
-    aligned_uint64_ptr limbs1 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-    aligned_uint64_ptr limbs2 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-
-    if (limbs1 == NULL || limbs2 == NULL)
-    {
-        perror("Memory allocation failed for limbs");
-        exit(1);
-    }
-
-    memset(limbs1, 0, max_limbs * sizeof(uint64_t));
-    memset(limbs2, 0, max_limbs * sizeof(uint64_t));
-
-    // Populate limbs for num1
-    int i, k;
-    int limbs_offset_1 = max_limbs - num_limbs_1;
-    int limbs_offset_2 = max_limbs - num_limbs_2;
-
-    // Populate limbs for num1
-    for (i = len1 - 1, k = num_limbs_1 - 1; k >= 0; k--)
-    {
-        uint64_t limb = 0;
-        uint64_t power = 1;
-        int digits_in_limb = LIMB_SIZE < (i + 1) ? LIMB_SIZE : (i + 1);
-        for (int j = 0; j < digits_in_limb; j++, i--)
-        {
-            limb += (str1[i] - '0') * power;
-            power = (power << 3) + (power << 1); // power *= 10
-        }
-        limbs1[limbs_offset_1 + k] = limb;
-    }
-
-    // Populate limbs for num2
-    for (i = len2 - 1, k = num_limbs_2 - 1; k >= 0; k--)
-    {
-        uint64_t limb = 0;
-        uint64_t power = 1;
-        int digits_in_limb = LIMB_SIZE < (i + 1) ? LIMB_SIZE : (i + 1);
-        for (int j = 0; j < digits_in_limb; j++, i--)
-        {
-            limb += (str2[i] - '0') * power;
-            power = (power << 3) + (power << 1); // power *= 10
-        }
-        limbs2[limbs_offset_2 + k] = limb;
-    }
-    // Set the updated arrays and their new lengths
-    *limbs1_base = limbs1;
-    *limbs2_base = limbs2;
-    *n_1 = max_limbs;
-    *n_2 = max_limbs;
 }
 
 struct perf_event_attr pe[MAX_EVENTS];
@@ -673,6 +379,8 @@ bool check_result(char *result, char *result_gmp, int result_size)
     if (strlen(result) != strlen(result_gmp))
     {
         printf("The two subs are not equal, lengths are different\n");
+        printf("Length of result = %ld, length of result_gmp = %ld\n", strlen(result), strlen(result_gmp));
+        printf("result = %s\n result_gmp = %s\n", result, result_gmp);
         return false;
     }
 
@@ -698,7 +406,6 @@ bool check_result(char *result, char *result_gmp, int result_size)
 
     return true;
 }
-
 // Function to create a directory
 void create_directory(const char *path)
 {
@@ -742,6 +449,24 @@ void skip_first_line(gzFile file)
         gzclose(file);
         exit(EXIT_FAILURE);
     }
+}
+
+void write_rdtsc(gzFile file, unsigned long long rdtsc)
+{
+    gzprintf(file, "%llu\n", rdtsc);
+}
+
+// Function to measure CPU time
+int cputime()
+{
+    struct rusage rus;
+    getrusage(RUSAGE_SELF, &rus);
+    return rus.ru_utime.tv_sec * 1000 + rus.ru_utime.tv_usec / 1000;
+}
+
+inline void write_cputime(gzFile file, int cpu_time)
+{
+    gzprintf(file, "%d\n", cpu_time);
 }
 
 // Function to measure the time taken by a function using the rusage system call
@@ -826,15 +551,12 @@ void skip_first_line(gzFile file)
 */
 void run_correctness_test(int test_case)
 {
-    printf("Running correctness test\n");
-
+    // Create directories for the results
+    create_directory("experiments/results");
+    // open the perf file
     gzFile timespec_file, rdtsc_file, cputime_file;
 
-    memset(sub_space, 0, (1 << 30));
-    sub_space_ptr = 0;
-
-    memset(borrow_space, 0, (1 << 30));
-    borrow_space_ptr = 0;
+    uint64_t values[MAX_EVENTS];
 
     char test_filename[100];
 
@@ -899,32 +621,29 @@ void run_correctness_test(int test_case)
             exit(EXIT_FAILURE);
         }
 
-        // Convert the strings to digits
-        int n_1 = strlen(a_str);
-        int n_2 = strlen(b_str);
+        mpz_t a, b, result_gmp;
+        mpz_init(a);
+        mpz_init(b);
 
-        // convert a and b into limbs
-        aligned_uint64_ptr a, b;
-        limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
-        int n = n_1;
-
-        // allocate from scratch space
-        aligned_uint64_ptr sub = sub_space + sub_space_ptr;
-        size_t sub_size = n;
-        sub_space_ptr += (n + 31) & ~31;
-        borrow_space_ptr += (n + 31) & ~31;
-
-        memset(sub, 0, n * sizeof(uint64_t));
-        memset(borrow_space, 0, n * sizeof(uint64_t));
+        // convert the strings to mpz_t
+        if (mpz_set_str(a, a_str, 10) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string a_str");
+            exit(EXIT_FAILURE);
+        }
+        if (mpz_set_str(b, b_str, 10) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string b_str");
+            exit(EXIT_FAILURE);
+        }
 
         /***** Start of subtraction *****/
-
-        bool sign = limb_sub_n(a, b, &sub, n);
+        mpz_sub(result_gmp, a, b);
 
         /***** End of subtraction *****/
 
-        // convert the result into a string
-        char *sub_str = limb_get_str(sub, &sub_size, sign);
+        char *sub_str = mpz_get_str(NULL, 10, result_gmp);
+        int sub_size = strlen(sub_str);
 
         // verify the converted string with result
         if (!check_result(sub_str, result_str, sub_size))
@@ -933,44 +652,25 @@ void run_correctness_test(int test_case)
             printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
             printf("Experimental result = %s\n", sub_str);
             exit(EXIT_FAILURE);
-            gzclose(test_file);
         }
-        _mm_free(a);
-        _mm_free(b);
-        free(sub_str);
     }
-
     switch (test_case)
     {
     case 0:
-        printf("Passed random test cases for bit-size %d\n", NUM_BITS);
+        printf("Random test cases completed\n");
         break;
     case 1:
-        printf("Passed equal test cases for bit-size %d\n", NUM_BITS);
+        printf("Equal test cases completed\n");
         break;
     case 2:
-        printf("Passed greater test cases for bit-size %d\n", NUM_BITS);
+        printf("Greater test cases completed\n");
         break;
     case 3:
-        printf("Passed smaller test cases for bit-size %d\n", NUM_BITS);
+        printf("Smaller test cases completed\n");
         break;
     }
-    if (sub_space_ptr > (1 << 30) || borrow_space_ptr > (1 << 30))
-    {
-        printf("Memory leak detected\n");
-        exit(EXIT_FAILURE);
-    }
-    if (sub_space_ptr && borrow_space_ptr)
-    {
-        _mm_free(sub_space);
-        _mm_free(borrow_space);
-    }
     // close the test file
-    if (gzclose(test_file) != Z_OK)
-    {
-        perror("Error closing test file");
-        exit(EXIT_FAILURE);
-    }
+    gzclose(test_file);
 }
 
 /*
@@ -1007,12 +707,6 @@ void run_benchmarking_test(int test_case, int measure_type)
         printf("Invalid measure type\n");
         exit(EXIT_FAILURE);
     }
-
-    memset(sub_space, 0, (1 << 30));
-    sub_space_ptr = 0;
-
-    memset(borrow_space, 0, (1 << 30));
-    borrow_space_ptr = 0;
 
     char rdtsc_filename[100];
     char test_filename[100];
@@ -1182,9 +876,8 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
-    int max_iter = ITERATIONS / 1000;
-    printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
-    for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
+    printf("Running %d iterations...\n", ITERATIONS / 1000);
+    for (int iter_count = 0; iter_count < (ITERATIONS / 1000); ++iter_count)
     {
         int i = rand() % ITERATIONS;
         printf("Iteration %d, reading test case %d\n", iter_count, i);
@@ -1195,7 +888,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         // skip the first line, header
         skip_first_line(test_file);
         // read ith line from the test_file
-        for (int j = 0; j < i; ++j)
+        for (int j = 0; j < i; j++)
         {
             // flush the buffer
             memset(buffer, 0, CHUNK);
@@ -1226,196 +919,84 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
-        // Convert the strings to digits
-        int n_1 = strlen(a_str);
-        int n_2 = strlen(b_str);
+        // convert the strings to mpz_t
+        mpz_t a, b, result_gmp;
+        mpz_init(a);
+        mpz_init(b);
 
-        // convert a and b into limbs
-        aligned_uint64_ptr a, b;
-        limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
-        __builtin_assume_aligned(a, 64);
-        __builtin_assume_aligned(b, 64);
-
-        int n = n_1;
-
-        // allocate from scratch space
-        aligned_uint64_ptr sub = sub_space + sub_space_ptr;
-        sub_space_ptr += (n + 31) & ~31;
-        borrow_space_ptr += (n + 31) & ~31;
-        size_t sub_size = n;
-
-        memset(sub, 0, n * sizeof(uint64_t));
-        memset(borrow_space, 0, n * sizeof(uint64_t));
-
-        int cpu_info[4], decimals;
-        unsigned long long int t0, t1;
-        int niter;
-
-        double f, ops_per_sec, time_taken_ms, time_taken;
-        // clear cache content for a_limbs, b_limbs
-        for (int i = 0; i < n; i += 64)
+        // convert the strings to mpz_t
+        if (mpz_set_str(a, a_str, 10) != 0)
         {
-            _mm_clflush((char *)a + i);
-            _mm_clflush((char *)b + i);
+            perror("Error: Failed to set mpz_t from string a_str");
+            exit(EXIT_FAILURE);
+        }
+        if (mpz_set_str(b, b_str, 10) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string b_str");
+            exit(EXIT_FAILURE);
         }
 
+        double time_taken;
+
+        // clear cache before each test case
+        size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
+        size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
+
+        for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
+        {
+            _mm_clflush((char *)a->_mp_d + i);
+        }
+
+        for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
+        {
+            _mm_clflush((char *)b->_mp_d + i);
+        }
         // Ensure that the cache flush operations are completed
         _mm_mfence();
+        // Ensure the flush is completed
+        int cpu_info[4];
 
-        // perform the measurement
-        // switch (measure_type)
-        // {
-        // case 0: // RDTSC
-        //     __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        //     TIME_RDTSC(time_taken, limb_sub_n(a, b, &sub, n));
-        //     write_time(rdtsc_file, time_taken);
-        //     break;
-        // case 1: // Timespec
-        //     __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        //     TIME_TIMESPEC(time_taken, limb_sub_n(a, b, &sub, n));
-        //     write_time(timespec_file, time_taken);
-        //     break;
-        // // case 2: // Rusage
-        // // __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        // // TIME_RUSAGE(time_taken, limb_sub_n(a, b, &sub, n));
-        // // write_time(cputime_file, time_taken);
-        // // break;
-        // case 2:             // Rusage
-        //     time_taken = 0; // initialize time taken
-        //     printf("Calibrating CPU speed...\n");
-        //     fflush(stdout);
-        //     __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        //     TIME_RUSAGE(time_taken, limb_sub_n(a, b, &sub, n));
-        //     printf("done\n");
-        //     printf("Calibrated time: %f\n", time_taken);
-        //     int niter = 1 + (unsigned long)(1e4 / time_taken);
-        //     printf("Subtracting %d times\n", niter);
-        //     fflush(stdout);
-        //     unsigned long int t0, t1;
-
-        //     t0 = cputime();
-        //     for (int i = 0; i < niter; i++)
-        //     {
-        //         limb_sub_n(a, b, &sub, n);
-        //     }
-        //     t1 = cputime() - t0;
-        //     printf("done!\n");
-        //     double f, ops_per_sec;
-        //     ops_per_sec = 1000.0 * niter / t1;
-        //     f = 100.0;
-        //     int decimals;
-        //     for (decimals = 0;; decimals++)
-        //     {
-        //         if (ops_per_sec > f)
-        //             break;
-        //         f = f * 0.1;
-        //     }
-
-        //     printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-        //     fprintf(cputime_file, "%.*f\n", decimals, ops_per_sec);
-        //     break;
-        // default:
-        //     printf("Invalid measure type\n");
-        //     exit(EXIT_FAILURE);
-        // }
-        // perform the measurement
         // perform the measurement
         switch (measure_type)
         {
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed...\n");
-            fflush(stdout);
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_RDTSC(time_taken, limb_sub_n(a, b, &sub, n));
-            time_taken_ms = time_taken / 1e6;
-            // write_time(rdtsc_file, time_taken);
-            printf("done\n");
-            printf("Calibrated time: %f\n", time_taken_ms);
-            niter = 1 + (unsigned long)(1e4 / time_taken_ms);
-            printf("Subtracting %d times\n", niter);
-            fflush(stdout);
-
-            t0 = measure_rdtsc_start();
-            for (int i = 0; i < niter; i++)
-            {
-                limb_sub_n(a, b, &sub, n);
-            }
-            t1 = measure_rdtscp_end();
-            t1 = t1 - t0;
-            t1 = t1 * 0.4; // t*f -> ns
-            t1 = t1 / 1e6; // ns -> ms
-            printf("done!\n");
-
-            ops_per_sec = 1000.0 * niter / t1;
-            f = 100.0;
-            for (decimals = 0;; decimals++)
-            {
-                if (ops_per_sec > f)
-                    break;
-                f = f * 0.1;
-            }
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-            gzprintf(rdtsc_file, "%.*f\n", decimals, ops_per_sec);
+            TIME_RDTSC(time_taken, mpz_sub(result_gmp, a, b));
+            printf("Time taken: %f\n", time_taken);
+            write_time(rdtsc_file, time_taken);
             break;
         case 1:             // Timespec
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed...\n");
-            fflush(stdout);
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_TIMESPEC(time_taken, limb_sub_n(a, b, &sub, n));
-            time_taken_ms = time_taken / 1e6;
-            // write_time(timespec_file, time_taken);
-            printf("done\n");
-            printf("Calibrated time: %f\n", time_taken_ms);
-            niter = 1 + (unsigned long)(1e4 / time_taken_ms);
-            printf("Subtracting %d times\n", niter);
-            fflush(stdout);
-            struct timespec ts_0, ts_1;
-            ts_0 = get_timespec();
-            for (int i = 0; i < niter; i++)
-            {
-                limb_sub_n(a, b, &sub, n);
-            }
-            ts_1 = get_timespec();
-            t1 = diff_timespec_ns(ts_0, ts_1);
-            t1 = t1 / 1e6; // ns -> ms
-
-            printf("done!\n");
-            ops_per_sec = 1000.0 * niter / t1;
-            f = 100.0;
-            for (decimals = 0;; decimals++)
-            {
-                if (ops_per_sec > f)
-                    break;
-                f = f * 0.1;
-            }
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-            gzprintf(timespec_file, "%.*f\n", decimals, ops_per_sec);
+            TIME_TIMESPEC(time_taken, mpz_sub(result_gmp, a, b));
+            printf("Time taken: %f\n", time_taken);
+            write_time(timespec_file, time_taken);
             break;
         case 2:             // Rusage
             time_taken = 0; // initialize time taken
             printf("Calibrating CPU speed...\n");
             fflush(stdout);
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-            TIME_RUSAGE(time_taken, limb_sub_n(a, b, &sub, n));
+            TIME_RUSAGE(time_taken, mpz_sub(result_gmp, a, b));
             printf("done\n");
             printf("Calibrated time: %f\n", time_taken);
-            niter = 1 + (unsigned long)(1e4 / time_taken);
+            int niter = 1 + (unsigned long)(1e4 / time_taken);
             printf("Subtracting %d times\n", niter);
             fflush(stdout);
+            unsigned long int t0, t1;
 
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_sub_n(a, b, &sub, n);
+                mpz_sub(result_gmp, a, b);
             }
             t1 = cputime() - t0;
             printf("done!\n");
-
+            double f, ops_per_sec;
             ops_per_sec = 1000.0 * niter / t1;
             f = 100.0;
-
+            int decimals;
             for (decimals = 0;; decimals++)
             {
                 if (ops_per_sec > f)
@@ -1424,20 +1005,16 @@ void run_benchmarking_test(int test_case, int measure_type)
             }
 
             printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-            // fprintf(cputime_file, "%.*f\n", decimals, ops_per_sec);
-            // cputime_file is of gzFile type
-            gzprintf(cputime_file, "%.*f\n", decimals, ops_per_sec);
-
+            write_time(cputime_file, t1);
             break;
         default:
             printf("Invalid measure type\n");
             exit(EXIT_FAILURE);
         }
-        _mm_free(a);
-        _mm_free(b);
     }
     // close the test file
     gzclose(test_file);
+
     // close the benchmarking file
     if (measure_type == 0)
     {
@@ -1450,107 +1027,5 @@ void run_benchmarking_test(int test_case, int measure_type)
     else if (measure_type == 2)
     {
         gzclose(cputime_file);
-    }
-    // free the memory
-    if (sub_space_ptr > (1 << 30) || borrow_space_ptr > (1 << 30))
-    {
-        printf("Memory leak detected\n");
-        exit(EXIT_FAILURE);
-    }
-    if (sub_space_ptr && borrow_space_ptr)
-    {
-        _mm_free(sub_space);
-        _mm_free(borrow_space);
-    }
-}
-
-// void run_profiling_test(int test_case)
-// {
-//     // read the test cases from the file
-// }
-
-// inline function for warming up rdstcp ticks
-inline void warmup_rdtsc()
-{
-    unsigned cycles_low, cycles_high, cycles_low1, cycles_high1;
-    asm volatile("CPUID\n\t"
-                 "RDTSC\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
-    asm volatile("RDTSCP\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t"
-                 "CPUID\n\t" : "=r"(cycles_high1), "=r"(cycles_low1)::"%rax",
-                               "%rbx", "%rcx", "%rdx");
-}
-
-// inline function for measuring rdstc ticks
-inline unsigned long long measure_rdtsc_start()
-{
-    unsigned cycles_low, cycles_high;
-    unsigned long long ticks;
-    asm volatile("CPUID\n\t"
-                 "RDTSC\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax", "%rbx", "%rcx", "%rdx");
-    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
-    return ticks;
-}
-
-// inline function for measuring rdstcp ticks
-inline unsigned long long measure_rdtscp_end()
-{
-    unsigned cycles_low, cycles_high;
-    unsigned long long ticks;
-    asm volatile("RDTSCP\n\t"
-                 "mov %%edx, %0\n\t"
-                 "mov %%eax, %1\n\t"
-                 "CPUID\n\t" : "=r"(cycles_high), "=r"(cycles_low)::"%rax",
-                               "%rbx", "%rcx", "%rdx");
-    ticks = (((unsigned long long)cycles_high << 32) | cycles_low);
-    return ticks;
-}
-
-// function to get the timespec stamp
-inline struct timespec get_timespec()
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-    return ts;
-}
-
-// function to compute the difference between two timespec stamps
-inline long diff_timespec_ns(struct timespec start, struct timespec end)
-{
-    struct timespec temp;
-    if ((end.tv_nsec - start.tv_nsec) < 0)
-    {
-        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
-        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
-    }
-    else
-    {
-        temp.tv_sec = end.tv_sec - start.tv_sec;
-        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
-    }
-    // return in ns
-    return temp.tv_sec * 1000000000 + temp.tv_nsec;
-}
-
-// Function to measure CPU time
-inline int cputime()
-{
-    struct rusage rus;
-    getrusage(RUSAGE_SELF, &rus);
-    return rus.ru_utime.tv_sec * 1000 + rus.ru_utime.tv_usec / 1000;
-}
-
-// Function to write the time to the file
-inline void write_time(gzFile file, double time)
-{
-    if (gzprintf(file, "%f\n", time) < 0)
-    {
-        perror("Error writing to file\n");
-        exit(EXIT_FAILURE);
     }
 }

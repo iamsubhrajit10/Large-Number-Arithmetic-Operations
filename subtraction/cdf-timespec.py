@@ -25,7 +25,7 @@ def plot_cdf(data1, label1, data2, label2, output_path, test_case, bit_size):
     plt.figure()
     plt.plot(data1_sorted, cdf1, label=f"{label1} (min: {min1:.2e}, avg: {avg1:.2e}, max: {max1:.2e})")
     plt.plot(data2_sorted, cdf2, label=f"{label2} (min: {min2:.2e}, avg: {avg2:.2e}, max: {max2:.2e})")
-    plt.xlabel('Timespec Value')
+    plt.xlabel('Operations per Second')
     plt.ylabel('CDF')
     plt.xscale('log')  # Use log scale for x-axis
     plt.grid(True)
