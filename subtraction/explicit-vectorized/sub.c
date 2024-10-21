@@ -162,11 +162,41 @@ void left_shift(__mmask8 *borrow_mask, size_t n)
     }
 }
 
+void left_shift_avx512(__mmask8 *borrow_mask, size_t n)
+{
+    __m512i carry = zeros;
+
+    // Process in chunks of 64 bytes (512 bits)
+    for (size_t i = 0; i < n; i += 64)
+    {
+        // Load 64 bytes
+        __m512i data = _mm512_loadu_si512((__m512i *)&borrow_mask[i]);
+
+        // Extract the carry bit from the previous chunk
+        __m512i carry_vec = _mm512_srli_epi64(data, 7);
+        carry_vec = _mm512_slli_epi64(carry_vec, 63); // Shift carry to the highest bit
+
+        // Left shift by 1
+        __m512i shifted = _mm512_slli_epi64(data, 1);
+
+        // Combine with carry
+        shifted = _mm512_or_si512(shifted, carry);
+
+        // Store result back
+        _mm512_storeu_si512((__m512i *)&borrow_mask[i], shifted);
+
+        // Update carry for the next chunk
+        carry = carry_vec;
+    }
+    borrow_mask[n - 1] &= 0xFE;
+}
+
 inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
 {
-    aligned_uint64_ptr result = sub_space + sub_space_ptr;
+    aligned_uint64_ptr result = sub_space;
     size_t j = 0;
     bool is_less = false;
+    // check if a < b, if so, swap a and b; also check if a == b and return 0
     do
     {
         if (likely(a[j] > b[j]))
@@ -191,8 +221,12 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         }
     } while (j < n);
 
-    aligned_uint64_ptr borrow_array = borrow_space + borrow_space_ptr;
+    int bm_size;
+    __mmask8 *bm = (__mmask8 *)borrow_space;
+
     size_t i = 0;
+    j = 0;
+
     do
     {
         // load 8 64-bit integers from a and b
@@ -208,59 +242,67 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         // based on borrow mask, result_vec[j] =  result_vec[j] + limb_digits
         result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
 
-        // store the borrow directly using the mask
-        _mm512_mask_store_epi64(borrow_array + i, borrow_mask, ones);
-
         // store the result
         _mm512_store_si512(result + i, result_vec);
+        bm[j] = borrow_mask;
         i += 8;
+        j++;
     } while (likely(i < n));
+    bm_size = j;
+    // borrow_space_ptr += bm_size;
+
     // zero out
     _mm512_storeu_si512(result + n, zeros);
-    _mm512_storeu_si512(borrow_array + n, zeros);
 
-    // left shift the borrow array by 1
-    borrow_array = borrow_array + 1;
+    // left shift the borrow array by 1-bit
+    // left_shift(bm, bm_size);
+    left_shift_avx512(bm, bm_size);
 
     int last_borrow_block = -1;
     i = 0;
+    j = 0;
     do
     {
-        __m512i borrow_vec = _mm512_loadu_epi64(borrow_array + i);
+        // load 8 64-bit integers from result
         __m512i result_vec = _mm512_load_si512(result + i);
-        result_vec = _mm512_sub_epi64(result_vec, borrow_vec);
-        // check if result_vec[j] < 0
-        __mmask8 borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
+        // load 8-bit mask from bm[j]
+        __mmask8 borrow_mask = bm[j];
+        // perform the subtraction
+        result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, ones);
         _mm512_store_si512(result + i, result_vec);
+        // check if result_vec[j] < 0
+        borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
         if (unlikely(borrow_mask))
         {
+            // printf("Borrow mask is not zero\n");
             last_borrow_block = i;
             // update the borrow array
-            _mm512_mask_storeu_epi64(borrow_array + i, borrow_mask, ones);
+            bm[j] = borrow_mask;
         }
         i += 8;
+        j++;
     } while (likely(i < n));
 
-    if (unlikely(last_borrow_block != -1))
-    {
-        size_t i = (last_borrow_block + 15);
-        i = (i > n - 1) ? (n - 1) : i;
+    // if (unlikely(last_borrow_block != -1))
+    // {
+    //     size_t i = (last_borrow_block + 15);
+    //     i = (i > n - 1) ? (n - 1) : i;
 
-        for (; i >= 1; i--)
-        {
-            if (borrow_array[i] > 0 && result[i] > LIMB_DIGITS)
-            {
-                result[i] = result[i] + LIMB_DIGITS;
-                result[i - 1] = result[i - 1] - 1;
-
-                if (unlikely(result[i - 1] > LIMB_DIGITS))
-                {
-                    borrow_array[i - 1] = 1;
-                }
-                borrow_array[i] = 0;
-            }
-        }
-    }
+    //     while (i > 0)
+    //     {
+    //         if (bm[i / 8] & (1 << (i % 8)))
+    //         {
+    //             result[i] += LIMB_DIGITS;
+    //             result[i - 1] -= 1;
+    //             if (unlikely(result[i - 1] > LIMB_DIGITS))
+    //             {
+    //                 bm[(i - 1) / 8] |= (1 << ((i - 1) % 8));
+    //             }
+    //             bm[i / 8] &= ~(1 << (i % 8));
+    //         }
+    //         i--;
+    //     }
+    // }
     *result_ptr = result;
     return is_less;
 }
@@ -932,6 +974,27 @@ void run_correctness_test(int test_case)
             printf("Test case failed, at iteration %d\n", i);
             printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
             printf("Experimental result = %s\n", sub_str);
+            // print in limbs: a,b, experimental result
+            // print in limbs: experimental result
+            printf("a :\n");
+            for (int i = 0; i < n; i++)
+            {
+                printf("%" PRIu64 " ", a[i]);
+            }
+            printf("\n");
+            printf("b :\n");
+            for (int i = 0; i < n; i++)
+            {
+                printf("%" PRIu64 " ", b[i]);
+            }
+            printf("\n");
+            printf("Experimental result :\n");
+            for (int i = 0; i < n; i++)
+            {
+                printf("%" PRIu64 " ", sub[i]);
+            }
+            printf("\n");
+
             exit(EXIT_FAILURE);
             gzclose(test_file);
         }

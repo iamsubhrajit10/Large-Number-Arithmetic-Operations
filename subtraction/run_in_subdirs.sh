@@ -23,8 +23,8 @@ for dir in "${directories[@]}"; do
     fi
 done
 
-# execute following python scripts
-python3 cdf-rdtsc.py
-python3 cdf-timespec.py
-python3 linear-average-rdtsc.py
-python3 linear-average-timespec.py
+# # execute following python scripts
+# python3 cdf-rdtsc.py
+# python3 cdf-timespec.py
+# python3 linear-average-rdtsc.py
+# python3 linear-average-timespec.py
