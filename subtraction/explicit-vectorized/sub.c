@@ -150,45 +150,38 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
     } while (unlikely(i < n));
 }
 
-// function to left shift the borrow_mask array by one bit
+// function to left(right) shift the borrow_mask array by one bit
 void left_shift(__mmask8 *borrow_mask, size_t n)
 {
-    uint8_t carry = 0;
+    uint64_t *borrow_mask_ptr = (uint64_t *)borrow_mask;
+    __mmask8 carry_prev = 0;
     for (int i = n - 1; i >= 0; i--)
     {
-        uint8_t temp = borrow_mask[i];
-        borrow_mask[i] = (temp << 1) | carry;
-        carry = temp >> 7;
+        __mmask8 carry_next = borrow_mask[i] & 0x1;
+        borrow_mask[i] = (borrow_mask[i] >> 1) | (carry_prev << 7);
+        carry_prev = carry_next;
     }
 }
 
+/* This code below tries the right shift the borrow_mask array by one bit using AVX512
+ *1. Cnext = 0
+ *2. for i = n-1 to 0; i-=64
+ *3.   c_vec = Load 512-bit mask from borrow_mask[i]
+ *4.   Cprev = LSBs of lanes of c_vec
+ *5.   Ctemp = Cprev >> 63
+ *6.   c_vec = Shift Right c_vec by 1-bit within each lane
+ *7.   Cprev = (Cprev << 1) | Cnext
+ *8.   Cnext = Ctemp
+ *9.   Cm = Prepare a 512-bit vector consisting of 64 8-bit integers with value 0x80 where corresponding bit in Cprev is 1
+ *10.  c_vec = c_vec | Cm
+ */
 void left_shift_avx512(__mmask8 *borrow_mask, size_t n)
 {
-    __m512i carry = zeros;
+    __m512i carry = zeros; // Initialize carry to zero
 
-    // Process in chunks of 64 bytes (512 bits)
-    for (size_t i = 0; i < n; i += 64)
+    for (int i = n - 1; i >= 0; i--)
     {
-        // Load 64 bytes
-        __m512i data = _mm512_loadu_si512((__m512i *)&borrow_mask[i]);
-
-        // Extract the carry bit from the previous chunk
-        __m512i carry_vec = _mm512_srli_epi64(data, 7);
-        carry_vec = _mm512_slli_epi64(carry_vec, 63); // Shift carry to the highest bit
-
-        // Left shift by 1
-        __m512i shifted = _mm512_slli_epi64(data, 1);
-
-        // Combine with carry
-        shifted = _mm512_or_si512(shifted, carry);
-
-        // Store result back
-        _mm512_storeu_si512((__m512i *)&borrow_mask[i], shifted);
-
-        // Update carry for the next chunk
-        carry = carry_vec;
     }
-    borrow_mask[n - 1] &= 0xFE;
 }
 
 inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
@@ -254,8 +247,15 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
     // zero out
     _mm512_storeu_si512(result + n, zeros);
 
-    // left shift the borrow array by 1-bit
+    int outdated_bits = n & 0x7;
+    // zero out the outdated bits for e.g. if outdated bits = 1, then bm[bm_size - 1] = bm[bm_size - 1] & 0x1
+    // if outdated bits = 2, then bm[bm_size - 1] = bm[bm_size - 1] & 0x3 and so on
+    if (outdated_bits)
+    {
+        bm[bm_size - 1] &= (1 << outdated_bits) - 1;
+    }
     // left_shift(bm, bm_size);
+
     left_shift_avx512(bm, bm_size);
 
     int last_borrow_block = -1;
@@ -267,6 +267,7 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         __m512i result_vec = _mm512_load_si512(result + i);
         // load 8-bit mask from bm[j]
         __mmask8 borrow_mask = bm[j];
+
         // perform the subtraction
         result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, ones);
         _mm512_store_si512(result + i, result_vec);
@@ -359,8 +360,8 @@ int main(int argc, char *argv[])
     limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi64(-LIMB_DIGITS);
 
-    // run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    run_correctness_test(test_case);
+    // run_benchmarking_test(test_case, measure_type);
 
     // free(borrow_masks);
 
@@ -988,12 +989,6 @@ void run_correctness_test(int test_case)
                 printf("%" PRIu64 " ", b[i]);
             }
             printf("\n");
-            printf("Experimental result :\n");
-            for (int i = 0; i < n; i++)
-            {
-                printf("%" PRIu64 " ", sub[i]);
-            }
-            printf("\n");
 
             exit(EXIT_FAILURE);
             gzclose(test_file);
@@ -1023,11 +1018,11 @@ void run_correctness_test(int test_case)
         printf("Memory leak detected\n");
         exit(EXIT_FAILURE);
     }
-    if (sub_space_ptr && borrow_space_ptr)
-    {
-        _mm_free(sub_space);
-        _mm_free(borrow_space);
-    }
+    // if (sub_space_ptr && borrow_space_ptr)
+    // {
+    //     _mm_free(sub_space);
+    //     _mm_free(borrow_space);
+    // }
     // close the test file
     if (gzclose(test_file) != Z_OK)
     {
