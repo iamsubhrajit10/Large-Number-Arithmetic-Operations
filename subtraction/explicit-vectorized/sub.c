@@ -89,7 +89,7 @@ inline unsigned long long measure_rdtsc_start() __attribute__((always_inline));
 inline unsigned long long measure_rdtscp_end() __attribute__((always_inline));
 inline bool check_result(char *result, char *result_gmp, int result_size) __attribute__((always_inline));
 inline int cputime() __attribute__((always_inline));
-inline void left_shift(__mmask8 *borrow_mask, size_t n) __attribute__((always_inline));
+inline void right_shift(__mmask8 *borrow_mask, size_t n) __attribute__((always_inline));
 inline struct timespec get_timespec() __attribute__((always_inline));
 inline long diff_timespec_ns(struct timespec start, struct timespec end) __attribute__((always_inline));
 // perf_event_open system call
@@ -150,37 +150,16 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
     } while (unlikely(i < n));
 }
 
-// function to left(right) shift the borrow_mask array by one bit
-void left_shift(__mmask8 *borrow_mask, size_t n)
+// Function to right shift the borrow mask by one bit
+void right_shift(__mmask8 *borrow_mask, size_t n)
 {
-    uint64_t *borrow_mask_ptr = (uint64_t *)borrow_mask;
     __mmask8 carry_prev = 0;
-    for (int i = n - 1; i >= 0; i--)
+
+    for (int i = 0; i < n; i++)
     {
         __mmask8 carry_next = borrow_mask[i] & 0x1;
-        borrow_mask[i] = (borrow_mask[i] >> 1) | (carry_prev << 7);
-        carry_prev = carry_next;
-    }
-}
-
-/* This code below tries the right shift the borrow_mask array by one bit using AVX512
- *1. Cnext = 0
- *2. for i = n-1 to 0; i-=64
- *3.   c_vec = Load 512-bit mask from borrow_mask[i]
- *4.   Cprev = LSBs of lanes of c_vec
- *5.   Ctemp = Cprev >> 63
- *6.   c_vec = Shift Right c_vec by 1-bit within each lane
- *7.   Cprev = (Cprev << 1) | Cnext
- *8.   Cnext = Ctemp
- *9.   Cm = Prepare a 512-bit vector consisting of 64 8-bit integers with value 0x80 where corresponding bit in Cprev is 1
- *10.  c_vec = c_vec | Cm
- */
-void left_shift_avx512(__mmask8 *borrow_mask, size_t n)
-{
-    __m512i carry = zeros; // Initialize carry to zero
-
-    for (int i = n - 1; i >= 0; i--)
-    {
+        borrow_mask[i] = (borrow_mask[i] >> 1) | carry_prev;
+        carry_prev = carry_next << 7;
     }
 }
 
@@ -189,6 +168,7 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
     aligned_uint64_ptr result = sub_space;
     size_t j = 0;
     bool is_less = false;
+    int bit_mask_size = (n + 7) >> 3;
     // check if a < b, if so, swap a and b; also check if a == b and return 0
     do
     {
@@ -216,10 +196,9 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
 
     int bm_size;
     __mmask8 *bm = (__mmask8 *)borrow_space;
-
+    int bm_itr = bit_mask_size - 1;
     size_t i = 0;
     j = 0;
-
     do
     {
         // load 8 64-bit integers from a and b
@@ -237,36 +216,36 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
 
         // store the result
         _mm512_store_si512(result + i, result_vec);
-        bm[j] = borrow_mask;
+        bm[bm_itr] = borrow_mask;
         i += 8;
-        j++;
+        bm_itr--;
     } while (likely(i < n));
-    bm_size = j;
     // borrow_space_ptr += bm_size;
 
     // zero out
     _mm512_storeu_si512(result + n, zeros);
 
     int outdated_bits = n & 0x7;
-    // zero out the outdated bits for e.g. if outdated bits = 1, then bm[bm_size - 1] = bm[bm_size - 1] & 0x1
-    // if outdated bits = 2, then bm[bm_size - 1] = bm[bm_size - 1] & 0x3 and so on
+    // // zero out the outdated bits for e.g. if outdated bits = 1, then bm[bm_size - 1] = bm[bm_size - 1] & 0x1
+    // // if outdated bits = 2, then bm[bm_size - 1] = bm[bm_size - 1] & 0x3 and so on
     if (outdated_bits)
     {
-        bm[bm_size - 1] &= (1 << outdated_bits) - 1;
+        bm[0] &= (1 << outdated_bits) - 1;
     }
-    // left_shift(bm, bm_size);
+    right_shift(bm, bit_mask_size);
 
-    left_shift_avx512(bm, bm_size);
+    // left_shift_avx512(bm, bm_size);
 
     int last_borrow_block = -1;
     i = 0;
     j = 0;
+    bm_itr = bit_mask_size - 1;
     do
     {
         // load 8 64-bit integers from result
         __m512i result_vec = _mm512_load_si512(result + i);
         // load 8-bit mask from bm[j]
-        __mmask8 borrow_mask = bm[j];
+        __mmask8 borrow_mask = bm[bm_itr];
 
         // perform the subtraction
         result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, ones);
@@ -278,10 +257,10 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
             // printf("Borrow mask is not zero\n");
             last_borrow_block = i;
             // update the borrow array
-            bm[j] = borrow_mask;
+            bm[bm_itr] = borrow_mask;
         }
         i += 8;
-        j++;
+        bm_itr--;
     } while (likely(i < n));
 
     // if (unlikely(last_borrow_block != -1))
@@ -360,8 +339,8 @@ int main(int argc, char *argv[])
     limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi64(-LIMB_DIGITS);
 
-    run_correctness_test(test_case);
-    // run_benchmarking_test(test_case, measure_type);
+    // run_correctness_test(test_case);
+    run_benchmarking_test(test_case, measure_type);
 
     // free(borrow_masks);
 
