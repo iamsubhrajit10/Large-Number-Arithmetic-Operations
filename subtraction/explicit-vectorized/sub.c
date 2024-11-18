@@ -39,10 +39,10 @@
 #include <sys/resource.h>
 
 // Define the constants
-#define MAX_EVENTS 6      // Number of events to monitor
-#define LIMB_SIZE 18      // Number of digits in each limb
-#define ITERATIONS 100000 // Number of iterations for each test
-#define CHUNK 65536       // Chunk size for reading the file
+#define MAX_EVENTS 6    // Number of events to monitor
+#define LIMB_SIZE 18    // Number of digits in each limb
+#define ITERATIONS 1000 // Number of iterations for each test
+#define CHUNK 655360    // Chunk size for reading the file
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -151,7 +151,7 @@ inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
 }
 
 // Function to right shift the borrow mask by one bit
-void right_shift(__mmask8 *borrow_mask, size_t n)
+inline void right_shift(__mmask8 *borrow_mask, size_t n)
 {
     __mmask8 carry_prev = 0;
 
@@ -163,13 +163,24 @@ void right_shift(__mmask8 *borrow_mask, size_t n)
     }
 }
 
+/*
+Algorithm:
+1. load 512 bits from data
+2. shift right by 1 bit
+3. move all the 64-bit half-lanes to the lift by one element offset
+4. left shift by 63 bits on the moved half-lanes
+5. combine the two half-lanes
+6. store the result back to data
+*/
+
 inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
 {
     aligned_uint64_ptr result = sub_space;
-    size_t j = 0;
+
     bool is_less = false;
-    int bit_mask_size = (n + 7) >> 3;
+
     // check if a < b, if so, swap a and b; also check if a == b and return 0
+    int j = 0;
     do
     {
         if (likely(a[j] > b[j]))
@@ -189,21 +200,25 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         if (unlikely(j == n))
         {
             // a and b are equal
-            // *result = 0;
+            *result = 0;
             return is_less;
         }
     } while (j < n);
 
     int bm_size;
     __mmask8 *bm = (__mmask8 *)borrow_space;
+    int bit_mask_size = (n + 7) >> 3;
     int bm_itr = bit_mask_size - 1;
-    size_t i = 0;
-    j = 0;
-    do
+
+    __mmask8 last_vector_size = n & 0x7;
+    int n__ = (last_vector_size) ? n - 8 : n;
+
+    int i = 0;
+    while (i < n__)
     {
         // load 8 64-bit integers from a and b
-        __m512i a_vec = _mm512_load_si512(a + i);
-        __m512i b_vec = _mm512_load_si512(b + i);
+        __m512i a_vec = _mm512_load_epi64(a + i);
+        __m512i b_vec = _mm512_load_epi64(b + i);
 
         // subtract a and b
         __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);
@@ -215,41 +230,49 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
 
         // store the result
-        _mm512_store_si512(result + i, result_vec);
+        _mm512_store_epi64(result + i, result_vec);
         bm[bm_itr] = borrow_mask;
         i += 8;
         bm_itr--;
-    } while (likely(i < n));
-    // borrow_space_ptr += bm_size;
-
-    // zero out
-    _mm512_storeu_si512(result + n, zeros);
-
-    int outdated_bits = n & 0x7;
-    // // zero out the outdated bits for e.g. if outdated bits = 1, then bm[bm_size - 1] = bm[bm_size - 1] & 0x1
-    // // if outdated bits = 2, then bm[bm_size - 1] = bm[bm_size - 1] & 0x3 and so on
-    if (outdated_bits)
-    {
-        bm[0] &= (1 << outdated_bits) - 1;
     }
+    if (likely(last_vector_size))
+    {
+        // load 8 64-bit integers from a and b
+        __mmask8 k = (1 << last_vector_size) - 1;
+        __m512i a_vec = _mm512_maskz_load_epi64(k, a + i);
+        __m512i b_vec = _mm512_maskz_load_epi64(k, b + i);
+
+        // subtract a and b
+        __m512i result_vec = _mm512_maskz_sub_epi64(k, a_vec, b_vec);
+
+        // if result_vec[j] < 0, set borrow mask to 1
+        __mmask8 borrow_mask = _mm512_mask_cmplt_epi64_mask(k, result_vec, zeros);
+
+        // based on borrow mask, result_vec[j] =  result_vec[j] + limb_digits
+        result_vec = _mm512_mask_add_epi64(result_vec, borrow_mask, result_vec, limb_digits);
+
+        // store the result
+        _mm512_mask_store_epi64(result + i, k, result_vec);
+        bm[bm_itr] = borrow_mask;
+        i += 8;
+        bm_itr--;
+    }
+
     right_shift(bm, bit_mask_size);
 
-    // left_shift_avx512(bm, bm_size);
-
     int last_borrow_block = -1;
-    i = 0;
-    j = 0;
     bm_itr = bit_mask_size - 1;
-    do
+    i = 0;
+    while (i < n__)
     {
         // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_load_si512(result + i);
+        __m512i result_vec = _mm512_load_epi64(result + i);
         // load 8-bit mask from bm[j]
         __mmask8 borrow_mask = bm[bm_itr];
 
         // perform the subtraction
         result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, ones);
-        _mm512_store_si512(result + i, result_vec);
+        _mm512_store_epi64(result + i, result_vec);
         // check if result_vec[j] < 0
         borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
         if (unlikely(borrow_mask))
@@ -261,28 +284,52 @@ inline bool limb_sub_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         }
         i += 8;
         bm_itr--;
-    } while (likely(i < n));
+    }
+    if (likely(last_vector_size))
+    {
+        __mmask8 k = (1 << last_vector_size) - 1;
+        // load 8 64-bit integers from result
+        __m512i result_vec = _mm512_maskz_load_epi64(k, result + i);
+        // load 8-bit mask from bm[j]
+        __mmask8 borrow_mask = bm[bm_itr];
 
-    // if (unlikely(last_borrow_block != -1))
-    // {
-    //     size_t i = (last_borrow_block + 15);
-    //     i = (i > n - 1) ? (n - 1) : i;
+        // perform the subtraction
+        result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, ones);
+        _mm512_mask_store_epi64(result + i, k, result_vec);
+        // check if result_vec[j] < 0
+        borrow_mask = _mm512_cmplt_epi64_mask(result_vec, zeros);
+        if (unlikely(borrow_mask))
+        {
+            // printf("Borrow mask is not zero\n");
+            last_borrow_block = i;
+            // update the borrow array
+            bm[bm_itr] = borrow_mask;
+        }
+        i += 8;
+        bm_itr--;
+    }
 
-    //     while (i > 0)
-    //     {
-    //         if (bm[i / 8] & (1 << (i % 8)))
-    //         {
-    //             result[i] += LIMB_DIGITS;
-    //             result[i - 1] -= 1;
-    //             if (unlikely(result[i - 1] > LIMB_DIGITS))
-    //             {
-    //                 bm[(i - 1) / 8] |= (1 << ((i - 1) % 8));
-    //             }
-    //             bm[i / 8] &= ~(1 << (i % 8));
-    //         }
-    //         i--;
-    //     }
-    // }
+    // TODO: To be verified and optimized
+    if (unlikely(last_borrow_block != -1))
+    {
+        size_t i = (last_borrow_block + 15);
+        i = (i > n - 1) ? (n - 1) : i;
+
+        while (i > 0)
+        {
+            if (bm[i / 8] & (1 << (i % 8)))
+            {
+                result[i] += LIMB_DIGITS;
+                result[i - 1] -= 1;
+                if (unlikely(result[i - 1] > LIMB_DIGITS))
+                {
+                    bm[(i - 1) / 8] |= (1 << ((i - 1) % 8));
+                }
+                bm[i / 8] &= ~(1 << (i % 8));
+            }
+            i--;
+        }
+    }
     *result_ptr = result;
     return is_less;
 }
@@ -339,7 +386,7 @@ int main(int argc, char *argv[])
     limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
     minus_limb_digits = _mm512_set1_epi64(-LIMB_DIGITS);
 
-    // run_correctness_test(test_case);
+    run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     // free(borrow_masks);
@@ -936,9 +983,6 @@ void run_correctness_test(int test_case)
         sub_space_ptr += (n + 31) & ~31;
         borrow_space_ptr += (n + 31) & ~31;
 
-        memset(sub, 0, n * sizeof(uint64_t));
-        memset(borrow_space, 0, n * sizeof(uint64_t));
-
         /***** Start of subtraction *****/
 
         bool sign = limb_sub_n(a, b, &sub, n);
@@ -1263,6 +1307,12 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
+        // starting measurement for data storage
+
+        unsigned long long t_0, t_1;
+
+        t_0 = measure_rdtsc_start();
+
         // Convert the strings to digits
         int n_1 = strlen(a_str);
         int n_2 = strlen(b_str);
@@ -1270,6 +1320,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         // convert a and b into limbs
         aligned_uint64_ptr a, b;
         limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
+
         __builtin_assume_aligned(a, 64);
         __builtin_assume_aligned(b, 64);
 
@@ -1281,8 +1332,14 @@ void run_benchmarking_test(int test_case, int measure_type)
         borrow_space_ptr += (n + 31) & ~31;
         size_t sub_size = n;
 
-        memset(sub, 0, n * sizeof(uint64_t));
-        memset(borrow_space, 0, n * sizeof(uint64_t));
+        t_1 = measure_rdtscp_end();
+        t_1 = t_1 - t_0;
+
+        printf("Ticks taken to convert strings to limbs: %llu\n", t_1);
+
+        printf("Size of a: %d, Size of b: %d\n", n_1, n_2);
+
+        printf("Starting subtraction\n");
 
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
@@ -1299,63 +1356,6 @@ void run_benchmarking_test(int test_case, int measure_type)
         // Ensure that the cache flush operations are completed
         _mm_mfence();
 
-        // perform the measurement
-        // switch (measure_type)
-        // {
-        // case 0: // RDTSC
-        //     __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        //     TIME_RDTSC(time_taken, limb_sub_n(a, b, &sub, n));
-        //     write_time(rdtsc_file, time_taken);
-        //     break;
-        // case 1: // Timespec
-        //     __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        //     TIME_TIMESPEC(time_taken, limb_sub_n(a, b, &sub, n));
-        //     write_time(timespec_file, time_taken);
-        //     break;
-        // // case 2: // Rusage
-        // // __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        // // TIME_RUSAGE(time_taken, limb_sub_n(a, b, &sub, n));
-        // // write_time(cputime_file, time_taken);
-        // // break;
-        // case 2:             // Rusage
-        //     time_taken = 0; // initialize time taken
-        //     printf("Calibrating CPU speed...\n");
-        //     fflush(stdout);
-        //     __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
-        //     TIME_RUSAGE(time_taken, limb_sub_n(a, b, &sub, n));
-        //     printf("done\n");
-        //     printf("Calibrated time: %f\n", time_taken);
-        //     int niter = 1 + (unsigned long)(1e4 / time_taken);
-        //     printf("Subtracting %d times\n", niter);
-        //     fflush(stdout);
-        //     unsigned long int t0, t1;
-
-        //     t0 = cputime();
-        //     for (int i = 0; i < niter; i++)
-        //     {
-        //         limb_sub_n(a, b, &sub, n);
-        //     }
-        //     t1 = cputime() - t0;
-        //     printf("done!\n");
-        //     double f, ops_per_sec;
-        //     ops_per_sec = 1000.0 * niter / t1;
-        //     f = 100.0;
-        //     int decimals;
-        //     for (decimals = 0;; decimals++)
-        //     {
-        //         if (ops_per_sec > f)
-        //             break;
-        //         f = f * 0.1;
-        //     }
-
-        //     printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-        //     fprintf(cputime_file, "%.*f\n", decimals, ops_per_sec);
-        //     break;
-        // default:
-        //     printf("Invalid measure type\n");
-        //     exit(EXIT_FAILURE);
-        // }
-        // perform the measurement
         // perform the measurement
         switch (measure_type)
         {

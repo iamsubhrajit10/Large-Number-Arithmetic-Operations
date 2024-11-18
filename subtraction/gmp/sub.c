@@ -46,7 +46,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 
 #define MAX_EVENTS 6      // Number of events to monitor
 #define ITERATIONS 100000 // Number of iterations for each test
-#define CHUNK 65536       // Chunk size for reading the file
+#define CHUNK 655360      // Chunk size for reading the file
 
 int CORE_NO; // Core number to run the tests on
 
@@ -919,8 +919,13 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
+        unsigned long long t_0, t_1;
+
+        t_0 = measure_rdtsc_start();
+
         // convert the strings to mpz_t
         mpz_t a, b, result_gmp;
+        printf("Converting strings to mpz_t\n");
         mpz_init(a);
         mpz_init(b);
 
@@ -935,6 +940,15 @@ void run_benchmarking_test(int test_case, int measure_type)
             perror("Error: Failed to set mpz_t from string b_str");
             exit(EXIT_FAILURE);
         }
+
+        t_1 = measure_rdtscp_end();
+        t_1 = t_1 - t_0;
+
+        printf("Ticks taken to convert strings to limbs: %llu\n", t_1);
+
+        printf("Size of a = %ld, size of b = %ld\n", a->_mp_size, b->_mp_size);
+
+        printf("Starting subtraction\n");
 
         double time_taken;
 
