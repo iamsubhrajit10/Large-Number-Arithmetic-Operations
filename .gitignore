@@ -1,0 +1,41 @@
+# Ignore any directory named experiments in any sub-directory
+**/experiments/
+**/cases/
+# Ignore all files
+*
+
+# Allow directory and all its contents "central-tendencies"
+!central-tendencies/
+
+# Allow txt and xls files in "central-tendencies" directory
+!**/central-tendencies/*.txt
+!**/central-tendencies/*.xlsx
+
+# Allow directory "cdf-charts" and all its contents
+!**/cdf-charts/
+!**/cdf-charts/**/*
+
+
+
+# Allow .gitignore file
+!.gitignore
+
+# Allow C source and header files in any directory except experiments
+!**/*.c
+!**/*.h
+
+# Allow assembly source files in any directory except experiments
+!**/*.s
+
+# Allow Python files in any directory except experiments
+!**/*.py
+
+# Allow shell script files in any directory except experiments
+!**/*.sh
+!**/*.bash
+
+# allow all files in the misc directory
+!**/misc/**
+
+# Allow directories
+!*/
