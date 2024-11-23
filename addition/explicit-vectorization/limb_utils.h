@@ -10,191 +10,93 @@
 #include <inttypes.h>
 #include <errno.h>
 
-#define LIMB_SIZE 18 // Number of digits in each limb
+#define LIMB_SIZE 18             // Number of digits in each limb
+#define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
 
 // Define the aligned data types
 typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
 typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
+
 // Declare threshold for borrow propagation and limb digits
-aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^18, used for carry/borrow-propagation, as we're using 64-bit integers; mostly saturated
+extern aligned_uint64 LIMB_DIGITS; // 10^18, used for carry/borrow-propagation, as we're using 64-bit integers; mostly saturated
+
+// A structure to store the limbs
+typedef struct
+{
+    aligned_uint64_ptr limbs; // Pointer to the limbs
+    bool sign;                // Sign of the number
+    size_t size;              // Size of the limbs
+} limb_t;
 
 // Declare the SIMD constants
-__m512i zeros;       // 0 as chunk of 8 64-bit integers
-__m512i ones;        // 1 as chunk of 8 64-bit integers
-__m512i limb_digits; // 10^18 as chunk of 8 64-bit integers
+extern __m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
+extern __m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
+extern __m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
 
-void limb_set_str(char *, char *, aligned_uint64_ptr *, aligned_uint64_ptr *, int *, int *); // Function to set the limbs from the string
-char *limb_get_str(uint64_t *result, size_t *result_length, bool sign);                      // Function to get the string from the limbs
+// Memory pool functions
+void init_memory_pool();
+void *memory_pool_alloc(size_t size);
+void memory_pool_free(void *ptr);
+void destroy_memory_pool();
 
-aligned_uint64_ptr aligned_realloc(aligned_uint64_ptr ptr, size_t old_size, size_t new_size, size_t alignment)
-{
-    aligned_uint64_ptr new_ptr = (aligned_uint64_ptr)_mm_malloc(new_size, alignment);
-    if (new_ptr == NULL)
-    {
-        return NULL;
-    }
-    memcpy(new_ptr, ptr, old_size);
-    _mm_free(ptr);
-    return new_ptr;
-}
+/**
+ * @brief Allocates limb_t structure, with fixed alignment of 64
+ *
+ * @param size The number of limbs to allocate
+ * @return limb_t* The pointer to the allocated memory
+ * @note The memory should be freed using memory_pool_free
+ */
+limb_t *limb_t_alloc(size_t size);
 
-char *limb_get_str(uint64_t *result, size_t *result_length, bool sign)
-{
-    // Remove leading zeros
-    size_t i = 0;
-    while (i < *result_length && result[i] == 0)
-    {
-        i++;
-    }
+/**
+ * @brief Reallocates memory with fixed alignment of 64
+ *
+ * @param limb The pointer to the memory to reallocate
+ * @param new_size The new size of the memory
+ * @return limb_t* The pointer to the reallocated memory
+ * @note The old memory is freed
+ */
+limb_t *limb_t_realloc(limb_t *limb, size_t new_size);
 
-    *result_length -= i;
-    result += i;
+/**
+ * @brief Frees memory allocated by limb_t_alloc
+ *
+ * @param limb The pointer to the limb_t structure to free
+ * @return void
+ */
+void limb_t_free(limb_t *limb);
 
-    if (*result_length == 0)
-    {
-        char *temp = (char *)calloc(2, sizeof(char));
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-        temp[0] = '0';
-        temp[1] = '\0';
-        *result_length = 1;
-        return temp;
-    }
+/**
+ * @brief Converts a large number represented by a limb_t structure into a string
+ *
+ * @param num The number to convert
+ * @return char* The string representation of the number
+ */
+char *limb_get_str(const limb_t *num);
 
-    if (sign)
-    {
-        result[0] = -result[0];
-    }
+/**
+ * @brief Converts a string representing a large number into a limb_t structure.
+ *
+ * This function takes a string representing a large number and converts it into a limb_t structure.
+ * The limbs are allocated with a fixed alignment of 64 bytes.
+ *
+ * @param str The number as a string.
+ * @return A pointer to the limb_t structure representing the large number.
+ */
+limb_t *limb_set_str(const char *str);
 
-    // Calculate the required size for the result string
-    size_t alloc_size = (*result_length) * 20 + 2; // 20 digits per number + sign + null terminator
-    char *result_str = (char *)calloc(alloc_size, sizeof(char));
-    if (result_str == NULL)
-    {
-        perror("Memory allocation failed for result_str\n");
-        exit(0);
-    }
-
-    // Format the first element separately (without leading zeros)
-    char *ptr = result_str;
-    if (result[0] > LIMB_DIGITS)
-    {
-        ptr += sprintf(ptr, "%" PRId64, (int64_t)result[0]); // Print as signed
-    }
-    else
-    {
-        ptr += sprintf(ptr, "%" PRIu64, result[0]); // Print as unsigned
-    }
-
-    // Handle the rest of the elements (with leading zeros)
-    for (size_t j = 1; j < *result_length; j++)
-    {
-        ptr += sprintf(ptr, "%018" PRIu64, result[j]); // Print with leading zeros
-    }
-
-    // Remove leading zeros from the final result
-    ptr = result_str;
-    while (*ptr == '0')
-    {
-        ptr++;
-    }
-
-    if (*ptr == '\0')
-    {
-        free(result_str);
-        char *temp = (char *)calloc(2, sizeof(char));
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-        temp[0] = '0';
-        temp[1] = '\0';
-        *result_length = 1;
-        return temp;
-    }
-
-    char *final_result = strdup(ptr);
-    if (final_result == NULL)
-    {
-        perror("Memory allocation failed for final_result\n");
-        exit(0);
-    }
-
-    free(result_str);
-    *result_length = strlen(final_result);
-    return final_result;
-}
-
-void limb_set_str(char *str1, char *str2, aligned_uint64_ptr *limbs1_base, aligned_uint64_ptr *limbs2_base, int *n_1, int *n_2)
-{
-    int len1 = strlen(str1);
-    int len2 = strlen(str2);
-
-    *n_1 = len1;
-    *n_2 = len2;
-
-    // Calculate number of limbs required for both numbers
-    int num_limbs_1 = (len1 + LIMB_SIZE - 1) / LIMB_SIZE;
-    int num_limbs_2 = (len2 + LIMB_SIZE - 1) / LIMB_SIZE;
-    int max_limbs = num_limbs_1 > num_limbs_2 ? num_limbs_1 : num_limbs_2;
-
-    // Allocate memory for the limbs
-    aligned_uint64_ptr limbs1 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-    aligned_uint64_ptr limbs2 = (aligned_uint64_ptr)_mm_malloc(max_limbs * sizeof(uint64_t), 64);
-
-    if (limbs1 == NULL || limbs2 == NULL)
-    {
-        perror("Memory allocation failed for limbs");
-        exit(1);
-    }
-
-    memset(limbs1, 0, max_limbs * sizeof(uint64_t));
-    memset(limbs2, 0, max_limbs * sizeof(uint64_t));
-
-    // Populate limbs for num1
-    int i, k;
-    int limbs_offset_1 = max_limbs - num_limbs_1;
-    int limbs_offset_2 = max_limbs - num_limbs_2;
-
-    // Populate limbs for num1
-    for (i = len1 - 1, k = num_limbs_1 - 1; k >= 0; k--)
-    {
-        uint64_t limb = 0;
-        uint64_t power = 1;
-        int digits_in_limb = LIMB_SIZE < (i + 1) ? LIMB_SIZE : (i + 1);
-        for (int j = 0; j < digits_in_limb; j++, i--)
-        {
-            limb += (str1[i] - '0') * power;
-            power = (power << 3) + (power << 1); // power *= 10
-        }
-        limbs1[limbs_offset_1 + k] = limb;
-    }
-
-    // Populate limbs for num2
-    for (i = len2 - 1, k = num_limbs_2 - 1; k >= 0; k--)
-    {
-        uint64_t limb = 0;
-        uint64_t power = 1;
-        int digits_in_limb = LIMB_SIZE < (i + 1) ? LIMB_SIZE : (i + 1);
-        for (int j = 0; j < digits_in_limb; j++, i--)
-        {
-            limb += (str2[i] - '0') * power;
-            power = (power << 3) + (power << 1); // power *= 10
-        }
-        limbs2[limbs_offset_2 + k] = limb;
-    }
-    // Set the updated arrays and their new lengths
-    *limbs1_base = limbs1;
-    *limbs2_base = limbs2;
-    *n_1 = max_limbs;
-    *n_2 = max_limbs;
-}
+/**
+ * @brief Adjusts the sizes of two limb_t structures to be equal.
+ *
+ * This function takes two limb_t structures and adjusts their sizes to be equal by reallocating memory
+ * and padding with zeros if necessary.
+ *
+ * @param num1 A pointer to the first limb_t structure.
+ * @param num2 A pointer to the second limb_t structure.
+ */
+void limb_t_adjust_limb_sizes(limb_t *num1, limb_t *num2);
 
 #endif // LIMB_UTILS_H

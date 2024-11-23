@@ -9,8 +9,8 @@ This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
 b --> array of digits of second number, of length m
 #Pre-processing:
-1. Equalize the length of both arrays by adding leading zeros to the smaller array.
-Note: For pre-processing, we can use the realloc function to sub leading zeros to the smaller array.
+1. Equalize the length of both arrays by adding leading AVX512_ZEROS to the smaller array.
+Note: For pre-processing, we can use the realloc function to sub leading AVX512_ZEROS to the smaller array.
 */
 
 /****  All the data, stored in arrays and used for computation are aligned to 64 Bytes ****/
@@ -65,7 +65,7 @@ int carry_space_ptr = 0; // pointer to the next available space in carry_space
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
 
-inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n) __attribute__((always_inline));
+inline void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b) __attribute__((always_inline));
 inline void right_shift(__mmask8 *carry_mask, size_t n) __attribute__((always_inline));
 
 // Function to right shift the carry mask by one bit
@@ -81,17 +81,27 @@ inline void right_shift(__mmask8 *carry_mask, size_t n)
     }
 }
 
-// Function to add two numbers
-inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n)
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result
+ *
+ * @param result The result of the addition, stored as limb_t
+ * @param a The first number to add, stored as limb_t
+ * @param b The second number to add, stored as limb_t
+ * @return none
+ */
+inline void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
 {
-    aligned_uint64_ptr result = sum_space;
-
+    size_t n = a->size;
     bool more_digit = false;
-
-    int bm_size;
-    __mmask8 *bm = (__mmask8 *)carry_space;
     int bit_mask_size = (n + 7) >> 3;
     int bm_itr = bit_mask_size - 1;
+
+    aligned_uint64_ptr a_limbs = a->limbs;
+    aligned_uint64_ptr b_limbs = b->limbs;
+    aligned_uint64_ptr result_limbs = result->limbs;
+
+    __mmask8 bm[bit_mask_size];
+    // memset(bm, 0, bit_mask_size * sizeof(__mmask8));
 
     __mmask8 last_vector_size = n & 0x7;
     int n__ = (last_vector_size) ? n - 8 : n;
@@ -100,20 +110,20 @@ inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
     while (i < n__)
     {
         // load 8 64-bit integers from a and b
-        __m512i a_vec = _mm512_load_epi64(a + i);
-        __m512i b_vec = _mm512_load_epi64(b + i);
+        __m512i a_vec = _mm512_load_epi64((const void *)(a_limbs + i));
+        __m512i b_vec = _mm512_load_epi64((const void *)(b_limbs + i));
 
         // add a and b
         __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);
 
         // if result_vec[j] >= LIMB_DIGITS, set carry mask to 1
-        __mmask8 carry_mask = _mm512_cmpge_epi64_mask(result_vec, limb_digits);
+        __mmask8 carry_mask = _mm512_cmpge_epi64_mask(result_vec, AVX512_LIMB_DIGITS);
 
-        // based on carry mask, result_vec[j] =  result_vec[j] - limb_digits
-        result_vec = _mm512_mask_sub_epi64(result_vec, carry_mask, result_vec, limb_digits);
+        // based on carry mask, result_vec[j] =  result_vec[j] - AVX512_LIMB_DIGITS
+        result_vec = _mm512_mask_sub_epi64(result_vec, carry_mask, result_vec, AVX512_LIMB_DIGITS);
 
         // store the result
-        _mm512_store_epi64(result + i, result_vec);
+        _mm512_store_epi64((void *)(result_limbs + i), result_vec);
         bm[bm_itr] = carry_mask;
         i += 8;
         bm_itr--;
@@ -122,20 +132,20 @@ inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
     {
         // load 8 64-bit integers from a and b
         __mmask8 k = (1 << last_vector_size) - 1;
-        __m512i a_vec = _mm512_maskz_load_epi64(k, a + i);
-        __m512i b_vec = _mm512_maskz_load_epi64(k, b + i);
+        __m512i a_vec = _mm512_maskz_load_epi64(k, (void *)(a_limbs + i));
+        __m512i b_vec = _mm512_maskz_load_epi64(k, (void *)(b_limbs + i));
 
         // add a and b
         __m512i result_vec = _mm512_maskz_add_epi64(k, a_vec, b_vec);
 
         // if result_vec[j] >= LIMB_DIGITS, set carry mask to 1
-        __mmask8 carry_mask = _mm512_mask_cmpge_epi64_mask(k, result_vec, limb_digits);
+        __mmask8 carry_mask = _mm512_mask_cmpge_epi64_mask(k, result_vec, AVX512_LIMB_DIGITS);
 
-        // based on carry mask, result_vec[j] =  result_vec[j] - limb_digits
-        result_vec = _mm512_mask_sub_epi64(result_vec, carry_mask, result_vec, limb_digits);
+        // based on carry mask, result_vec[j] =  result_vec[j] - AVX512_LIMB_DIGITS
+        result_vec = _mm512_mask_sub_epi64(result_vec, carry_mask, result_vec, AVX512_LIMB_DIGITS);
 
         // store the result
-        _mm512_mask_store_epi64(result + i, k, result_vec);
+        _mm512_mask_store_epi64((void *)(result_limbs + i), k, result_vec);
         bm[bm_itr] = carry_mask;
         i += 8;
         bm_itr--;
@@ -154,15 +164,15 @@ inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
     while (i < n__)
     {
         // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_load_epi64(result + i);
+        __m512i result_vec = _mm512_load_epi64((const void *)(result_limbs + i));
         // load 8-bit mask from bm[j]
         __mmask8 carry_mask = bm[bm_itr];
 
         // perform the addition
-        result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, ones);
-        _mm512_store_epi64(result + i, result_vec);
+        result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
+        _mm512_store_epi64((void *)(result_limbs + i), result_vec);
         // check if result_vec[j] >= LIMB_DIGITS
-        carry_mask = _mm512_cmpge_epi64_mask(result_vec, limb_digits);
+        carry_mask = _mm512_cmpge_epi64_mask(result_vec, AVX512_LIMB_DIGITS);
         if (unlikely(carry_mask))
         {
             // printf("carry mask is not zero\n");
@@ -177,15 +187,15 @@ inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
     {
         __mmask8 k = (1 << last_vector_size) - 1;
         // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_maskz_load_epi64(k, result + i);
+        __m512i result_vec = _mm512_maskz_load_epi64(k, (const void *)(result_limbs + i));
         // load 8-bit mask from bm[j]
         __mmask8 carry_mask = bm[bm_itr];
 
         // perform the addition
-        result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, ones);
-        _mm512_mask_store_epi64(result + i, k, result_vec);
+        result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
+        _mm512_mask_store_epi64((void *)(result_limbs + i), k, result_vec);
         // check if result_vec[j] >= LIMB_DIGITS
-        carry_mask = _mm512_cmpge_epi64_mask(result_vec, limb_digits);
+        carry_mask = _mm512_cmpge_epi64_mask(result_vec, AVX512_LIMB_DIGITS);
         if (unlikely(carry_mask))
         {
             // printf("carry mask is not zero\n");
@@ -208,9 +218,10 @@ inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
         {
             if (bm[i / 8] & (1 << (i % 8)))
             {
-                result[i] += LIMB_DIGITS;
-                result[i - 1] -= 1;
-                if (unlikely(result[i - 1] > LIMB_DIGITS))
+                // result[i] += LIMB_DIGITS;
+                result_limbs[i] -= LIMB_DIGITS;
+                result_limbs[i - 1]++;
+                if (unlikely(result_limbs[i - 1] > LIMB_DIGITS))
                 {
                     bm[(i - 1) / 8] |= (1 << ((i - 1) % 8));
                 }
@@ -219,9 +230,14 @@ inline bool limb_add_n(uint64_t *a, uint64_t *b, uint64_t **result_ptr, size_t n
             i--;
         }
     }
-    // check if the most significant digit is zero
-    *result_ptr = result;
-    return more_digit;
+    // check if more digit is needed
+    if (more_digit)
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+    }
+    // return result;
 }
 
 // main function with cmd arguments
@@ -268,15 +284,12 @@ int main(int argc, char *argv[])
     carry_space_ptr = 0;
 
     // set sum_space and carry_space to 0
-    memset(sum_space, 0, 1 << 30);
-    memset(carry_space, 0, 1 << 30);
-
-    zeros = _mm512_set1_epi64(0);
-    ones = _mm512_set1_epi64(1);
-    limb_digits = _mm512_set1_epi64(LIMB_DIGITS);
+    init_memory_pool();
 
     run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
+
+    destroy_memory_pool();
 
     return 0;
 }
@@ -297,11 +310,6 @@ void run_correctness_test(int test_case)
     create_directory("experiments/results");
     // open the perf file
     gzFile timespec_file, rdtsc_file, cputime_file;
-
-    memset(sum_space, 0, (1 << 30));
-    memset(carry_space, 0, (1 << 30));
-    sum_space_ptr = 0;
-    carry_space_ptr = 0;
 
     char test_filename[100];
 
@@ -370,39 +378,39 @@ void run_correctness_test(int test_case)
         int n_2 = strlen(b_str);
 
         // convert a and b into limbs
-        aligned_uint64_ptr a, b;
-        limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
-        int n = n_1;
+        // aligned_uint64_ptr a, b;
+        // limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
+        // int n = n_1;
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
+        // printf("a->size: %d, b->size: %d\n", a->size, b->size);
 
-        // allocate from scratch space
-        aligned_uint64_ptr sum = sum_space + sum_space_ptr;
-        size_t sum_size = n;
-        sum_space_ptr += (sum_size + 7) & ~7;
-        carry_space_ptr += (n + 7) & ~7;
+        // adjust the sizes of a and b
+        limb_t_adjust_limb_sizes(a, b);
+        int n = a->size;
+
+        limb_t *sum_limb = limb_t_alloc(n);
 
         /***** Start of addition *****/
-        bool extra_digit = limb_add_n(a, b, &sum, n);
-        if (extra_digit)
-        {
-            // shift the sum by one digit to the right
-            memmove(sum + 1, sum, n * sizeof(uint64_t));
-            sum[0] = 1;
-            sum_size++;
-        }
+        limb_t_add_n(sum_limb, a, b);
 
         /***** End of addition *****/
 
-        char *sum_str = limb_get_str(sum, &sum_size, false);
+        char *sum_str = limb_get_str(sum_limb);
         // sum_size = strlen(sum_str);
 
         // verify the converted string with result
-        if (!check_result(sum_str, result_str, sum_size))
+        if (!check_result(sum_str, result_str, sum_limb->size))
         {
             printf("Test case failed, at iteration %d\n", i);
             printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
             printf("Experimental result = %s\n", sum_str);
             exit(EXIT_FAILURE);
         }
+        limb_t_free(a);
+        limb_t_free(b);
+        limb_t_free(sum_limb);
     }
     switch (test_case)
     {
@@ -670,19 +678,15 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
-        int n_1 = strlen(a_str);
-        int n_2 = strlen(b_str);
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
 
-        // convert a and b into limbs
-        aligned_uint64_ptr a, b;
-        limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
-        int n = n_1;
+        // adjust the sizes of a and b
+        limb_t_adjust_limb_sizes(a, b);
+        int n = a->size;
 
-        // allocate from scratch space
-        aligned_uint64_ptr sum = sum_space + sum_space_ptr;
-        size_t sum_size = n;
-        sum_space_ptr += (sum_size + 7) & ~7;
-        carry_space_ptr += (n + 7) & ~7;
+        limb_t *sum_limb = limb_t_alloc(n);
 
         printf("Starting addition\n");
         int cpu_info[4], decimals;
@@ -703,12 +707,13 @@ void run_benchmarking_test(int test_case, int measure_type)
         {
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
+
             printf("Calibrating CPU speed using RDTSC...\n");
             fflush(stdout);
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_add_n(a, b, &sum, n));
+            TIME_RDTSC(time_taken, limb_t_add_n(a, b, sum_limb));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -719,14 +724,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                bool extra_digit = limb_add_n(a, b, &sum, n);
-                if (extra_digit)
-                {
-                    // shift the sum by one digit to the right
-                    memmove(sum + 1, sum, n * sizeof(uint64_t));
-                    sum[0] = 1;
-                    sum_size++;
-                }
+                limb_t_add_n(a, b, sum_limb);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -753,7 +751,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_add_n(a, b, &sum, n));
+            TIME_TIMESPEC(time_taken, limb_t_add_n(a, b, sum_limb));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -766,14 +764,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                bool extra_digit = limb_add_n(a, b, &sum, n);
-                if (extra_digit)
-                {
-                    // shift the sum by one digit to the right
-                    memmove(sum + 1, sum, n * sizeof(uint64_t));
-                    sum[0] = 1;
-                    sum_size++;
-                }
+                limb_t_add_n(a, b, sum_limb);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -800,7 +791,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_add_n(a, b, &sum, n));
+            TIME_RUSAGE(time_taken, limb_t_add_n(a, b, sum_limb));
 
             printf("done\n");
 
@@ -813,14 +804,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                bool extra_digit = limb_add_n(a, b, &sum, n);
-                if (extra_digit)
-                {
-                    // shift the sum by one digit to the right
-                    memmove(sum + 1, sum, n * sizeof(uint64_t));
-                    sum[0] = 1;
-                    sum_size++;
-                }
+                limb_t_add_n(a, b, sum_limb);
             }
             t1 = cputime() - t0;
             printf("done!\n");
