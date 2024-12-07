@@ -30,9 +30,15 @@ def generate_testcases(filename, bit_size, num_testcases, mode):
                 if a > b:
                     a, b = b, a
 
+            # Perform multiplication
             c = a * b
 
-            buffer.append(f"{a},{b},{c}\n")
+            # Convert to hex-strings
+            a_hex = a.digits(16)
+            b_hex = b.digits(16)
+            c_hex = c.digits(16)
+
+            buffer.append(f"{a_hex},{b_hex},{c_hex}\n")
 
             if len(buffer) >= BUFFER_SIZE:
                 f.writelines(buffer)

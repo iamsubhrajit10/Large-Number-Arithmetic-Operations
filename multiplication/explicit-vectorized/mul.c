@@ -58,6 +58,67 @@ void run_correctness_test(int);
 
 inline void limb_mul_n(limb_t *mul, limb_t *a, limb_t *b) __attribute__((always_inline));
 
+/**
+ * Does the following:
+ * mul->limbs[set_index] = a->limbs[start:end] * b->limbs[end:start] using AVX512 instructions
+ */
+void urdhva_multiply_sets_avx(limb_t *mul, limb_t *a, limb_t *b, size_t start_index, size_t end_index, size_t set_index)
+{
+    // Get the number of limbs
+    int n = a->size;
+}
+
+// *** 3. for set_index <- 0 to max_index do
+// *** 4.      p <- 0
+// *** 5.      start <- max(0, set_index - n + 1)
+// *** 6.      end <- min(set_index, n-1)
+// *** 7.      p <- multiply(num1[start:end], num2[end:start])
+// *** 8.      product[set_index] <- p % 1e18
+// *** 9.     carry[set_index + 1] <- p / 1e18
+// *** 10. end for
+void urdhva_multiply_n(limb_t *mul, limb_t *a, limb_t *b, limb_t *carry)
+{
+}
+
+void urdhva_adjust_product(limb_t *mul, limb_t *carry)
+{
+}
+
+/* ALGO: URDHVA-LIMBS
+*** 1. product <- [0, 0, ..., 0] // 2n-1 elements
+*** 2. set_index <- 0, max_index <- 2n-2
+*** 3. for set_index <- 0 to max_index do
+*** 4.      p <- 0
+*** 5.      start <- max(0, set_index - n + 1)
+*** 6.      end <- min(set_index, n-1)
+*** 7.      p <- multiply(num1[start:end], num2[end:start])
+*** 8.      product[set_index] <- p % 1e18
+*** 9.     carry[set_index + 1] <- p / 1e18
+*** 10. end for
+*** 11. c <- 0
+*** 12. for i <- 2n-2 to 0 do
+*** 13.     p <- product[i] + carry[i] + c
+*** 14.     product[i] <- p % 1e18
+*** 15.     c <- p / 1e18
+*** 16. end for
+*** 17. return product
+*/
+// Uses Urdhva Tiryakbhyam algorithm for multiplication
+inline void limb_mul_n(limb_t *mul, limb_t *a, limb_t *b)
+{
+    // Get the number of limbs
+    int n = a->size;
+
+    // Allocate temporary memory for the carry
+    limb_t *carry = limb_t_alloc(2 * n - 1);
+    if (carry == NULL)
+    {
+        perror("Memory allocation failed for carry\n");
+        exit(EXIT_FAILURE);
+    }
+    urdhva_multiply_n(mul, a, b, carry);
+}
+
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {

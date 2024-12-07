@@ -252,6 +252,10 @@ char *limb_get_str(const limb_t *num)
 limb_t *limb_set_str(const char *str)
 {
     int len = strlen(str);
+    if (len == 0)
+    {
+        return NULL;
+    }
     int num_limbs = (len + LIMB_SIZE - 1) / LIMB_SIZE;
 
     // Allocate memory for the limb_t structure
