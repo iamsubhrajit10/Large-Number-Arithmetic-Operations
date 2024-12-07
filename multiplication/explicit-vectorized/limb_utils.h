@@ -70,7 +70,7 @@ limb_t *limb_t_realloc(limb_t *limb, size_t new_size);
 void limb_t_free(limb_t *limb);
 
 /**
- * @brief Converts a large number represented by a limb_t structure into a string
+ * @brief Converts a large number represented by a limb_t structure into a hex-string.
  *
  * @param num The number to convert
  * @return char* The string representation of the number
@@ -78,9 +78,9 @@ void limb_t_free(limb_t *limb);
 char *limb_get_str(const limb_t *num);
 
 /**
- * @brief Converts a string representing a large number into a limb_t structure.
+ * @brief Converts a hex-string representing a large number into a limb_t structure.
  *
- * This function takes a string representing a large number and converts it into a limb_t structure.
+ * This function takes a hex-string representing a large number and converts it into a limb_t structure.
  * The limbs are allocated with a fixed alignment of 64 bytes.
  *
  * @param str The number as a string.

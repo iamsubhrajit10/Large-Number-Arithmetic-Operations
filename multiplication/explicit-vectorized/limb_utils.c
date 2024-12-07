@@ -7,17 +7,21 @@
 #include <immintrin.h>
 #include <inttypes.h>
 #include <errno.h>
+#include <gmp.h>
+#include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/syscall.h>
+#include <ctype.h>
 #include "limb_utils.h"
 
-#define LIMB_SIZE 18             // Number of digits in each limb
+#define LIMB_BITS 64             // Number of hex digits in each limb
+#define bits 4                   // Number of bits in each hex digit
 #define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
 
 // Define the aligned data types
 typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
 typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
-
-// Declare threshold for borrow propagation and limb digits
-aligned_uint64 LIMB_DIGITS = 1000000000000000000ULL; // 10^18, used for carry/borrow-propagation, as we're using 64-bit integers; mostly saturated
 
 // Declare the SIMD constants
 __m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
@@ -43,7 +47,7 @@ void init_memory_pool()
     memory_pool_offset = 0;
     AVX512_ZEROS = _mm512_set1_epi64(0);
     AVX512_ONES = _mm512_set1_epi64(1);
-    AVX512_LIMB_DIGITS = _mm512_set1_epi64(LIMB_DIGITS);
+    AVX512_LIMB_DIGITS = _mm512_set1_epi64(LIMB_BITS);
 }
 
 void *memory_pool_alloc(size_t size)
@@ -164,118 +168,150 @@ void limb_t_free(limb_t *limb)
 
 char *limb_get_str(const limb_t *num)
 {
-    // Remove leading zeros
-    size_t i = 0;
-    while (i < num->size && num->limbs[i] == 0)
+    const char *digits = "0123456789ABCDEF";
+    // const char *digits = "FEDCBA9876543210";
+    size_t num_limbs = num->size;
+    if (num_limbs == 0)
     {
-        i++;
+        return NULL;
+    }
+    if (num->limbs == NULL || num->size == 0)
+    {
+        return NULL;
     }
 
-    size_t result_length = num->size - i;
-    const uint64_t *result = num->limbs + i;
-
-    if (result_length == 0)
+    if (num->size == 1 && num->limbs[0] == 0)
     {
-        char *temp = (char *)calloc(2, sizeof(char));
-        if (temp == NULL)
-        {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
-        }
-        temp[0] = '0';
-        temp[1] = '\0';
-        return temp;
+        return "0";
     }
 
-    // Calculate the required size for the result string
-    size_t alloc_size = result_length * 20 + 2; // 20 digits per number + sign + null terminator
-    char *result_str = (char *)calloc(alloc_size, sizeof(char));
-    if (result_str == NULL)
+    size_t hex_len = (num_limbs * LIMB_BITS + bits - 1) / bits + 1; // ceil(num_limbs * LIMB_BITS / bits) + 1
+
+    char *str = (char *)memory_pool_alloc(hex_len);
+    if (str == NULL)
     {
-        perror("Memory allocation failed for result_str\n");
-        exit(0);
+        perror("Memory allocation failed for string\n");
+        exit(EXIT_FAILURE);
     }
 
-    // Format the first element separately (without leading zeros)
-    char *ptr = result_str;
+    char *sp = str;
+
     if (num->sign)
     {
-        ptr += sprintf(ptr, "-");
-    }
-    if (result[0] > LIMB_DIGITS)
-    {
-        ptr += sprintf(ptr, "%" PRId64, (int64_t)result[0]); // Print as signed
-    }
-    else
-    {
-        ptr += sprintf(ptr, "%" PRIu64, result[0]); // Print as unsigned
+        *sp++ = '-';
     }
 
-    // Handle the rest of the elements (with leading zeros)
-    for (size_t j = 1; j < result_length; j++)
+    unsigned char mask = (1U << bits) - 1; // 0xF
+    signed shift = 0;
+    for (int i = 0; i < num_limbs; i++)
     {
-        ptr += sprintf(ptr, "%018" PRIu64, result[j]); // Print with leading zeros
-    }
-
-    // Remove leading zeros from the final result
-    ptr = result_str;
-    while (*ptr == '0')
-    {
-        ptr++;
-    }
-
-    if (*ptr == '\0')
-    {
-        free(result_str);
-        char *temp = (char *)calloc(2, sizeof(char));
-        if (temp == NULL)
+        for (shift = LIMB_BITS - bits; shift >= 0; shift -= bits)
         {
-            perror("Memory allocation failed for temp\n");
-            exit(0);
+            unsigned char digit = (num->limbs[i] >> shift) & mask;
+            *sp++ = digits[digit];
         }
-        temp[0] = '0';
-        temp[1] = '\0';
-        return temp;
     }
-
-    char *final_result = strdup(ptr);
-    if (final_result == NULL)
+    *sp = '\0';
+    // remove leading zeros before returning
+    while (*str == '0' && *(str + 1) != '\0')
     {
-        perror("Memory allocation failed for final_result\n");
-        exit(0);
+        str++;
     }
-
-    free(result_str);
-    return final_result;
+    return str;
 }
 
 limb_t *limb_set_str(const char *str)
 {
-    int len = strlen(str);
-    if (len == 0)
+    // check if the string is NULL or empty
+    if (str == NULL || strlen(str) == 0)
     {
         return NULL;
     }
-    int num_limbs = (len + LIMB_SIZE - 1) / LIMB_SIZE;
 
-    // Allocate memory for the limb_t structure
-    limb_t *num = limb_t_alloc(num_limbs);
+    // allocate temporary memory for hex-string to digit conversion
+    size_t hex_len = strlen(str);
 
-    // Populate limbs
-    int i, k;
-    for (i = len - 1, k = num_limbs - 1; k >= 0; k--)
+    uint64_t *digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
+    if (digits == NULL)
     {
-        uint64_t limb = 0;
-        uint64_t power = 1;
-        int digits_in_limb = LIMB_SIZE < (i + 1) ? LIMB_SIZE : (i + 1);
-        for (int j = 0; j < digits_in_limb; j++, i--)
-        {
-            limb += (str[i] - '0') * power;
-            power = (power << 3) + (power << 1); // power *= 10
-        }
-        num->limbs[k] = limb;
+        perror("Memory allocation failed for digits\n");
+        exit(EXIT_FAILURE);
     }
 
+    // Phase 0: extract sign and omit any whitespace
+    bool sign = false;
+    if (str[0] == '-')
+    {
+        sign = true;
+    }
+
+    const char *sp = str + (sign ? 1 : 0);
+    while (isspace(*sp))
+    {
+        sp++;
+    }
+
+    // Phase 1: Convert the hex-string to digits
+    for (size_t i = 0; i < hex_len; i++)
+    {
+        // if the character is between 0-9
+        if (sp[i] >= '0' && sp[i] <= '9')
+        {
+            digits[i] = sp[i] - '0';
+        }
+        // if the character is between A-F
+        else if (sp[i] >= 'A' && sp[i] <= 'F')
+        {
+            digits[i] = sp[i] - 'A' + 10;
+        }
+        // if the character is between a-f
+        else if (sp[i] >= 'a' && sp[i] <= 'f')
+        {
+            digits[i] = sp[i] - 'a' + 10;
+        }
+        else
+        {
+            perror("Invalid character in hex-string\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Phase 2: Convert the digits to limbs
+    size_t num_limbs = (hex_len * bits + LIMB_BITS - 1) / LIMB_BITS; // ceil(hex_len * bits / LIMB_BITS)
+    limb_t *num = limb_t_alloc(num_limbs);
+
+    aligned_uint64 limb = 0;
+    unsigned shift = 0;
+    int limb_index = num_limbs - 1;
+
+    for (int i = hex_len - 1; i >= 0;)
+    {
+        // limb |= digits[i] << shift;
+        // shift += bits;
+        // if (shift >= LIMB_BITS)
+        // {
+        //     shift -= LIMB_BITS;
+        //     num->limbs[limb_index--] = limb;
+        //     limb = digits[i] >> (bits - shift);
+        // }
+        for (shift = 0; shift < LIMB_BITS; shift += bits)
+        {
+            if (i < 0)
+            {
+                break;
+            }
+            limb |= digits[i] << shift;
+            i--;
+        }
+        num->limbs[limb_index--] = limb;
+        limb = 0;
+    }
+    if (limb != 0)
+    {
+        num->limbs[limb_index--] = limb;
+    }
+    num->sign = sign;
+    num->size = num_limbs;
     return num;
 }
 
