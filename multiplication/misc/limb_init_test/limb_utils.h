@@ -78,6 +78,15 @@ void limb_t_free(limb_t *limb);
 char *limb_get_str(const limb_t *num);
 
 /**
+ * @biref Internal function to convert a limb_t structure into a hex-string, usually called by limb_get_str
+ *
+ * @param num The number to convert
+ * @param str The string to store the result
+ * @return void
+ */
+void __get_str(const limb_t *num, char *str);
+
+/**
  * @brief Converts a hex-string representing a large number into a limb_t structure.
  *
  * This function takes a hex-string representing a large number and converts it into a limb_t structure.
@@ -87,6 +96,17 @@ char *limb_get_str(const limb_t *num);
  * @return A pointer to the limb_t structure representing the large number.
  */
 limb_t *limb_set_str(const char *str);
+
+/**
+ * @brief Internal function to convert a hex-string into a limb_t structure, usually called by limb_set_str
+ *
+ * @param aligned_uint64_ptr digits The digits of the number
+ * @param size_t n The number of digits
+ * @param limb_t *num The number to convert
+ *
+ * @return void
+ */
+void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num);
 
 /**
  * @brief Adjusts the sizes of two limb_t structures to be equal.

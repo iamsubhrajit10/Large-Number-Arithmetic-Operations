@@ -166,10 +166,38 @@ void limb_t_free(limb_t *limb)
     limb = NULL;
 }
 
+void __get_str(const limb_t *num, char *str)
+{
+    char *sp = str;
+    const char *digits = "0123456789ABCDEF";
+    if (num->sign)
+    {
+        *sp++ = '-';
+    }
+    size_t num_limbs = num->size;
+
+    // unsigned char mask = (1U << bits) - 1; // 0xF
+    unsigned char mask = 0xF;
+    signed shift = 0;
+    for (int i = 0; i < num_limbs; i++)
+    {
+        for (shift = LIMB_BITS - bits; shift >= 0; shift -= bits)
+        {
+            unsigned char digit = (num->limbs[i] >> shift) & mask;
+            *sp++ = digits[digit];
+        }
+    }
+    *sp = '\0';
+    // remove leading zeros before returning
+    while (*str == '0' && *(str + 1) != '\0')
+    {
+        str++;
+    }
+}
+
 char *limb_get_str(const limb_t *num)
 {
-    const char *digits = "0123456789ABCDEF";
-    // const char *digits = "FEDCBA9876543210";
+
     size_t num_limbs = num->size;
     if (num_limbs == 0)
     {
@@ -193,31 +221,36 @@ char *limb_get_str(const limb_t *num)
         perror("Memory allocation failed for string\n");
         exit(EXIT_FAILURE);
     }
-
-    char *sp = str;
-
-    if (num->sign)
-    {
-        *sp++ = '-';
-    }
-
-    unsigned char mask = (1U << bits) - 1; // 0xF
-    signed shift = 0;
-    for (int i = 0; i < num_limbs; i++)
-    {
-        for (shift = LIMB_BITS - bits; shift >= 0; shift -= bits)
-        {
-            unsigned char digit = (num->limbs[i] >> shift) & mask;
-            *sp++ = digits[digit];
-        }
-    }
-    *sp = '\0';
-    // remove leading zeros before returning
-    while (*str == '0' && *(str + 1) != '\0')
-    {
-        str++;
-    }
+    __get_str(num, str);
     return str;
+}
+
+void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num)
+{
+    // Convert the digits to limbs
+    size_t num_limbs = num->size;
+    aligned_uint64 limb = 0;
+    unsigned shift = 0;
+    int limb_index = num_limbs - 1;
+    for (int i = n - 1; i >= 0;)
+    {
+        for (shift = 0; shift < LIMB_BITS; shift += bits)
+        {
+            if (i < 0)
+            {
+                break;
+            }
+            limb |= digits[i] << shift;
+            i--;
+        }
+        num->limbs[limb_index--] = limb;
+        limb = 0;
+    }
+    if (limb != 0)
+    {
+        num->limbs[limb_index--] = limb;
+    }
+    num->size = num_limbs;
 }
 
 limb_t *limb_set_str(const char *str)
@@ -231,14 +264,14 @@ limb_t *limb_set_str(const char *str)
     // allocate temporary memory for hex-string to digit conversion
     size_t hex_len = strlen(str);
 
-    uint64_t *digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
+    aligned_uint64_ptr digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
     if (digits == NULL)
     {
         perror("Memory allocation failed for digits\n");
         exit(EXIT_FAILURE);
     }
 
-    // Phase 0: extract sign and omit any whitespace
+    // extract sign and omit any whitespace
     bool sign = false;
     if (str[0] == '-')
     {
@@ -251,7 +284,7 @@ limb_t *limb_set_str(const char *str)
         sp++;
     }
 
-    // Phase 1: Convert the hex-string to digits
+    // Convert the hex-string to digits
     for (size_t i = 0; i < hex_len; i++)
     {
         // if the character is between 0-9
@@ -275,43 +308,17 @@ limb_t *limb_set_str(const char *str)
             exit(EXIT_FAILURE);
         }
     }
-
-    // Phase 2: Convert the digits to limbs
     size_t num_limbs = (hex_len * bits + LIMB_BITS - 1) / LIMB_BITS; // ceil(hex_len * bits / LIMB_BITS)
     limb_t *num = limb_t_alloc(num_limbs);
-
-    aligned_uint64 limb = 0;
-    unsigned shift = 0;
-    int limb_index = num_limbs - 1;
-
-    for (int i = hex_len - 1; i >= 0;)
+    if (num == NULL)
     {
-        // limb |= digits[i] << shift;
-        // shift += bits;
-        // if (shift >= LIMB_BITS)
-        // {
-        //     shift -= LIMB_BITS;
-        //     num->limbs[limb_index--] = limb;
-        //     limb = digits[i] >> (bits - shift);
-        // }
-        for (shift = 0; shift < LIMB_BITS; shift += bits)
-        {
-            if (i < 0)
-            {
-                break;
-            }
-            limb |= digits[i] << shift;
-            i--;
-        }
-        num->limbs[limb_index--] = limb;
-        limb = 0;
+        perror("Memory allocation failed for num\n");
+        exit(EXIT_FAILURE);
     }
-    if (limb != 0)
-    {
-        num->limbs[limb_index--] = limb;
-    }
-    num->sign = sign;
     num->size = num_limbs;
+    num->sign = sign;
+
+    __set_str(digits, hex_len, num);
     return num;
 }
 
