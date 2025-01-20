@@ -24,6 +24,9 @@
 !**/*.c
 !**/*.h
 
+# Allow text files in any directory except experiments
+!**/*.txt
+
 # Allow assembly source files in any directory except experiments
 !**/*.s
 

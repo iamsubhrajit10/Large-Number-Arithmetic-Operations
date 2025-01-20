@@ -1,0 +1,242 @@
+Algorithm: multiply_urdhva_tiryagbhyam
+Input: n1,n2,len:: two numbers in hex and the length of the numbers
+Output: result:: the product of the two numbers, in hex; of 2*len length
+0. max_idx = 4*len*len
+1. accumulate_muls(n1,n2,len,mul_tmp_1,mul_tmp_2) // mul_tmp_1 and mul_tmp_2 are arrays of length max_idx
+2. multiply_muls(max_idx,mul_tmp_1,mul_tmp_2,result)  // result is an array of length max_idx
+3. add_within_limbs(max_idx,result)
+4. adjust_inner_limbs(max_idx,result)
+5. remove_intermediary_zeros(max_idx,result)
+6. add_limbs(len,max_idx,result)
+7. final_result = adjust_limbs(2*(2*len-1)-1,result)
+8. return final_result
+
+
+
+
+@Description: This algorithm tries to accumulate the sub-limbs to be multiplied using the Urdhva-Tiraybhyam algorithm.
+              It uses utility function scatter to scatter the high and low 2-bytes of the numbers to be multiplied according to urdhva order
+              Reason for dividing the limbs into two parts:
+              Product of two numbers of length n is of length 2n
+              So, to accommodate into length n, we divide the limbs into two parts
+/*
+    n1: f548 8543
+    n2: 6b0d 9410
+
+    mul_tmp_1: f5 f5 48 48 f5 f5 48 48 85 85 43 43 85 85 43 43
+    mul_tmp_2: 6b 0d 6b 0d 94 10 94 10 6b 0d 6b 0d 94 10 94 10
+*/
+Algo: accumulate_muls
+Input: n1,n2,len,mul_tmp_1,mul_tmp_2
+Output: mul_tmp_1,mul_tmp_2
+0. idx = 0, max_idx = 2*len - 1, threshold = len - 1
+1. for set_idx = 0 to max_idx - 1 do
+2.   start = (set_idx >= threshold) ? (set_idx - threshold) : 0
+3.   end = (set_idx < len) ? set_idx : threshold
+4.   scatter(n1,n2,start,end,mul_tmp_1,mul_tmp_2,idx)
+
+@Description: This utility algorithm tries to scatter the high and low 2-bytes of the numbers to be multiplied according to urdhva order
+Algo: scatter :: util of accumulate_muls
+Input: n1,n2,start,end,mul_tmp_1,mul_tmp_2,idx
+Output: mul_tmp_1,mul_tmp_2,idx
+0. for i = start to end; i++, j-- do
+1.   num1 = n1[i], num2 = n2[j]
+    // Extract the high and low 2-bytes of the numbers
+2.   num1_high = num1 >> 8, num1_low = num1 & 0xFF
+3.   num2_high = num2 >> 8, num2_low = num2 & 0xFF
+    // Store the high and low 2-bytes of the numbers in the temporary arrays
+4.   mul_tmp_1[idx] = num1_high, mul_tmp_1[idx+1] = num1_high
+5.   mul_tmp_1[idx+2] = num1_low, mul_tmp_1[idx+3] = num1_low
+6.   mul_tmp_2[idx] = num2_high, mul_tmp_2[idx+1] = num2_high
+7.   mul_tmp_2[idx+2] = num2_low, mul_tmp_2[idx+3] = num2_low
+8. idx += (4 * (end - start + 1))
+
+
+@Description: This algorithm simply performs c[i] = a[i] * b[i] for all i
+/*
+    mul_tmp_1: f5 f5 48 48 f5 f5 48 48 85 85 43 43 85 85 43 43
+    mul_tmp_2: 6b 0d 6b 0d 94 10 94 10 6b 0d 6b 0d 94 10 94 10
+
+    result: 6667 c71 1e18 3a8 8da4 f50 29a0 480 3797 6c1 1c01 367 4ce4 850 26bc 430 
+*/
+Algo: multiply_muls
+Input: n,mul_tmp_1,mul_tmp_2,result
+Output: result
+0. for i = 0 to n-1 do
+1.   result[i] = mul_tmp_1[i] * mul_tmp_2[i]
+2. return result
+
+@Description: This algorithm tries to add the second and third 2-bytes of a limb-product-group. If carry occurs, it is added to the first sub-limb of the first limb of the group
+              Also, the third 2-bytes of the limb-product-group is set to 0
+
+/*
+    result: 6667 c71 1e18 3a8 8da4 f50 29a0 480 3797 6c1 1c01 367 4ce4 850 26bc 430 
+    
+    result: 6667 2a89 0000 3a8 8da4 38f0 0000 480 3797 22c2 0000 367 4ce4 2f0c 0000 430
+*/
+Algo: add_within_limbs
+Input: n,result
+Output: result
+0. for i = 1 to n-1; i+=4 do
+1.   r = result[i] + result[i+1]
+2.   if r > 0xFFFF then
+3.     result[i-1] = result[i-1] + 0x100
+4.   result[i] = r & 0xFFFF
+5.   result[i+1] = 0
+6. return result
+
+
+Algo: adjust_inner_limbs
+Input: n,result
+Output: result
+0. size = 4, start = 0, end = start + size - 1
+1. while end < n do
+2.   second = start + 1
+3.   carry_1 = 0, carry_2 = 0
+/*
+     37c8    5b2d    0    1001
+      |       |            |
+     start  second        end
+    XXXX    XX2d    0    10XX
+     p = 10 + 2d
+    XXc8    5bXX    0    XXXX
+     q = c8 + 5b
+*/
+4.   p = (result[end]>>8) + (result[second] & 0xFF)
+5.   if p > 0xFF then
+6.     carry_1 = 1
+7.     p = p & 0xFF
+8.   q = (result[second] >> 8) + (result[start] & 0xFF)
+9.   if q > 0xFF then
+10.    carry_2 = 1
+11.    q = q & 0xFF
+/*
+     37c8    5b2d    0    1001
+      |       |            |
+     start  second        end
+     XXXX    XX2d    0    10XX
+     p = 10 + 2d = 3d; carry_1 = 0
+     XXc8    5bXX    0    XXXX
+     q = c8 + 5b = 123; carry_2 = 1
+     q = 23
+     result[second] = (1001 & 0xFF) | (3d << 8) = 3d01
+     37c8    3d01    0    1001
+      |       |            |
+    start   second        end
+*/
+12.  result[second] = (result[end] & 0xFF) | (p << 8)
+ 
+ /*
+    Adding p's carry to q, while if q overflows, adding it to the first limb's first sub-limb
+  */
+
+13.  if carry_1 = 1 then
+14.    q = (q + 1) & 0xFF
+15.    if q = 0 then // carry to the first limb
+16.       result[start] = result[start] + 0x100
+/*
+     37c8    3d01    0    1001
+      |       |            |
+    start   second        end
+    After adding carry_2 (note: we are simulating 38c8+13d01) so, 1 should be added to 38
+    38c8    3d01    0    1001
+      |       |            |
+    start   second        end
+*/
+17.  if carry_2 = 1 then
+18.    result[start] = result[start] + 0x100
+/*
+    38c8     3d01    0    1001
+      |       |            |
+    start   second        end
+    result[start] = (38c8 & 0xFF00) | q
+    result[start] = 3800 | 23 = 3823
+    3823     3d01    0     0
+      |       |            |
+    start   second        end
+*/
+19.  result[start] = (result[start] & 0xFF00) | q
+20.  result[end] = 0
+21.  start += size, end += size
+22. end while
+23. return result
+
+@Description: This algorithm tries to remove the intermediary zeros in the result
+/*
+    result:6691 8ca8 00 00 8ddc f480 00 00 37b9 c567 00 00 4d13 1030 00 00 
+    result:6691 8ca8 8ddc f480 37b9 c567 4d13 1030
+*/
+Algo: remove_intermediary_zeros
+Input: n,result
+Output: result
+0. j = 0
+1. for i = 0 to n-1; i+=4 do
+2.   result[j] = result[i]
+3.   result[j+1] = result[i+1]
+4.   j += 2
+5. return result
+
+@Description: This algorithm tries to add the limbs of the result; as we're assuming limbs of size 2 bytes, we add the limbs in pairs
+              Also, number of limbs to be added is varied in each iteration as per the size of sets in Urdhva-Tiryagbhyam algorithm
+/*
+    result:(6691 8ca8) (8ddc f480 + 37b9 c567) (4d13 1030)
+    result:6691 8ca8 c596 b9e7 4d13 1030
+*/
+Algo: add_limbs
+Input: n,max_idx,result
+Output: result
+0. add_count = 1, adds = 1, thresh = n - 1, start = 2, end = 4, k = 2
+1. while end + 2 < max_idx do
+2.   r = (result[start] << 16) | result[start+1]
+3.   i = start + 2
+4.  while m < adds do
+5.    a_high = r >> 16
+6.    a_low = r & 0xFFFF
+7.    carry = 0
+8.    r = custom_add(a_high,a_low,result[i],result[i+1],carry)
+9.    if carry = 1 then
+10.     result[k - 2]++
+11.     if result[k - 2] = 0 then
+12.       result[k - 4]++ // carry to the previous limb
+13.    i += 2
+14.    m++
+15.  result[k] = r >> 16
+16.  result[k+1] = r & 0xFFFF
+17.  k+=2
+18.  start = i
+19.  add_count++
+20.  if add_count > thresh then
+21.    adds--
+22.  else
+23.    adds++
+24.  end = start + (adds << 1)
+25. end while
+26. result[k] = result[end]    // copy the last limb
+27. result[k+1] = result[end+1]
+28. return result
+
+@Description: This algorithm tries to adjust the limbs of the result; as we're assuming limbs of size 2 bytes, we adjust the limbs in pairs
+/**
+    result:6691 8ca8 c596 b9e7 4d13 1030 4d13
+    result:6692 523f 6fa 1030
+**/
+Algo: adjust_limbs
+Input: n,result
+Output: result
+0. first = n - 2, second = n - 1, ptr = n - 1
+1. while first > 0 do
+2.   r = result[first] + result[second]
+3.   if r > 0xFFFF then
+4.     result[first - 1]++
+5.     if result[first - 1] = 0 then
+6.       result[first - 3]++
+7.     result[first] = r & 0xFFFF
+8.   result[ptr] = r & 0xFFFF
+9.   first -= 2, second -= 2, ptr --
+10. end while
+11. if first < 0 then
+12.   result[ptr] = result[second]
+13. // modify the result to point to result[ptr] while returning
+14. result = result + ptr
+15. return result
+
