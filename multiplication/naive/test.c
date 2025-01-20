@@ -50,21 +50,18 @@ void accumulate_muls(__uint16_t *num1, __uint16_t *num2, int n, __uint16_t *mul_
 
 void multiply_AVX(int n, __uint16_t *mul_tmp_1, __uint16_t *mul_tmp_2, __uint16_t *result)
 {
-    unsigned max_idx = (n * n) << 2;
     __uint16_t *ptr1 = mul_tmp_1;
     __uint16_t *ptr2 = mul_tmp_2;
     __uint16_t *res_ptr = result;
-    for (int i = 0; i < max_idx; ++i)
+    for (int i = 0; i < n; ++i)
     {
-        // result[i] = mul_tmp_1[i] * mul_tmp_2[i];
         *res_ptr++ = *ptr1++ * *ptr2++;
     }
 }
 
-void add_results(int n, __uint16_t *result)
+void add_within_limbs(int n, __uint16_t *result)
 {
-    unsigned max_idx = (n * n) << 2;
-    for (int i = 1; i < max_idx; i += 4)
+    for (int i = 1; i < n; i += 4)
     {
         __uint32_t res = result[i] + result[i + 1];
         if (res > 0xFFFF)
@@ -78,12 +75,11 @@ void add_results(int n, __uint16_t *result)
 
 void adjust_inner_limbs(int n, __uint16_t *result)
 {
-    int max_idx = (n * n) << 2;
     int size = 4;
     int start = 0;
     int end = start + size - 1;
 
-    while (end < max_idx)
+    while (end < n)
     {
         int second = start + 1;
         int c1 = 0, c2 = 0;
@@ -111,7 +107,6 @@ void adjust_inner_limbs(int n, __uint16_t *result)
         }
         if (c2 == 1)
         {
-            unsigned temp = result[start] + 0x100;
             result[start] = result[start] + 0x100;
         }
         result[start] = (result[start] & 0xFF00) | q;
@@ -136,9 +131,8 @@ inline __uint32_t custom_add(__uint16_t a_high, __uint16_t a_low, __uint16_t b_h
     return (q << 16) | r;
 }
 
-void add_limbs(int n, __uint16_t *result)
+void add_limbs(int n, int max_idx, __uint16_t *result)
 {
-    int max_idx = 2 * n * n;
     int add_count = 1, adds = 1;
     int thresh = n - 1;
     int start = 2, end = 4;
@@ -178,7 +172,7 @@ void add_limbs(int n, __uint16_t *result)
         {
             adds++;
         }
-        end = start + 2 * adds;
+        end = start + (adds << 1);
     }
     result[k] = result[end];
     result[k + 1] = result[end + 1];
@@ -217,11 +211,10 @@ __uint16_t *adjust_limbs(int n, __uint16_t *result)
 
 void remove_intermediary_zeros(int n, __uint16_t *result)
 {
-    int max_idx = (n * n) << 2;
     __uint16_t *src = result;
     __uint16_t *dst = result;
 
-    for (int i = 0; i < max_idx; i += 4)
+    for (int i = 0; i < n; i += 4)
     {
         *dst++ = *src++;
         *dst++ = *src++;
@@ -251,15 +244,15 @@ __uint16_t *multiply_urdhva(__uint16_t *num1, __uint16_t *num2, int n)
 
     accumulate_muls(num1, num2, n, mul_tmp_1, mul_tmp_2);
 
-    multiply_AVX(n, mul_tmp_1, mul_tmp_2, result);
+    multiply_AVX(max_idx, mul_tmp_1, mul_tmp_2, result);
 
-    add_results(n, result);
+    add_within_limbs(max_idx, result);
 
-    adjust_inner_limbs(n, result);
+    adjust_inner_limbs(max_idx, result);
 
-    remove_intermediary_zeros(n, result);
+    remove_intermediary_zeros(max_idx, result);
 
-    add_limbs(n, result);
+    add_limbs(n, max_idx >> 1, result);
 
     __uint16_t *final_result = adjust_limbs((((n << 1) - 1) << 1) - 1, result);
 
@@ -270,7 +263,6 @@ __uint16_t *multiply_urdhva(__uint16_t *num1, __uint16_t *num2, int n)
 
 void generate_random_numbers(__uint16_t *num, int n)
 {
-    srand(time(NULL));
     for (int i = 0; i < n; i++)
     {
         num[i] = rand() % 0xFFFF;
@@ -282,10 +274,7 @@ void test()
     for (int test_case = 0; test_case < 100; test_case++)
     {
 
-        // randomly choose between 512 to 8192, a power of power of 2
-        // int n = 512 * (rand() % 7 + 1);
         int n = 4096;
-        printf("Length: %d\n", n);
 
         __uint16_t *num1 = (__uint16_t *)malloc(n * sizeof(__uint16_t));
         __uint16_t *num2 = (__uint16_t *)malloc(n * sizeof(__uint16_t));
@@ -298,15 +287,12 @@ void test()
         mpz_init(gmp_result);
         mpz_init(gmp_expected_result);
 
+        srand(time(NULL));
+
         generate_random_numbers(num1, n);
         generate_random_numbers(num2, n);
 
         printf("*** Test Case %d ***\n", test_case + 1);
-        // printf("Length: %d\n", n);
-        // printf("num1: ");
-        // print_array(num1, n);
-        // printf("num2: ");
-        // print_array(num2, n);
 
         // Call multiply_urdhva
         __uint16_t *res = multiply_urdhva(num1, num2, n);
