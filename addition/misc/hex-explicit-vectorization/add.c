@@ -89,9 +89,8 @@ inline void right_shift(__mmask8 *carry_mask, size_t n)
  * @param b The second number to add, stored as limb_t
  * @return none
  */
-void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
+inline void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
 {
-
     size_t n = a->size;
     bool more_digit = false;
     int bit_mask_size = (n + 7) >> 3;
@@ -102,6 +101,7 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     aligned_uint64_ptr result_limbs = result->limbs;
 
     __mmask8 bm[bit_mask_size];
+    // memset(bm, 0, bit_mask_size * sizeof(__mmask8));
 
     __mmask8 last_vector_size = n & 0x7;
     int n__ = (last_vector_size) ? n - 8 : n;
@@ -116,8 +116,11 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         // add a and b
         __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);
 
-        // check if result_vec[j] < a_vec[j]
-        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);
+        // if result_vec[j] >= LIMB_DIGITS, set carry mask to 1
+        __mmask8 carry_mask = _mm512_cmpge_epi64_mask(result_vec, AVX512_LIMB_DIGITS);
+
+        // based on carry mask, result_vec[j] =  result_vec[j] - AVX512_LIMB_DIGITS
+        result_vec = _mm512_mask_sub_epi64(result_vec, carry_mask, result_vec, AVX512_LIMB_DIGITS);
 
         // store the result
         _mm512_store_epi64((void *)(result_limbs + i), result_vec);
@@ -125,8 +128,7 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         i += 8;
         bm_itr--;
     }
-
-    if (unlikely(last_vector_size))
+    if (likely(last_vector_size))
     {
         // load 8 64-bit integers from a and b
         __mmask8 k = (1 << last_vector_size) - 1;
@@ -136,8 +138,11 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         // add a and b
         __m512i result_vec = _mm512_maskz_add_epi64(k, a_vec, b_vec);
 
-        // check if result_vec[j] < a_vec[j]
-        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);
+        // if result_vec[j] >= LIMB_DIGITS, set carry mask to 1
+        __mmask8 carry_mask = _mm512_mask_cmpge_epi64_mask(k, result_vec, AVX512_LIMB_DIGITS);
+
+        // based on carry mask, result_vec[j] =  result_vec[j] - AVX512_LIMB_DIGITS
+        result_vec = _mm512_mask_sub_epi64(result_vec, carry_mask, result_vec, AVX512_LIMB_DIGITS);
 
         // store the result
         _mm512_mask_store_epi64((void *)(result_limbs + i), k, result_vec);
@@ -145,6 +150,7 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         i += 8;
         bm_itr--;
     }
+
     if (unlikely(bm[bit_mask_size - 1] & 0x1))
     {
         more_digit = true;
@@ -155,7 +161,6 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     int last_carry_block = -1;
     bm_itr = bit_mask_size - 1;
     i = 0;
-
     while (i < n__)
     {
         // load 8 64-bit integers from result
@@ -164,12 +169,13 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         __mmask8 carry_mask = bm[bm_itr];
 
         // perform the addition
-        __m512i temp_result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
-        _mm512_store_epi64((void *)(result_limbs + i), temp_result_vec);
+        result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
+        _mm512_store_epi64((void *)(result_limbs + i), result_vec);
         // check if result_vec[j] >= LIMB_DIGITS
-        carry_mask = _mm512_cmplt_epu64_mask(temp_result_vec, result_vec);
+        carry_mask = _mm512_cmpge_epi64_mask(result_vec, AVX512_LIMB_DIGITS);
         if (unlikely(carry_mask))
         {
+            // printf("carry mask is not zero\n");
             last_carry_block = i;
             // update the borrow array
             bm[bm_itr] = carry_mask;
@@ -177,7 +183,7 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         i += 8;
         bm_itr--;
     }
-    if (unlikely(last_vector_size))
+    if (likely(last_vector_size))
     {
         __mmask8 k = (1 << last_vector_size) - 1;
         // load 8 64-bit integers from result
@@ -186,12 +192,13 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         __mmask8 carry_mask = bm[bm_itr];
 
         // perform the addition
-        __m512i temp_result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
-        _mm512_mask_store_epi64((void *)(result_limbs + i), k, temp_result_vec);
+        result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
+        _mm512_mask_store_epi64((void *)(result_limbs + i), k, result_vec);
         // check if result_vec[j] >= LIMB_DIGITS
-        carry_mask = _mm512_cmplt_epu64_mask(temp_result_vec, result_vec);
+        carry_mask = _mm512_cmpge_epi64_mask(result_vec, AVX512_LIMB_DIGITS);
         if (unlikely(carry_mask))
         {
+            // printf("carry mask is not zero\n");
             last_carry_block = i;
             // update the borrow array
             bm[bm_itr] = carry_mask;
@@ -200,12 +207,29 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         bm_itr--;
     }
 
-    // TODO: implement sequential carry propagation for worst case
+    // TODO: To be verified and optimized
     if (unlikely(last_carry_block != -1))
     {
-        printf("hmm..\n");
-    }
+        printf("Carry block is not -1\n");
+        size_t i = (last_carry_block + 15);
+        i = (i > n - 1) ? (n - 1) : i;
 
+        while (i > 0)
+        {
+            if (bm[i / 8] & (1 << (i % 8)))
+            {
+                // result[i] += LIMB_DIGITS;
+                result_limbs[i] -= LIMB_DIGITS;
+                result_limbs[i - 1]++;
+                if (unlikely(result_limbs[i - 1] > LIMB_DIGITS))
+                {
+                    bm[(i - 1) / 8] |= (1 << ((i - 1) % 8));
+                }
+                bm[i / 8] &= ~(1 << (i % 8));
+            }
+            i--;
+        }
+    }
     // check if more digit is needed
     if (more_digit)
     {
@@ -213,8 +237,10 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         limb_t_realloc(result, n + 1);
         result->limbs[0] = 1;
     }
+    // return result;
 }
 
+// main function with cmd arguments
 int main(int argc, char *argv[])
 {
     if (argc != 5)
@@ -264,6 +290,8 @@ int main(int argc, char *argv[])
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
+
+    return 0;
 }
 
 /*
@@ -350,9 +378,13 @@ void run_correctness_test(int test_case)
         int n_2 = strlen(b_str);
 
         // convert a and b into limbs
+        // aligned_uint64_ptr a, b;
+        // limb_set_str(a_str, b_str, &a, &b, &n_1, &n_2);
+        // int n = n_1;
         limb_t *a, *b;
         a = limb_set_str(a_str);
         b = limb_set_str(b_str);
+        // printf("a->size: %d, b->size: %d\n", a->size, b->size);
 
         // adjust the sizes of a and b
         limb_t_adjust_limb_sizes(a, b);
@@ -383,16 +415,16 @@ void run_correctness_test(int test_case)
     switch (test_case)
     {
     case 0:
-        printf("Random test cases passed for bit-size %d\n", NUM_BITS);
+        printf("Random test cases completed\n");
         break;
     case 1:
-        printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
+        printf("Equal test cases completed\n");
         break;
     case 2:
-        printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
+        printf("Greater test cases completed\n");
         break;
     case 3:
-        printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
+        printf("Smaller test cases completed\n");
         break;
     }
     // close the test file

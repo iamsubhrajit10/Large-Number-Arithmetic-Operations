@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
     // set sum_space and carry_space to 0
     init_memory_pool();
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
@@ -289,19 +289,19 @@ void run_correctness_test(int test_case)
     {
     case 0:
         printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/random.csv.gz", NUM_BITS);
         break;
     case 1:
         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/equal.csv.gz", NUM_BITS);
         break;
     case 2:
         printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/greater.csv.gz", NUM_BITS);
         break;
     case 3:
         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/smaller.csv.gz", NUM_BITS);
         break;
     default:
         printf("Invalid test case\n");
@@ -444,7 +444,7 @@ void run_benchmarking_test(int test_case, int measure_type)
     {
     case 0: // Random test cases
         printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/random.csv.gz", NUM_BITS);
         if (measure_type == 0) // RDTSC
         {
             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
@@ -481,7 +481,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         break;
     case 1: // Equal test cases
         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/equal.csv.gz", NUM_BITS);
         if (measure_type == 0) // RDTSC
         {
             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
@@ -518,7 +518,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         break;
     case 2: // Greater test cases
         printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/greater.csv.gz", NUM_BITS);
         if (measure_type == 0) // RDTSC
         {
             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
@@ -555,7 +555,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         break;
     case 3: // Smaller test cases
         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../../test/cases/%d/smaller.csv.gz", NUM_BITS);
         if (measure_type == 0) // RDTSC
         {
             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);

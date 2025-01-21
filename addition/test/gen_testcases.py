@@ -32,7 +32,7 @@ def generate_testcases(filename, bit_size, num_testcases, mode):
 
             c = a + b
 
-            buffer.append(f"{a},{b},{c}\n")
+            buffer.append(f"{a:x},{b:x},{c:x}\n")
 
             if len(buffer) >= BUFFER_SIZE:
                 f.writelines(buffer)

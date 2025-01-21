@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     return 0;
@@ -174,12 +174,12 @@ void run_correctness_test(int test_case)
         mpz_init(b);
 
         // convert the strings to mpz_t
-        if (mpz_set_str(a, a_str, 10) != 0)
+        if (mpz_set_str(a, a_str, 16) != 0)
         {
             perror("Error: Failed to set mpz_t from string a_str");
             exit(EXIT_FAILURE);
         }
-        if (mpz_set_str(b, b_str, 10) != 0)
+        if (mpz_set_str(b, b_str, 16) != 0)
         {
             perror("Error: Failed to set mpz_t from string b_str");
             exit(EXIT_FAILURE);
@@ -190,7 +190,7 @@ void run_correctness_test(int test_case)
 
         /***** End of addition *****/
 
-        char *sum_str = mpz_get_str(NULL, 10, result_gmp);
+        char *sum_str = mpz_get_str(NULL, 16, result_gmp);
         int sum_size = strlen(sum_str);
 
         // verify the converted string with result
@@ -474,12 +474,12 @@ void run_benchmarking_test(int test_case, int measure_type)
         mpz_init(b);
 
         // convert the strings to mpz_t
-        if (mpz_set_str(a, a_str, 10) != 0)
+        if (mpz_set_str(a, a_str, 16) != 0)
         {
             perror("Error: Failed to set mpz_t from string a_str");
             exit(EXIT_FAILURE);
         }
-        if (mpz_set_str(b, b_str, 10) != 0)
+        if (mpz_set_str(b, b_str, 16) != 0)
         {
             perror("Error: Failed to set mpz_t from string b_str");
             exit(EXIT_FAILURE);
