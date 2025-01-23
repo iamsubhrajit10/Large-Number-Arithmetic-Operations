@@ -96,18 +96,14 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     bool more_digit = false;
     int bit_mask_size = (n + 7) >> 3;
     int bm_itr = bit_mask_size - 1;
+    __mmask8 bm[bit_mask_size];
+    int i = 0;
 
     aligned_uint64_ptr a_limbs = a->limbs;
     aligned_uint64_ptr b_limbs = b->limbs;
     aligned_uint64_ptr result_limbs = result->limbs;
 
-    __mmask8 bm[bit_mask_size];
-
-    __mmask8 last_vector_size = n & 0x7;
-    int n__ = (last_vector_size) ? n - 8 : n;
-
-    int i = 0;
-    while (i < n__)
+    while (i < n)
     {
         // load 8 64-bit integers from a and b
         __m512i a_vec = _mm512_load_epi64((const void *)(a_limbs + i));
@@ -116,35 +112,17 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         // add a and b
         __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);
 
-        // check if result_vec[j] < a_vec[j]
-        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);
-
         // store the result
         _mm512_store_epi64((void *)(result_limbs + i), result_vec);
-        bm[bm_itr] = carry_mask;
-        i += 8;
-        bm_itr--;
-    }
-
-    if (unlikely(last_vector_size))
-    {
-        // load 8 64-bit integers from a and b
-        __mmask8 k = (1 << last_vector_size) - 1;
-        __m512i a_vec = _mm512_maskz_load_epi64(k, (void *)(a_limbs + i));
-        __m512i b_vec = _mm512_maskz_load_epi64(k, (void *)(b_limbs + i));
-
-        // add a and b
-        __m512i result_vec = _mm512_maskz_add_epi64(k, a_vec, b_vec);
 
         // check if result_vec[j] < a_vec[j]
         __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);
 
-        // store the result
-        _mm512_mask_store_epi64((void *)(result_limbs + i), k, result_vec);
         bm[bm_itr] = carry_mask;
         i += 8;
         bm_itr--;
     }
+
     if (unlikely(bm[bit_mask_size - 1] & 0x1))
     {
         more_digit = true;
@@ -156,7 +134,7 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     bm_itr = bit_mask_size - 1;
     i = 0;
 
-    while (i < n__)
+    while (i < n)
     {
         // load 8 64-bit integers from result
         __m512i result_vec = _mm512_load_epi64((const void *)(result_limbs + i));
@@ -166,28 +144,7 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
         // perform the addition
         __m512i temp_result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
         _mm512_store_epi64((void *)(result_limbs + i), temp_result_vec);
-        // check if result_vec[j] >= LIMB_DIGITS
-        carry_mask = _mm512_cmplt_epu64_mask(temp_result_vec, result_vec);
-        if (unlikely(carry_mask))
-        {
-            last_carry_block = i;
-            // update the borrow array
-            bm[bm_itr] = carry_mask;
-        }
-        i += 8;
-        bm_itr--;
-    }
-    if (unlikely(last_vector_size))
-    {
-        __mmask8 k = (1 << last_vector_size) - 1;
-        // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_maskz_load_epi64(k, (const void *)(result_limbs + i));
-        // load 8-bit mask from bm[j]
-        __mmask8 carry_mask = bm[bm_itr];
 
-        // perform the addition
-        __m512i temp_result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
-        _mm512_mask_store_epi64((void *)(result_limbs + i), k, temp_result_vec);
         // check if result_vec[j] >= LIMB_DIGITS
         carry_mask = _mm512_cmplt_epu64_mask(temp_result_vec, result_vec);
         if (unlikely(carry_mask))
@@ -201,10 +158,9 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     }
 
     // TODO: implement sequential carry propagation for worst case
-    if (unlikely(last_carry_block != -1))
-    {
-        printf("hmm..\n");
-    }
+    // if (unlikely(last_carry_block != -1))
+    // {
+    //     }
 
     // check if more digit is needed
     if (more_digit)
