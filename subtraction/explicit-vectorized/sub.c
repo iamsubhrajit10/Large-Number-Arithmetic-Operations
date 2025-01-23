@@ -151,11 +151,8 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
 
     __mmask8 bm[bit_mask_size];
 
-    __mmask8 last_vector_size = n & 0x7;
-    int n__ = (last_vector_size) ? n - 8 : n;
-
     int i = 0;
-    while (i < n__)
+    while (i < n)
     {
         // load 8 64-bit integers from a and b
         __m512i a_vec = _mm512_load_epi64((const void *)(a_limbs + i));
@@ -174,33 +171,13 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
         bm_itr--;
     }
 
-    if (unlikely(last_vector_size))
-    {
-        // load 8 64-bit integers from a and b
-        __mmask8 k = (1 << last_vector_size) - 1;
-        __m512i a_vec = _mm512_maskz_load_epi64(k, (void *)(a_limbs + i));
-        __m512i b_vec = _mm512_maskz_load_epi64(k, (void *)(b_limbs + i));
-
-        // check if a_vec[j] < b_vec[j]
-        __mmask8 borrow_mask = _mm512_cmplt_epu64_mask(a_vec, b_vec);
-
-        // add a and b
-        __m512i result_vec = _mm512_maskz_add_epi64(k, a_vec, b_vec);
-
-        // store the result
-        _mm512_mask_store_epi64((void *)(result_limbs + i), k, result_vec);
-        bm[bm_itr] = borrow_mask;
-        i += 8;
-        bm_itr--;
-    }
-
     right_shift(bm, bit_mask_size);
 
     int last_borrow_block = -1;
     bm_itr = bit_mask_size - 1;
     i = 0;
 
-    while (i < n__)
+    while (i < n)
     {
         // load 8 64-bit integers from result
         __m512i result_vec = _mm512_load_epi64((const void *)(result_limbs + i));
@@ -221,34 +198,12 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
         i += 8;
         bm_itr--;
     }
-    if (unlikely(last_vector_size))
-    {
-        __mmask8 k = (1 << last_vector_size) - 1;
-        // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_maskz_load_epi64(k, (const void *)(result_limbs + i));
-        // load 8-bit mask from bm[j]
-        __mmask8 borrow_mask = bm[bm_itr];
-
-        // perform the subtraction
-        __m512i temp_result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, AVX512_ONES);
-        _mm512_mask_store_epi64((void *)(result_limbs + i), k, temp_result_vec);
-        // check if result_vec[j] >= LIMB_DIGITS
-        borrow_mask = _mm512_cmpgt_epu64_mask(temp_result_vec, result_vec);
-        if (unlikely(borrow_mask))
-        {
-            last_borrow_block = i;
-            // update the borrow array
-            bm[bm_itr] = borrow_mask;
-        }
-        i += 8;
-        bm_itr--;
-    }
 
     // TODO: implement sequential borrow propagation for worst case
-    if (unlikely(last_borrow_block != -1))
-    {
-        printf("hmm..\n");
-    }
+    // if (unlikely(last_borrow_block != -1))
+    // {
+    //     printf("hmm..\n");
+    // }
 }
 
 int main(int argc, char *argv[])
