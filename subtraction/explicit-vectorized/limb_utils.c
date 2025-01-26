@@ -62,6 +62,7 @@ void *memory_pool_alloc(size_t size)
     }
 
     void *ptr = memory_pool + aligned_offset;
+    memset(ptr, 0, size + 64);
     memory_pool_offset = aligned_offset + size;
     return ptr;
 }
@@ -87,6 +88,8 @@ void destroy_memory_pool()
     }
 }
 
+int turn = 0;
+
 limb_t *limb_t_alloc(size_t size)
 {
     // check if the size is 0
@@ -103,15 +106,14 @@ limb_t *limb_t_alloc(size_t size)
         exit(EXIT_FAILURE);
     }
 
-    // Allocate memory with fixed alignment of 64
     limb->limbs = (uint64_t *)memory_pool_alloc(size * sizeof(uint64_t));
+
     // check if the memory allocation failed
     if (limb->limbs == NULL)
     {
         perror("Memory allocation failed for limb_t_alloc\n");
         exit(EXIT_FAILURE);
     }
-
     limb->size = size;
     limb->sign = false; // Initialize sign to false (positive)
 
@@ -226,7 +228,7 @@ char *limb_get_str(const limb_t *num)
     return str;
 }
 
-void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num)
+void __set_str(uint8_t *digits, size_t n, limb_t *num)
 {
     // Convert the digits to limbs
     size_t num_limbs = num->size;
@@ -241,7 +243,7 @@ void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num)
             {
                 break;
             }
-            limb |= digits[i] << shift;
+            limb |= ((aligned_uint64)digits[i]) << shift;
             i--;
         }
         num->limbs[limb_index--] = limb;
@@ -265,7 +267,7 @@ limb_t *limb_set_str(const char *str)
     // allocate temporary memory for hex-string to digit conversion
     size_t hex_len = strlen(str);
 
-    aligned_uint64_ptr digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
+    uint8_t *digits = (uint8_t *)memory_pool_alloc(hex_len * sizeof(uint8_t));
     if (digits == NULL)
     {
         perror("Memory allocation failed for digits\n");

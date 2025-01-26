@@ -106,7 +106,7 @@ limb_t *limb_set_str(const char *str);
  *
  * @return void
  */
-void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num);
+void __set_str(uint8_t *digits, size_t n, limb_t *num);
 
 /**
  * @brief Adjusts the sizes of two limb_t structures to be equal.

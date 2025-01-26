@@ -57,7 +57,9 @@
   "C_Cpp_Runner.useLinkTimeOptimization": false,
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
+    "*.dump": "asm-intel-x86-generic",
     "module.h": "c",
-    "memory": "c"
+    "memory": "c",
+    "cstdlib": "c"
   }
 }

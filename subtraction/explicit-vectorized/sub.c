@@ -9,7 +9,7 @@ This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
 b --> array of digits of second number, of length m
 #Pre-processing:
-1. Equalize the length of both arrays by adding leading AVX512_ZEROS to the smaller array.
+1. Equalize the length of both arrays by Subtracting leading AVX512_ZEROS to the smaller array.
 Note: For pre-processing, we can use the realloc function to sub leading AVX512_ZEROS to the smaller array.
 */
 
@@ -45,25 +45,18 @@ Note: For pre-processing, we can use the realloc function to sub leading AVX512_
 #include <sys/resource.h>
 #include "myutils.h"
 #include "limb_utils.h"
+#include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
 
-int CORE_NO; // Core number to run the tests on
+extern int CORE_NO; // Core number to run the tests on
 
 int NUM_BITS; // Number of bits for the numbers
-
-// Declare 64-byte aligned global pointers
-aligned_uint64_ptr sum_space;
-aligned_uint64_ptr borrow_space;
-// uint8_t *borrow_masks; // Array to store the borrow masks
-
-// Declare the global variables
-int sum_space_ptr = 0;    // pointer to the next available space in sum_space
-int borrow_space_ptr = 0; // pointer to the next available space in borrow_space
 
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
+void run_perf_events(int test_case);
 
 inline void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b) __attribute__((always_inline));
 inline void right_shift(__mmask8 *borrow_mask, size_t n) __attribute__((always_inline));
@@ -108,7 +101,7 @@ inline void right_shift(__mmask8 *borrow_mask, size_t n)
  * @param b The second number to add, stored as limb_t
  * @return none
  */
-void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
+void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
 {
 
     bool is_less = false;
@@ -151,14 +144,13 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
 
     __mmask8 bm[bit_mask_size];
 
-    int i = 0;
-    while (i < n)
+    for (int i = 0; i < n; i += 8)
     {
         // load 8 64-bit integers from a and b
         __m512i a_vec = _mm512_load_epi64((const void *)(a_limbs + i));
         __m512i b_vec = _mm512_load_epi64((const void *)(b_limbs + i));
 
-        // check if a_vec[j] < b_vec[j]
+        // // check if a_vec[j] < b_vec[j]
         __mmask8 borrow_mask = _mm512_cmplt_epu64_mask(a_vec, b_vec);
 
         // add a and b
@@ -167,7 +159,6 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
         // store the result
         _mm512_store_epi64((void *)(result_limbs + i), result_vec);
         bm[bm_itr] = borrow_mask;
-        i += 8;
         bm_itr--;
     }
 
@@ -175,9 +166,8 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
 
     int last_borrow_block = -1;
     bm_itr = bit_mask_size - 1;
-    i = 0;
 
-    while (i < n)
+    for (int i = 0; i < n; i += 8)
     {
         // load 8 64-bit integers from result
         __m512i result_vec = _mm512_load_epi64((const void *)(result_limbs + i));
@@ -195,7 +185,6 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
             // update the borrow array
             bm[bm_itr] = borrow_mask;
         }
-        i += 8;
         bm_itr--;
     }
 
@@ -208,16 +197,20 @@ void inline limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
 
 int main(int argc, char *argv[])
 {
-    if (argc != 5)
+    if (argc != 6)
     {
-        printf("Usage: %s <number of bits> <core number> <test-case number> <measure_type>\n", argv[0]);
+        printf("Usage: %s <number of bits> <core number> <test-case number> <benchmark measure type> <type of measure>\n", argv[0]);
         printf("test-case number: 0 --> Random numbers\n");
         printf("test-case number: 1 --> Random numbers with a < b\n");
         printf("test-case number: 2 --> Random numbers with a > b\n");
         printf("test-case number: 3 --> Random numbers with a = b\n");
-        printf("measure_type: 0 --> RDTSC\n");
-        printf("measure_type: 1 --> Timespec\n");
-        printf("measure_type: 2 --> RUSAGE\n");
+        printf("benchmark measure type: 0 --> RDTSC\n");
+        printf("benchmark measure type: 1 --> Timespec\n");
+        printf("benchmark measure type: 2 --> RUSAGE\n");
+        printf("type of measure: 0 --> correctness test\n");
+        printf("type of measure: 1 --> benchmarking test\n");
+        printf("type of measure: 2 --> perf events\n");
+
         return 1;
     }
 
@@ -233,26 +226,27 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
-    // Use _mm_malloc to allocate memory aligned to 64 bytes
-    sum_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    borrow_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    // borrow_masks = (uint8_t *)malloc(1 << 30);
-
-    if (sum_space == NULL || borrow_space == NULL)
-    {
-        perror("Memory allocation failed for sum_space or borrow_space\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // set sum_space_ptr and borrow_space_ptr to 0
-    sum_space_ptr = 0;
-    borrow_space_ptr = 0;
+    assert(atoi(argv[5]) >= 0 && atoi(argv[5]) < 3);
+    int type_of_measure = atoi(argv[5]);
 
     // set sum_space and borrow_space to 0
     init_memory_pool();
 
-    run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    switch (type_of_measure)
+    {
+    case 0:
+        run_correctness_test(test_case);
+        break;
+    case 1:
+        run_benchmarking_test(test_case, measure_type);
+        break;
+    case 2:
+        run_perf_events(test_case);
+        break;
+    default:
+        printf("Invalid type of measure\n");
+        exit(EXIT_FAILURE);
+    }
 
     destroy_memory_pool();
 }
@@ -349,18 +343,18 @@ void run_correctness_test(int test_case)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sum_limb = limb_t_alloc(n);
+        limb_t *sub_limb = limb_t_alloc(n);
 
         /***** Start of subtraction *****/
-        limb_t_sub_n(sum_limb, a, b);
+        limb_t_sub_n(sub_limb, a, b);
 
         /***** End of subtraction *****/
 
-        char *sum_str = limb_get_str(sum_limb);
+        char *sum_str = limb_get_str(sub_limb);
         // sum_size = strlen(sum_str);
 
         // verify the converted string with result
-        if (!check_result(sum_str, result_str, sum_limb->size))
+        if (!check_result(sum_str, result_str, sub_limb->size))
         {
             printf("Test case failed, at iteration %d\n", i);
             printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
@@ -369,7 +363,7 @@ void run_correctness_test(int test_case)
         }
         limb_t_free(a);
         limb_t_free(b);
-        limb_t_free(sum_limb);
+        limb_t_free(sub_limb);
     }
     switch (test_case)
     {
@@ -594,11 +588,9 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
-    printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
-    for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
     {
-        int i = rand() % ITERATIONS;
-        printf("Iteration %d, reading test case %d\n", iter_count, i);
+        int i = 1;
+        printf("reading test case %d\n", i);
         // buffer to read the test case
         char buffer[CHUNK];
         // reset the file pointer to the beginning of the file
@@ -645,7 +637,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sum_limb = limb_t_alloc(n);
+        limb_t *sub_limb = limb_t_alloc(n);
 
         printf("Starting subtraction\n");
         int cpu_info[4], decimals;
@@ -672,18 +664,18 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, sum_limb));
+            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, sub_limb));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %d times\n", niter);
+            printf("Subtracting %d times\n", niter);
             fflush(stdout);
 
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sum_limb);
+                limb_t_sub_n(a, b, sub_limb);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -710,20 +702,20 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, sum_limb));
+            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, sub_limb));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %d times\n", niter);
+            printf("Subtracting %d times\n", niter);
             fflush(stdout);
 
             struct timespec ts_0, ts_1;
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sum_limb);
+                limb_t_sub_n(a, b, sub_limb);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -750,20 +742,20 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, sum_limb));
+            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, sub_limb));
 
             printf("done\n");
 
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %d times\n", niter);
+            printf("Subtracting %d times\n", niter);
             fflush(stdout);
 
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sum_limb);
+                limb_t_sub_n(a, b, sub_limb);
             }
             t1 = cputime() - t0;
             printf("done!\n");
@@ -802,4 +794,145 @@ void run_benchmarking_test(int test_case, int measure_type)
     {
         gzclose(cputime_file);
     }
+}
+
+void run_perf_events(int test_case)
+{
+    printf("Trying to run perf events\n");
+
+    char test_filename[100];
+    long long values[MAX_EVENTS];
+
+    switch (test_case)
+    {
+    case 0:
+        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+        break;
+    case 1:
+        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+        break;
+    case 2:
+        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+        break;
+    case 3:
+        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+        break;
+    default:
+        printf("Invalid test case\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
+
+    // skip the first line, header
+    skip_first_line(test_file);
+
+    // initialize the perf events
+    initialize_perf();
+    int i = 1;
+    printf("Reading test case %d\n", i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
+
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
+    limb_t *a, *b;
+    a = limb_set_str(a_str);
+    b = limb_set_str(b_str);
+
+    // adjust the sizes of a and b
+    limb_t_adjust_limb_sizes(a, b);
+    int n = a->size;
+
+    limb_t *sub_limb = limb_t_alloc(n);
+
+    printf("Starting subtraction\n");
+
+    // clear cache content for a_limbs, b_limbs
+    for (int i = 0; i < n; i += 64)
+    {
+        _mm_clflush((char *)a + i);
+        _mm_clflush((char *)b + i);
+    }
+
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
+    // start the perf events
+    start_perf();
+
+    unsigned long long t0, t1;
+
+    /*** Start of subtraction ***/
+    limb_t_sub_n(a, b, sub_limb);
+    /*** End of subtraction ***/
+
+    // Stop performance monitoring
+    stop_perf();
+
+    printf("Time taken for subtraction: %llu\n", t1 - t0);
+
+    // Read performance counters
+    read_perf(values);
+
+    // Write performance counters to a file or stdout
+    write_perf(stdout, values);
+
+    limb_t_free(a);
+    limb_t_free(b);
+    limb_t_free(sub_limb);
+    switch (test_case)
+    {
+    case 0:
+        printf("Random test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    case 1:
+        printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    case 2:
+        printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    case 3:
+        printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    }
+    // close the test file
+    gzclose(test_file);
 }
