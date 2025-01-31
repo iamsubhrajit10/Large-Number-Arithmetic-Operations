@@ -5,10 +5,6 @@
 #include "limb_utils.h"
 #include "time.h"
 
-char *generate_random_hex_string(size_t size)
-{
-}
-
 int main()
 {
     // Initialize memory pool
