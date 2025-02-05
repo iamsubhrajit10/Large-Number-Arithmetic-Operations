@@ -36,6 +36,7 @@
 # Allow shell script files in any directory except experiments
 !**/*.sh
 !**/*.bash
+!**/*.md
 
 # allow all files in the misc directory
 !**/misc/**
