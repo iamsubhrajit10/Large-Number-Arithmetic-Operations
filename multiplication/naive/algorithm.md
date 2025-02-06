@@ -1,13 +1,18 @@
 # Algorithm: multiply_urdhva_tiryagbhyam
+
 (All the below algorithms are in-sync with 16-bit limbs; the actual implementation uses 64-bit limbs)
+
 ## Input
+
 - `n1`, `n2`: Two numbers in hex
 - `len`: The length of the numbers
 
 ## Output
+
 - `result`: The product of the two numbers, in hex; of `2*len` length
 
 ## Steps
+
 ```pseudo
 1. max_idx = 4 * len * len
 2. accumulate_muls(n1, n2, len, mul_tmp_1, mul_tmp_2)   // mul_tmp_1 and mul_tmp_2 are arrays of length max_idx
@@ -25,13 +30,16 @@
 ## Algorithm: accumulate_muls
 
 ### Description
+
 This algorithm accumulates the sub-limbs to be multiplied using the Urdhva-Tiraybhyam algorithm. It uses the utility function `scatter` to scatter the high and low 2-bytes of the numbers to be multiplied according to the Urdhva order.
 
 #### Reason for dividing the limbs into two parts:
+
 - The product of two numbers of length `n` is of length `2n`
 - To accommodate into length `n`, we divide the limbs into two parts
 
 ### Example
+
 ```
 n1: f548 8543
 n2: 6b0d 9410
@@ -39,13 +47,17 @@ n2: 6b0d 9410
 mul_tmp_1: f5 f5 48 48 f5 f5 48 48 85 85 43 43 85 85 43 43
 mul_tmp_2: 6b 0d 6b 0d 94 10 94 10 6b 0d 6b 0d 94 10 94 10
 ```
+
 ### Input
+
 - `n1`, `n2`, `len`, `mul_tmp_1`, `mul_tmp_2`
 
 ### Output
+
 - `mul_tmp_1`, `mul_tmp_2`
 
 ### Steps
+
 ```algorithm
 1. idx = 0, max_idx = 2 * len - 1, threshold = len - 1
 2. For set_idx = 0 to max_idx - 1 do:
@@ -55,13 +67,17 @@ mul_tmp_2: 6b 0d 6b 0d 94 10 94 10 6b 0d 6b 0d 94 10 94 10
 ```
 
 ## Algorithm: scatter (utility of accumulate_muls)
+
 ### Input
+
 - `n1`, `n2`, `start`, `end`, `mul_tmp_1`, `mul_tmp_2`, `idx`
 
 ### Output
+
 - `mul_tmp_1`, `mul_tmp_2`, `idx`
 
 ### Steps
+
 ```algorithm
 1. For i = start to end; i++, j-- do:
    a. num1 = n1[i], num2 = n2[j]
@@ -79,6 +95,7 @@ mul_tmp_2: 6b 0d 6b 0d 94 10 94 10 6b 0d 6b 0d 94 10 94 10
 ## Algorithm: multiply_muls
 
 ### Description
+
 This algorithm simply performs c[i] = a[i] * b[i] for all i
 ```text
     mul_tmp_1: f5 f5 48 48 f5 f5 48 48 85 85 43 43 85 85 43 43
@@ -87,13 +104,17 @@ This algorithm simply performs c[i] = a[i] * b[i] for all i
     result: 6667 c71 1e18 3a8 8da4 f50 29a0 480 3797 6c1 1c01 367 4ce4 850 26bc 430
 ``` 
 */
+
 ### Input
+
 - `n`, `mul_tmp_1`, `mul_tmp_2`, `result`
 
 ### Output
+
 - `result`
 
 ### Steps
+
 ```algorithm
 1. For i = 0 to n-1 do:
    a. result[i] = mul_tmp_1[i] * mul_tmp_2[i]
@@ -103,20 +124,27 @@ This algorithm simply performs c[i] = a[i] * b[i] for all i
 ## Algorithm: add_within_limbs
 
 ### Description: 
+
 This algorithm tries to add the second and third 2-bytes of a limb-product-group. If carry occurs, it is added to the first sub-limb of the first limb of the group. Also, the third 2-bytes of the limb-product-group is set to 0.   
+
 ### Example
+
 ```text
     result: 6667 c71 1e18 3a8 8da4 f50 29a0 480 3797 6c1 1c01 367 4ce4 850 26bc 430 
     
     result: 6667 2a89 0000 3a8 8da4 38f0 0000 480 3797 22c2 0000 367 4ce4 2f0c 0000 430
 ```
+
 ### Input
+
 - `n`, `result`
 
 ### Output
+
 - `result`
 
 ### Steps
+
 ```algorithm
 1. For i = 1 to n-1; i+=4 do:
    a. r = result[i] + result[i+1]
@@ -128,22 +156,28 @@ This algorithm tries to add the second and third 2-bytes of a limb-product-group
 ```
 
 ## Algorithm: adjust_inner_limbs
+
 #### Description
 
 This algorithm tries to adjust the sub-limbs within a limb group as per the Urdhva-Tiryagbhyam algorithm.
 
 #### Example
+
 ```text
         result: 6667 2a89 0000 3a8 8da4 38f0 0000 480 3797 22c2 0000 367 4ce4 2f0c 0000 430
         result: 6691 8ca8 00 00 8ddc f480 00 00 37b9 c567 00 00 4d13 1030 00 00
 ```
+
 ### Input
+
 - `n`, `result`
 
 ### Output
+
 - `result`
 
 ### Steps
+
 ```pseudo
 1. size = 4
 2. start = 0
@@ -226,21 +260,26 @@ This algorithm tries to adjust the sub-limbs within a limb group as per the Urdh
 ## Algorithm: remove_intermediary_zeros
 
 ### Description: 
+
 This algorithm tries to remove the intermediary zeros in the result
 
 ### Example
+
 ```text
     result:6691 8ca8 00 00 8ddc f480 00 00 37b9 c567 00 00 4d13 1030 00 00 
     result:6691 8ca8 8ddc f480 37b9 c567 4d13 1030
 ```
 
 ### Input
+
 - `n`, `result`
 
 ### Output
+
 - `result`
 
 ### Steps
+
 ```algorithm
 1. j = 0
 2. For i = 0 to n-1; i+=4 do:
@@ -253,20 +292,26 @@ This algorithm tries to remove the intermediary zeros in the result
 ## Algorithm: add_limbs
 
 ### Description
+
 This algorithm tries to add the limbs of the result; as we're assuming limbs of size 2 bytes, we add the limbs in pairs. Also, number of limbs to be added is varied in each iteration as per the size of sets in Urdhva-Tiryagbhyam algorithm.
 
 ### Example
+
 ```text
     result:(6691 8ca8) (8ddc f480 + 37b9 c567) (4d13 1030)
     result:6691 8ca8 c596 b9e7 4d13 1030
 ```
+
 ### Input
+
 - `n`, `max_idx`, `result`
 
 ### Output
+
 - `result`
 
 ### Steps
+
 ```algorithm
 1. add_count = 1, adds = 1, thresh = n - 1, start = 2, end = 4, k = 2
 2. While end + 2 < max_idx do:
@@ -301,6 +346,7 @@ This algorithm tries to add the limbs of the result; as we're assuming limbs of 
 ## Algorithm: adjust_limbs
 
 ### Description: 
+
 This algorithm tries to adjust the limbs of the result; as we're assuming limbs of size 2 bytes, we adjust the limbs in pairs
 ```text
     result:6691 8ca8 c596 b9e7 4d13 1030 4d13
@@ -308,12 +354,15 @@ This algorithm tries to adjust the limbs of the result; as we're assuming limbs 
 ```
 
 ### Input
+
 - `n`, `result`
 
 ### Output
+
 - `result`
 
 ### Steps
+
 ```algorithm
 1. first = n - 2, second = n - 1, ptr = n - 1
 2. While first > 0 do:
@@ -332,6 +381,31 @@ This algorithm tries to adjust the limbs of the result; as we're assuming limbs 
 6. Return result
 ```
 
+## Note
 
-# Note
 While I was migrating from 16-bits to 64-bits; some of the carry propagation was not happening as expected; Reason: not explicitly type converting addition results to 128-bits as well as while adding two 64-bit numbers I also forgot the type convert the source. This was causing the carry to be lost. I fixed this by type converting the source to 128-bits and then adding the two 64-bit numbers. This fixed the issue.
+
+## Performance Comparison
+
+All the timings are in milliseconds, and was measured using RUSAGE. Limb Size: 64-bits.
+
+| Limbs | Bits  | Accumulation | AVX Multiplication | Adding Within Limbs | Adjusting Inner Limbs | Removing Zeros | Adding Limbs | Adjusting Limbs | Urdhva Tiryakbhyam | GMP Multiplication |
+|-------|------|--------------|--------------------|---------------------|----------------------|---------------|--------------|---------------|----------------------|------------------|
+| 4     | 256  | 0.020362     | 0.004530           | 0.003002            | 0.024691             | 0.000089      | 0.025826     | 0.004553      | 0.108683             | 0.030947         |
+| 8     | 512  | 0.093258     | 0.023143           | 0.014800            | 0.084403             | 0.021157      | 0.097638     | 0.010094      | 0.448380             | 0.076349         |
+| 16    | 1024 | 0.299309     | 0.109923           | 0.058104            | 0.326161             | 0.090212      | 0.367331     | 0.026144      | 1.583897             | 0.247772         |
+| 32    | 2048 | 2.893967     | 1.087093           | 0.229209            | 1.287388             | 0.366434      | 1.392639     | 0.055640      | 8.058167             | 0.787216         |
+
+## Asymptotic Analysis of Number of Multiplications
+
+| Limbs (n) | Urdhva Tiryakbhyam (O(n²)) | Toom-2 (O(n^1.585)) | Toom-3 (O(n^1.465)) | Toom-4 (O(n^1.404)) |
+|-----------|----------------------------|----------------------|----------------------|----------------------|
+| 4         | 16                         | 9 (1.78x)           | 8 (2.00x)           | 7 (2.29x)           |
+| 8         | 64                         | 27 (2.37x)          | 21 (3.05x)          | 19 (3.37x)          |
+| 16        | 256                        | 81 (3.16x)          | 58 (4.41x)          | 49 (5.22x)          |
+| 32        | 1024                       | 243 (4.21x)         | 160 (6.40x)         | 130 (7.88x)         |
+| 64        | 4096                       | 729 (5.62x)         | 443 (9.25x)         | 343 (11.94x)        |
+| 128       | 16384                      | 2187 (7.49x)        | 1222 (13.41x)       | 909 (18.02x)        |
+| 256       | 65536                      | 6562 (9.99x)        | 3373 (19.43x)       | 2405 (27.25x)       |
+| 512       | 262144                     | 19688 (13.31x)      | 9313 (28.15x)       | 6365 (41.19x)       |
+| 1024      | 1048576                    | 59064 (17.75x)      | 25709 (40.79x)      | 16845 (62.25x)      |
