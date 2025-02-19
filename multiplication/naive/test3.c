@@ -29,17 +29,25 @@
 
 inline void __prep_limbs_mul(__uint64_t *dest, __uint64_t *src, int n, bool is_multiplier) __attribute__((always_inline));
 
-inline void extract_32bit(__uint32_t *dest, __uint64_t *src, int n) __attribute__((always_inline));
+inline void extract_32bit(__uint32_t *restrict dest, const __uint64_t *restrict src, int n) __attribute__((always_inline));
 
-inline void __prep_limbs_multiplicand(__uint64_t *dest, __uint32_t *src, int n) __attribute__((always_inline));
-inline void __prep_limbs_multiplier(__uint64_t *dest, __uint32_t *src, int n) __attribute__((always_inline));
+inline void __prep_limbs_multiplicand(__uint64_t *restrict dest,
+                                      const __uint32_t *restrict src,
+                                      int n) __attribute__((always_inline));
+inline void __prep_limbs_multiplier(__uint64_t *restrict dest,
+                                    const __uint32_t *restrict src,
+                                    int n) __attribute__((always_inline));
+inline void __prep_limbs_mul(__uint64_t *restrict dest,
+                             __uint64_t *restrict src,
+                             int n,
+                             bool is_multiplier) __attribute__((always_inline));
 inline int add_limbs(int n, int max_idx, __uint64_t *result) __attribute__((always_inline));
 inline void multiply_AVX(__uint64_t *num1, __uint64_t *num2, __uint64_t *res, int n) __attribute__((always_inline));
 inline void adjust_limbs(int n, __uint64_t *a) __attribute__((always_inline));
 static inline void multiply(__uint64_t *num1_urdhva, __uint64_t *num2_urdhva, __uint64_t *temp_result, int max_idx_urdhva, int n) __attribute__((always_inline));
 void print_array(__uint64_t *arr, int n);
 
-inline void extract_32bit(__uint32_t *dest, __uint64_t *src, int n)
+inline void extract_32bit(__uint32_t *restrict dest, const __uint64_t *restrict src, int n)
 {
 
     int idx_32 = 0;
@@ -50,11 +58,12 @@ inline void extract_32bit(__uint32_t *dest, __uint64_t *src, int n)
         dest[idx_32++] = (__uint32_t)src[i];
     }
 }
-
-inline void __prep_limbs_multiplicand(__uint64_t *dest, __uint32_t *src, int n)
+inline void __prep_limbs_multiplicand(__uint64_t *restrict dest,
+                                      const __uint32_t *restrict src,
+                                      int n)
 {
-    int thresh = n - 1;
-    int max_idx = (n << 1) - 1;
+    const int thresh = n - 1;
+    const int max_idx = (n << 1) - 1;
     int dest_idx = 0;
 
     // first phase: prefix
@@ -80,10 +89,12 @@ inline void __prep_limbs_multiplicand(__uint64_t *dest, __uint32_t *src, int n)
     }
 }
 
-inline void __prep_limbs_multiplier(__uint64_t *dest, __uint32_t *src, int n)
+inline void __prep_limbs_multiplier(__uint64_t *restrict dest,
+                                    const __uint32_t *restrict src,
+                                    int n)
 {
-    int thresh = n - 1;
-    int max_idx = (n << 1) - 1;
+    const int thresh = n - 1;
+    const int max_idx = (n << 1) - 1;
     int dest_idx = 0;
 
     // first phase: prefix
@@ -111,23 +122,11 @@ inline void __prep_limbs_multiplier(__uint64_t *dest, __uint32_t *src, int n)
 
 inline void __prep_limbs_mul(__uint64_t *dest, __uint64_t *src, int n, bool is_multiplier)
 {
-    __uint32_t temp_dest[2 * n];
-    if (temp_dest == NULL)
-    {
-        printf("Memory allocation failed\n");
-        exit(1);
-    }
-    memset(temp_dest, 0, 2 * n * sizeof(__uint32_t));
+    const int n_2 = n << 1;
+    __uint32_t temp_dest[n_2];
     extract_32bit(temp_dest, src, n);
 
-    if (is_multiplier)
-    {
-        __prep_limbs_multiplier(dest, temp_dest, n << 1);
-    }
-    else
-    {
-        __prep_limbs_multiplicand(dest, temp_dest, n << 1);
-    }
+    is_multiplier ? __prep_limbs_multiplier(dest, temp_dest, n << 1) : __prep_limbs_multiplicand(dest, temp_dest, n << 1);
 }
 
 inline void multiply_AVX(__uint64_t *__restrict num1,
@@ -277,7 +276,7 @@ void limb_get_str(__uint64_t *result, int n, char **result_str)
 
 void test()
 {
-    for (int test_case = 0; test_case < 100000; test_case++)
+    for (int test_case = 0; test_case < 1000000; test_case++)
     {
 
         int n = 4; // till 16*64 = 1024 bits the AVX multiplication is at least 2x faster than GMP; we need reduce the other utility functions for overall beating GMP
@@ -327,6 +326,11 @@ void test()
         printf("*** Test Case %d ***\n", test_case + 1);
 
         // prepare the limbs for multiplication according to the Urdhva Tiryakbhyam algorithm
+        // TIME_RUSAGE(t, __prep_limbs_mul(num1_urdhva, num1, n, false));
+        // printf("Time taken for preparing num1: %f\n", t);
+        // TIME_RUSAGE(t, __prep_limbs_mul(num2_urdhva, num2, n, true));
+        // printf("Time taken for preparing num2: %f\n", t);
+
         __prep_limbs_mul(num1_urdhva, num1, n, false);
         __prep_limbs_mul(num2_urdhva, num2, n, true);
 
@@ -338,11 +342,11 @@ void test()
 
         char *expected_result_str = mpz_get_str(NULL, 16, gmp_result);
 
-        TIME_RUSAGE(t, multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2));
-        printf("Time taken for multiplication: %f\n", t);
+        // TIME_RUSAGE(t, multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2));
+        // printf("Time taken for multiplication: %f\n", t);
 
-        TIME_RUSAGE(t, mpz_mul(gmp_result, gmp_num1, gmp_num2));
-        printf("Time taken for GMP multiplication: %f\n", t);
+        // TIME_RUSAGE(t, mpz_mul(gmp_result, gmp_num1, gmp_num2));
+        // printf("Time taken for GMP multiplication: %f\n", t);
 
         bool flag = true;
         // compare the result with the expected result
