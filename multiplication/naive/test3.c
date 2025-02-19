@@ -1,3 +1,19 @@
+/*
+    Author: Subhrajit
+    Urdhva Tiryakbhyam: A fast AVX multiplication algorithm for 256-bit numbers to be utilized as base case in Karatsuba and other recursive algorithms
+    The algorithm is based on the ancient Indian Vedic mathematics sutra
+
+    This is a testing file for the Urdhva Tiryakbhyam algorithm
+    The algorithm is tested against GMP's multiplication function
+
+    Assumptions: it does not take in account the preparation of the numbers to be multiplied and read using AVX instructions
+    The numbers are assumed to be already prepared and stored in the arrangement order needed for the algorithm
+
+    Future work: to optimize the preparation of the numbers for multiplication and take into account the AVX instructions
+
+    Current speedup for 256-bit numbers: 42x
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -189,18 +205,19 @@ inline void adjust_limbs(int n, __uint64_t *a)
     int out = 1; // next output index (a[0] is already used)
     int i = 1;
     int last_pair = 0; // holds the index of the last “complete pair” output
-
+    uint64_t s_high = 0, s_low = 0;
+    uint64_t mask = 0, mask_low = 0;
     // Process pairs of iterations.
     while (i + 1 < n)
     {
-        uint64_t s_high = (((uint32_t)a[i] + (uint32_t)(a[i + 1] >> 32)) & 0xFFFFFFFF);
+        s_high = (((uint32_t)a[i] + (uint32_t)(a[i + 1] >> 32)) & 0xFFFFFFFF);
         // Branchless: if s_high < lower 32 bits of a[i], add 1 to a[last_pair]
-        uint64_t mask = (((uint64_t)s_high - ((uint32_t)a[i]) >> 63));
+        mask = (((uint64_t)s_high - ((uint32_t)a[i]) >> 63));
         a[last_pair] += mask;
 
-        uint32_t s_low = (((uint32_t)a[i + 1] + (uint32_t)(a[i + 2] >> 32)) & 0xFFFFFFFF);
+        s_low = (((uint32_t)a[i + 1] + (uint32_t)(a[i + 2] >> 32)) & 0xFFFFFFFF);
         // Branchless: if s_low < lower 32 bits of a[i+1], add 1 to s_high
-        uint64_t mask_low = (((uint64_t)s_low - ((uint32_t)a[i + 1]) >> 63));
+        mask_low = (((uint64_t)s_low - ((uint32_t)a[i + 1]) >> 63));
         s_high += mask_low;
 
         a[out] = (((__uint64_t)s_high << 32) | s_low);
@@ -209,7 +226,7 @@ inline void adjust_limbs(int n, __uint64_t *a)
         i += 2;
     }
     // Adjust the ending element's lower half.
-    a[last_pair] = (a[last_pair] & 0xFFFFFFFF00000000ULL) | (a[i - 1] & 0xFFFFFFFF);
+    a[last_pair] = ((a[last_pair] - (mask_low << 32)) & 0xFFFFFFFF00000000ULL) | (a[i - 1] & 0xFFFFFFFF);
 }
 
 // multiply calls the AVX-based multiplication, then reduces the limbs via add_limbs,
@@ -235,8 +252,6 @@ void print_array(__uint64_t *arr, int n)
     printf("\n");
 }
 
-__uint64_t *temp_result, *result;
-
 void generate_random_numbers(__uint64_t *num, int n)
 {
     for (int i = 0; i < n; i++)
@@ -245,29 +260,50 @@ void generate_random_numbers(__uint64_t *num, int n)
     }
 }
 
+void limb_get_str(__uint64_t *result, int n, char **result_str)
+{
+    int idx = 0;
+    for (int i = 0; i < n; i++)
+    {
+        idx += snprintf(*result_str + idx, 17, "%016" PRIx64, result[i]);
+    }
+    (*result_str)[idx] = '\0';
+    // Omit leading zeros
+    while (**result_str == '0')
+    {
+        (*result_str)++;
+    }
+}
+
 void test()
 {
-    for (int test_case = 0; test_case < 1000; test_case++)
+    for (int test_case = 0; test_case < 100000; test_case++)
     {
 
         int n = 4; // till 16*64 = 1024 bits the AVX multiplication is at least 2x faster than GMP; we need reduce the other utility functions for overall beating GMP
         // best performance is achieved: n = 4; 256 bits
+        int n_2 = n << 1; // 2n
+        int max_idx_urdhva = (n * n) << 2;
+        double t; // for timing
+
         __uint64_t *num1 = (__uint64_t *)malloc(n * sizeof(__uint64_t));
         __uint64_t *num2 = (__uint64_t *)malloc(n * sizeof(__uint64_t));
+
         char *result_str = (char *)malloc(2 * n * 64 + 1);
         memset(result_str, 0, 2 * n * sizeof(char));
-        // Check the result with GMP
-        mpz_t gmp_num1, gmp_num2, gmp_result, gmp_expected_result;
+
+        mpz_t gmp_num1, gmp_num2, gmp_result;
         mpz_init(gmp_num1);
         mpz_init(gmp_num2);
         mpz_init(gmp_result);
-        mpz_init(gmp_expected_result);
-        int max_idx = (n * n) << 2;
 
-        result = (__uint64_t *)_mm_malloc(max_idx * sizeof(__uint64_t), 64);
-        temp_result = (__uint64_t *)_mm_malloc(max_idx * sizeof(__uint64_t), 64);
-        __uint64_t *num1_urdhva = (__uint64_t *)_mm_malloc(4 * n * n * sizeof(__uint64_t), 64);
-        __uint64_t *num2_urdhva = (__uint64_t *)_mm_malloc(4 * n * n * sizeof(__uint64_t), 64);
+        uint64_t *result = (__uint64_t *)_mm_malloc(max_idx_urdhva * sizeof(__uint64_t), 64);
+        memset(result, 0, max_idx_urdhva * sizeof(__uint64_t));
+
+        __uint64_t *num1_urdhva = (__uint64_t *)_mm_malloc(max_idx_urdhva * sizeof(__uint64_t), 64);
+        memset(num1_urdhva, 0, max_idx_urdhva * sizeof(__uint64_t));
+        __uint64_t *num2_urdhva = (__uint64_t *)_mm_malloc(max_idx_urdhva * sizeof(__uint64_t), 64);
+        memset(num2_urdhva, 0, max_idx_urdhva * sizeof(__uint64_t));
 
         srand(time(NULL));
 
@@ -290,52 +326,22 @@ void test()
 
         printf("*** Test Case %d ***\n", test_case + 1);
 
-        memset(result, 0, max_idx * sizeof(__uint64_t));
-        memset(temp_result, 0, max_idx * sizeof(__uint64_t));
-
-        // printf("num1: ");
-        // print_array(num1, n);
-        // printf("num2: ");
-        // print_array(num2, n);
-
-        double t;
-
-        memset(num1_urdhva, 0, 4 * n * n * sizeof(__uint64_t));
-        memset(num2_urdhva, 0, 4 * n * n * sizeof(__uint64_t));
-
+        // prepare the limbs for multiplication according to the Urdhva Tiryakbhyam algorithm
         __prep_limbs_mul(num1_urdhva, num1, n, false);
         __prep_limbs_mul(num2_urdhva, num2, n, true);
 
-        int max_idx_urdhva = (n * n) << 2;
-        int n_2 = n << 1;
-        // TIME_RUSAGE(t, multiply(num1_urdhva, num2_urdhva, temp_result, max_idx_urdhva, n_2));
-        // printf("Time taken for multiplication: %f\n", t);
+        multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2);
 
-        multiply(num1_urdhva, num2_urdhva, temp_result, max_idx_urdhva, n_2);
+        mpz_mul(gmp_result, gmp_num1, gmp_num2);
 
-        // convert the result to a string using snprintf
-        int idx = 0;
-        for (int i = 0; i < 2 * n; i++)
-        {
-            idx += snprintf(result_str + idx, 17, "%016" PRIx64, temp_result[i]);
-        }
-        result_str[idx] = '\0';
-        // omit leading zeros
-        while (*result_str == '0')
-        {
-            result_str++;
-        }
-        // printf("result_str:          %s\n", result_str);
+        limb_get_str(result, n_2, &result_str);
 
-        // // double t;
-        mpz_mul(gmp_expected_result, gmp_num1, gmp_num2);
-        char *expected_result_str = mpz_get_str(NULL, 16, gmp_expected_result);
-        // printf("expected_result_str: %s\n", expected_result_str);
+        char *expected_result_str = mpz_get_str(NULL, 16, gmp_result);
 
-        TIME_RUSAGE(t, multiply(num1_urdhva, num2_urdhva, temp_result, max_idx_urdhva, n_2));
+        TIME_RUSAGE(t, multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2));
         printf("Time taken for multiplication: %f\n", t);
 
-        TIME_RUSAGE(t, mpz_mul(gmp_expected_result, gmp_num1, gmp_num2));
+        TIME_RUSAGE(t, mpz_mul(gmp_result, gmp_num1, gmp_num2));
         printf("Time taken for GMP multiplication: %f\n", t);
 
         bool flag = true;
@@ -353,10 +359,15 @@ void test()
             }
         }
         printf("Test %s\n", flag ? "passed" : "failed");
-
+        // _mm_free(result);
+        // _mm_free(num1_urdhva);
+        // _mm_free(num2_urdhva);
         // free(num1);
         // free(num2);
         // free(result_str);
+        // mpz_clear(gmp_num1);
+        // mpz_clear(gmp_num2);
+        // mpz_clear(gmp_result);
     }
 }
 
