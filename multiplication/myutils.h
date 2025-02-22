@@ -309,6 +309,7 @@ static inline unsigned long long measure_rdtscp_end()
             }                                          \
             __t1 = measure_rdtscp_end();               \
             __tmp = __t1 - __t0;                       \
+            printf("tmp: %llu\n", __tmp);              \
         } while (__tmp < 700000000);                   \
         __tmp = __tmp * 0.000357;                      \
         (t) = (double)(__tmp) / __times;               \

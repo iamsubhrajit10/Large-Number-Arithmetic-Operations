@@ -24,6 +24,7 @@
 #include <immintrin.h>
 #include <mm_malloc.h>
 #include "myutils.h"
+#include "perf_utils.h"
 #define UNLIKELY(expr) __builtin_expect(!!(expr), 0)
 #define LIKELY(expr) __builtin_expect(!!(expr), 1)
 
@@ -42,9 +43,9 @@ inline void __prep_limbs_mul(__uint64_t *restrict dest,
                              int n,
                              bool is_multiplier) __attribute__((always_inline));
 inline int add_limbs(int n, int max_idx, __uint64_t *result) __attribute__((always_inline));
-inline void multiply_AVX(__uint64_t *num1, __uint64_t *num2, __uint64_t *res, int n) __attribute__((always_inline));
+void multiply_AVX(__uint64_t *num1, __uint64_t *num2, __uint64_t *res, int n);
 inline void adjust_limbs(int n, __uint64_t *a) __attribute__((always_inline));
-static inline void multiply(__uint64_t *num1_urdhva, __uint64_t *num2_urdhva, __uint64_t *temp_result, int max_idx_urdhva, int n) __attribute__((always_inline));
+void multiply(__uint64_t *num1_urdhva, __uint64_t *num2_urdhva, __uint64_t *temp_result, int max_idx_urdhva, int n);
 void print_array(__uint64_t *arr, int n);
 
 inline void extract_32bit(__uint32_t *restrict dest, const __uint64_t *restrict src, int n)
@@ -136,13 +137,14 @@ inline void multiply_AVX(__uint64_t *__restrict num1,
 {
     int i = 0;
     const int vec_width = 8;
+
     for (; i < n; i += vec_width)
     {
 
-        __m512i vec1 = _mm512_load_epi64(num1 + i);
-        __m512i vec2 = _mm512_load_epi64(num2 + i);
+        __m512i vec1 = _mm512_load_si512(num1 + i);
+        __m512i vec2 = _mm512_load_si512(num2 + i);
         __m512i vec_res = _mm512_mul_epi32(vec1, vec2);
-        _mm512_store_epi64(res + i, vec_res);
+        _mm512_store_si512(res + i, vec_res);
     }
 }
 
@@ -230,13 +232,13 @@ inline void adjust_limbs(int n, __uint64_t *a)
 
 // multiply calls the AVX-based multiplication, then reduces the limbs via add_limbs,
 // and finally “adjusts” them. (All pointers are assumed not to alias.)
-inline void multiply(__uint64_t *__restrict num1_urdhva,
-                     __uint64_t *__restrict num2_urdhva,
-                     __uint64_t *__restrict res,
-                     int max_idx_urdhva,
-                     int n)
+void multiply(__uint64_t *__restrict num1,
+              __uint64_t *__restrict num2,
+              __uint64_t *__restrict res,
+              int max_idx_urdhva,
+              int n)
 {
-    multiply_AVX(num1_urdhva, num2_urdhva, res, max_idx_urdhva);
+    multiply_AVX(num1, num2, res, max_idx_urdhva);
     int i = add_limbs(n, max_idx_urdhva - 1, res);
     adjust_limbs(i + 1, res);
 }
@@ -276,7 +278,7 @@ void limb_get_str(__uint64_t *result, int n, char **result_str)
 
 void test()
 {
-    for (int test_case = 0; test_case < 1000000; test_case++)
+    for (int test_case = 0; test_case < 1; test_case++)
     {
 
         int n = 4; // till 16*64 = 1024 bits the AVX multiplication is at least 2x faster than GMP; we need reduce the other utility functions for overall beating GMP
@@ -326,27 +328,56 @@ void test()
         printf("*** Test Case %d ***\n", test_case + 1);
 
         // prepare the limbs for multiplication according to the Urdhva Tiryakbhyam algorithm
-        // TIME_RUSAGE(t, __prep_limbs_mul(num1_urdhva, num1, n, false));
-        // printf("Time taken for preparing num1: %f\n", t);
-        // TIME_RUSAGE(t, __prep_limbs_mul(num2_urdhva, num2, n, true));
-        // printf("Time taken for preparing num2: %f\n", t);
-
         __prep_limbs_mul(num1_urdhva, num1, n, false);
         __prep_limbs_mul(num2_urdhva, num2, n, true);
 
+        // accumulate_multiply_AVX(num1, num2, result, n);
+
+        initialize_perf();
+        perf_event_open(pe, 0, -1, 0, 0);
+
+        // put blocking call for fencing
+        // use mfence and cpuid asm instructions
+        asm volatile("mfence" ::
+                         : "memory");
+        asm volatile("cpuid" ::
+                         : "rax", "rbx", "rcx", "rdx");
+
+        start_perf();
+
         multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2);
 
+        stop_perf();
+        long long values[MAX_EVENTS];
+        read_perf(values);
+
+        FILE *file = fopen("perf_output_test3.txt", "a");
+        write_perf(file, values);
+
+        // put blocking call for fencing
+        // use mfence and cpuid asm instructions
+        asm volatile("mfence" ::
+                         : "memory");
+        asm volatile("cpuid" ::
+                         : "rax", "rbx", "rcx", "rdx");
+
+        start_perf();
+
         mpz_mul(gmp_result, gmp_num1, gmp_num2);
+
+        stop_perf();
+        read_perf(values);
+        write_perf(file, values);
 
         limb_get_str(result, n_2, &result_str);
 
         char *expected_result_str = mpz_get_str(NULL, 16, gmp_result);
 
-        // TIME_RUSAGE(t, multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2));
-        // printf("Time taken for multiplication: %f\n", t);
+        TIME_TIMESPEC(t, multiply(num1_urdhva, num2_urdhva, result, max_idx_urdhva, n_2));
+        printf("Time taken for multiplication: %f\n", t);
 
-        // TIME_RUSAGE(t, mpz_mul(gmp_result, gmp_num1, gmp_num2));
-        // printf("Time taken for GMP multiplication: %f\n", t);
+        TIME_TIMESPEC(t, mpz_mul(gmp_result, gmp_num1, gmp_num2));
+        printf("Time taken for GMP multiplication: %f\n", t);
 
         bool flag = true;
         // compare the result with the expected result
