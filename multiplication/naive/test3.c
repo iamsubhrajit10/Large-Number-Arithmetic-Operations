@@ -30,7 +30,7 @@
 
 inline void __prep_limbs_mul(__uint64_t *dest, __uint64_t *src, int n, bool is_multiplier) __attribute__((always_inline));
 
-inline void extract_32bit(__uint32_t *restrict dest, const __uint64_t *restrict src, int n) __attribute__((always_inline));
+void extract_32bit(__uint32_t *restrict dest, const __uint64_t *restrict src, int n);
 
 inline void __prep_limbs_multiplicand(__uint64_t *restrict dest,
                                       const __uint32_t *restrict src,
@@ -41,10 +41,10 @@ inline void __prep_limbs_multiplier(__uint64_t *restrict dest,
 inline void __prep_limbs_mul(__uint64_t *restrict dest,
                              __uint64_t *restrict src,
                              int n,
-                             bool is_multiplier) __attribute__((always_inline));
-inline int add_limbs(int n, int max_idx, __uint64_t *result) __attribute__((always_inline));
+                             bool is_multiplier);
+int add_limbs(int n, int max_idx, __uint64_t *result);
 void multiply_AVX(__uint64_t *num1, __uint64_t *num2, __uint64_t *res, int n);
-inline void adjust_limbs(int n, __uint64_t *a) __attribute__((always_inline));
+void adjust_limbs(int n, __uint64_t *a);
 void multiply(__uint64_t *num1_urdhva, __uint64_t *num2_urdhva, __uint64_t *temp_result, int max_idx_urdhva, int n);
 void print_array(__uint64_t *arr, int n);
 
@@ -130,15 +130,15 @@ inline void __prep_limbs_mul(__uint64_t *dest, __uint64_t *src, int n, bool is_m
     is_multiplier ? __prep_limbs_multiplier(dest, temp_dest, n << 1) : __prep_limbs_multiplicand(dest, temp_dest, n << 1);
 }
 
-inline void multiply_AVX(__uint64_t *__restrict num1,
-                         __uint64_t *__restrict num2,
-                         __uint64_t *__restrict res,
-                         int n)
+void multiply_AVX(__uint64_t *__restrict num1,
+                  __uint64_t *__restrict num2,
+                  __uint64_t *__restrict res,
+                  int n)
 {
     int i = 0;
     const int vec_width = 8;
 
-    for (; i < n; i += vec_width)
+    for (; i < 64; i += vec_width)
     {
 
         __m512i vec1 = _mm512_load_si512(num1 + i);
@@ -148,7 +148,7 @@ inline void multiply_AVX(__uint64_t *__restrict num1,
     }
 }
 
-inline int add_limbs(int n, int max_idx, __uint64_t *result)
+int add_limbs(int n, int max_idx, __uint64_t *result)
 {
     int start_idx = 1;
     int start = 1;
@@ -156,7 +156,7 @@ inline int add_limbs(int n, int max_idx, __uint64_t *result)
     unsigned __int128 sum_acc;
 
     // Phase 1: Build sums for block sizes 2 to n.
-    for (int adds = 1; adds < n; adds++)
+    for (int adds = 1; adds < 8; adds++)
     {
         int block_size = adds + 1;
         // Start with any carry from previous block.
@@ -172,7 +172,7 @@ inline int add_limbs(int n, int max_idx, __uint64_t *result)
     }
 
     // Phase 2: Build sums for block sizes decreasing from n-1 down to 2.
-    for (int adds = n - 2; adds > 0; adds--)
+    for (int adds = 6; adds > 0; adds--)
     {
         int block_size = adds + 1;
         sum_acc = 0;
@@ -186,11 +186,11 @@ inline int add_limbs(int n, int max_idx, __uint64_t *result)
     }
 
     // Final step: Add any remaining carry to the last element.
-    result[start_idx] = result[max_idx];
+    result[start_idx] = result[63];
     return start_idx;
 }
 
-inline void adjust_limbs(int n, __uint64_t *a)
+void adjust_limbs(int n, __uint64_t *a)
 {
     // Assumes n >= 1 and that a has n+1 elements.
     // Process the very first iteration separately.
@@ -209,7 +209,7 @@ inline void adjust_limbs(int n, __uint64_t *a)
     uint64_t s_high = 0, s_low = 0;
     uint64_t mask = 0, mask_low = 0;
     // Process pairs of iterations.
-    while (i + 1 < n)
+    while (i + 1 < 15)
     {
         s_high = (((uint32_t)a[i] + (uint32_t)(a[i + 1] >> 32)) & 0xFFFFFFFF);
         // Branchless: if s_high < lower 32 bits of a[i], add 1 to a[last_pair]
@@ -238,9 +238,9 @@ void multiply(__uint64_t *__restrict num1,
               int max_idx_urdhva,
               int n)
 {
-    multiply_AVX(num1, num2, res, max_idx_urdhva);
-    int i = add_limbs(n, max_idx_urdhva - 1, res);
-    adjust_limbs(i + 1, res);
+    multiply_AVX(num1, num2, res, 64);
+    add_limbs(8, 63, res);
+    adjust_limbs(15, res);
 }
 
 void print_array(__uint64_t *arr, int n)
@@ -281,8 +281,8 @@ void test()
     for (int test_case = 0; test_case < 1; test_case++)
     {
 
-        int n = 4; // till 16*64 = 1024 bits the AVX multiplication is at least 2x faster than GMP; we need reduce the other utility functions for overall beating GMP
-        // best performance is achieved: n = 4; 256 bits
+        int n = 4;        // till 16*64 = 1024 bits the AVX multiplication is at least 2x faster than GMP; we need reduce the other utility functions for overall beating GMP
+                          // best performance is achieved: n = 4; 256 bits
         int n_2 = n << 1; // 2n
         int max_idx_urdhva = (n * n) << 2;
         double t; // for timing
