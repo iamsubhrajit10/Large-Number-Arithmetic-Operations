@@ -9,9 +9,7 @@
     Assumptions: it does not take in account the preparation of the numbers to be multiplied and read using AVX instructions
     The numbers are assumed to be already prepared and stored in the arrangement order needed for the algorithm
 
-    Correctness check needed.
-
-    Current speedup for 256-bit numbers: 340x
+    Current speedup: 10%
 */
 
 #include <stdio.h>
@@ -100,44 +98,6 @@ void accumulate_multiply_AVX(uint32_t *num1, uint32_t *num2, uint64_t *__restric
     __m512i res_8 = _mm512_mul_epu32(a_vec_8, b_vec_8);
     _mm512_store_si512(res + 56, res_8);
 }
-
-// void add_limbs(__uint64_t *result)
-// {
-//     int start_idx = 1;
-//     int start = 1;
-
-//     // Phase 1: Build sums for block sizes 2 to n.
-//     for (int adds = 1; adds != 8; ++adds)
-//     {
-//         const int block_size = adds + 1;
-//         __uint64_t sum_acc = 0;
-//         const __uint64_t *p = result + start;
-//         for (int i = 0; i != block_size; ++i)
-//         {
-//             sum_acc += p[i];
-//         }
-//         // Store the low 64 bits as the block’s result.
-//         result[start_idx++] = sum_acc;
-//         start += block_size;
-//     }
-
-//     // Phase 2: Build sums for block sizes decreasing from n-1 down to 2.
-//     for (int adds = 6; adds != 0; --adds)
-//     {
-//         const int block_size = adds + 1;
-//         __uint64_t sum_acc = 0;
-//         const __uint64_t *p = result + start;
-//         for (int i = 0; i != block_size; ++i)
-//         {
-//             sum_acc += p[i];
-//         }
-//         result[start_idx++] = sum_acc;
-//         start += block_size;
-//     }
-
-//     // Final step: Add any remaining carry to the last element.
-//     result[start_idx] = result[63];
-// }
 
 // Helper: Horizontally sum two 64-bit integers in a 128-bit vector.
 uint64_t horizontal_sum_128(__m128i v)
@@ -305,43 +265,6 @@ void adjust_limbs(__uint64_t *a)
     a[last_pair] = (((a[i - 1]) << 32) & 0xFFFFFFFF00000000ULL) | (uint32_t)((a[last_pair] - (mask_low << 32)));
 }
 
-// This writes the result back as per 64-bit format
-// void adjust_limbs(__uint64_t *a)
-// {
-//     // Assumes n >= 1 and that a has n+1 elements.
-
-//     // Process the very first iteration separately.
-//     {
-//         uint64_t s0 = (((uint32_t)a[0] + (uint32_t)(a[1] >> 32)) & 0xFFFFFFFF);
-//         uint64_t overflow = (s0 < (uint32_t)a[0]);
-//         a[0] = a[0] + (overflow << 32);
-//         a[0] = (a[0] & 0xFFFFFFFF00000000ULL) | s0;
-//     }
-
-//     int out = 1; // next output index (a[0] is already used)
-//     int i = 1;
-//     int last_pair = 0; // holds the index of the last “complete pair” output
-//     uint64_t s_high = 0, s_low = 0;
-//     uint64_t mask = 0, mask_low = 0;
-//     // Process pairs of iterations.
-//     while (i + 1 < 15)
-//     {
-//         s_high = (((uint32_t)a[i] + (uint32_t)(a[i + 1] >> 32)) & 0xFFFFFFFF);
-//         mask = (s_high < (uint32_t)a[i]);
-//         a[last_pair] += mask;
-
-//         s_low = (((uint32_t)a[i + 1] + (uint32_t)(a[i + 2] >> 32)) & 0xFFFFFFFF);
-//         mask_low = (s_low < (uint32_t)a[i + 1]);
-//         s_high += mask_low;
-//         a[out] = (s_high << 32) | s_low;
-//         last_pair = out;
-//         out++;
-//         i += 2;
-//     }
-//     // Adjust the ending element's lower half.
-//     a[last_pair] = ((a[last_pair] - (mask_low << 32)) & 0xFFFFFFFF00000000ULL) | (a[i - 1] & 0xFFFFFFFF);
-// }
-
 /*
     Function to multiply two numbers using the Urdhva Tiryakbhyam algorithm
     num1: First number to be multiplied
@@ -372,21 +295,6 @@ void generate_random_numbers(__uint32_t *num, int n)
     for (int i = 0; i < n; i++)
     {
         num[i] = (__uint32_t)rand();
-    }
-}
-
-void limb_get_str(__uint64_t *result, int n, char **result_str)
-{
-    int idx = 0;
-    for (int i = 0; i < n; i++)
-    {
-        idx += snprintf(*result_str + idx, 17, "%016" PRIx64, result[i]);
-    }
-    (*result_str)[idx] = '\0';
-    // Omit leading zeros
-    while (**result_str == '0')
-    {
-        (*result_str)++;
     }
 }
 
