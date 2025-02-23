@@ -1,0 +1,181 @@
+High-Level Algorithm for Multiplying Two Large Numbers using Urdhva
+
+Inputs: 
+a, b: Arrays representing large numbers with n limbs each.
+Output:
+res: Array representing the product (2n limbs)
+
+FUNCTION MULTIPLY(a, b, n):
+    // Step 1: Rearrange digits for cross-multiplication.
+    (c, d) ← ACCUMULATE(a, b, n)
+    
+    // Step 2: Multiply corresponding accumulated elements.
+    partialProducts ← ELEMENTWISE_MULTIPLY(c, d)
+    
+    // Step 3: Group and sum partial products into intermediate limb sums.
+    limbSums ← ADD_LIMBS(partialProducts)
+    
+    // Step 4: Propagate carries: higher digits
+    res ← ADJUST_LIMBS(limbSums)
+    
+    RETURN res
+
+------------------------------------------------------------
+// Rearranges the digits into cross-multiplication order.
+FUNCTION ACCUMULATE(a, b, n):
+    INITIALIZE empty arrays c, d
+    idx ← 0
+    threshold ← n - 1
+
+    // Process prefix groups (increasing size: 1 to n)
+    FOR set_idx FROM 0 TO n - 1:
+        FOR i FROM 0 TO set_idx:
+            c[idx] ← a[i]
+            d[idx] ← b[set_idx - i]
+            idx ← idx + 1
+
+    // Process suffix groups (decreasing size: n-1 down to 1)
+    FOR set_idx FROM n TO (2*n - 2):
+        start ← set_idx - threshold
+        FOR i FROM start TO n - 1:
+            c[idx] ← a[i]
+            d[idx] ← b[set_idx - i]
+            idx ← idx + 1
+
+    RETURN (c, d)
+
+------------------------------------------------------------
+// Multiplies each pair of accumulated values.
+FUNCTION ELEMENTWISE_MULTIPLY(c, d):
+    LET totalElements ← LENGTH(c)
+    FOR i FROM 0 TO totalElements - 1:
+        product[i] ← c[i] * d[i]
+    RETURN product
+
+------------------------------------------------------------
+// Sums the partial products into grouped limb sums.
+FUNCTION ADD_LIMBS(products):
+    INITIALIZE empty array limbSums
+    start ← 0
+
+    // Phase 1: Sum groups with increasing sizes (from 1 up to n)
+    FOR groupSize FROM 1 TO n:
+        sum ← 0
+        FOR i FROM 0 TO groupSize - 1:
+            sum ← sum + products[start + i]
+        APPEND sum TO limbSums
+        start ← start + groupSize
+
+    // Phase 2: Sum groups with decreasing sizes (from n-1 down to 1)
+    FOR groupSize FROM n - 1 DOWNTO 1:
+        sum ← 0
+        FOR i FROM 0 TO groupSize - 1:
+            sum ← sum + products[start + i]
+        APPEND sum TO limbSums
+        start ← start + groupSize
+
+    RETURN limbSums
+
+------------------------------------------------------------
+// Adjusts the intermediate sums so that each limb fits into 32 bits.
+FUNCTION ADJUST_LIMBS(limbSums):
+    // Iterate from the highest limb downwards.
+    FOR i FROM LENGTH(limbSums) - 1 DOWNTO 1:
+        highPart ← UPPER_32_BITS(limbSums[i])
+        lowPart  ← LOWER_32_BITS(limbSums[i - 1])
+        combined ← highPart + lowPart
+        
+        // If the addition overflows 32 bits, propagate the carry.
+        IF combined exceeds 32 bits THEN
+            ADJUST limbSums[i - 1] WITH carry
+
+        // Depending on alternation or specific formatting rules,
+        // update either the lower or upper 32 bits of limbSums[i] with the new value.
+        UPDATE limbSums[i] accordingly
+
+    RETURN limbSums
+
+------------------------------------------------------------
+Example:
+
+    128-bit * 128-bit multiplication
+    n = 4
+    a = ab32ef01 12f0987a fe01fabc 12349f24
+    b = ab21fe10 24ab5c2e 234f867c 664f3abe
+    ----------------------------
+    
+    a = (ab32ef01) 12f0987a fe01fabc 12349f24
+    b = (ab21fe10) 24ab5c2e 234f867c 664f3abe
+
+    a = (ab32ef01 12f0987a) fe01fabc 12349f24
+    b = (ab21fe10 24ab5c2e) 234f867c 664f3abe
+          (cross-multiply)
+
+    a = (ab32ef01 12f0987a fe01fabc) 12349f24
+    b = (ab21fe10 24ab5c2e 234f867c) 664f3abe
+               (cross-multiply)
+    .
+    .
+    .
+
+    ACCUMULATE(a, b, n):
+        // basically, first increases set size from 1 to n-1 and then decreases set size from n to 1
+        // and arranges the multiplicands and multipliers in cross-multiplication format
+        c = ab32ef01 ab32ef01 12f0987a ab32ef01 12f0987a fe01fabc ab32ef01 12f0987a fe01fabc 12349f24 12f0987a fe01fabc 12349f24 fe01fabc 12349f24 12349f24
+        d = ab21fe10 24ab5c2e ab21fe10 234f867c 24ab5c2e ab21fe10 664f3abe 234f867c 24ab5c2e ab21fe10 664f3abe 234f867c 24ab5c2e 664f3abe 234f867c 664f3abe
+    ----------------------------
+
+    ELEMENTWISE_MULTIPLY(c, d):
+        // multiplies the accumulated values
+        product = ab32ef01*ab21fe10 ab32ef01*24ab5c2e 12f0987a*ab21fe10 ab32ef01*234f867c 12f0987a*24ab5c2e fe01fabc*ab21fe10 ab32ef01*664f3abe 12f0987a*234f867c fe01fabc*24ab5c2e 12349f24*ab21fe10 12f0987a*664f3abe fe01fabc*234f867c 12349f24*24ab5c2e fe01fabc*664f3abe 12349f24*234f867c 12349f24*664f3abe
+        product = 7271c11db672ee10 1885c246dab64e2e 0ca939a90c0c93a0 179d25547a154a7c 02b682f8df853dec a9cd0cd2bd2233c0 446b473ac1429cbe 029cc70ad7ffb718 24624e0b460a9dc8 0c2b9126e8d3aa40 0791b9583ac2ce8c 23092d542637db10 029b96158bb18878 658366cc404aaf88 0282d98f64e5ed70 074699d2e33844b8
+    ----------------------------
+
+    ADD_LIMBS(product):
+        // adds the limbs set-wise
+        product  = (7271c11db672ee10) (1885c246dab64e2e + 0ca939a90c0c93a0) (179d25547a154a7c + 02b682f8df853dec + a9cd0cd2bd2233c0) (446b473ac1429cbe + 029cc70ad7ffb718 + 24624e0b460a9dc8 + 0c2b9126e8d3aa40) (0791b9583ac2ce8c + 23092d542637db10 + 029b96158bb18878) (658366cc404aaf88 + 0282d98f64e5ed70) 074699d2e33844b8
+        limbSums = 7271c11db672ee10 252efbefe6c2e1ce c420b52016bcbc28 7795ed77c8209bde 2d367cc1ecac3214 6806405ba5309cf8 074699d2e33844b8
+    ----------------------------
+    ADJUST_LIMBS(limbSums):
+        // adjusts the limbs to 32-bit format
+        limbSums = 7271c11db672ee10 252efbefe6c2e1ce c420b52016bcbc28 7795ed77c8209bde 2d367cc1ecac3214 6806405ba5309cf8 074699d2e33844b8
+        ... (can be seen as:)
+        limbSums = 7271c11d b672ee10 252efbef e6c2e1ce c420b520 16bcbc28 7795ed77 c8209bde 2d367cc1 ecac3214 6806405b a5309cf8 074699d2 e33844b8
+        limbSums = 7271c11d (b672ee10 + 252efbef) (e6c2e1ce + c420b520) (16bcbc28 + 7795ed77) (c8209bde + 2d367cc1) (ecac3214 + 6806405b) (a5309cf8 + 074699d2) e33844b8
+        res = 7271c11d dba1e9ff 1aae396ee 8e52a99f f557189f 154b2726f ac7736ca e33844b8
+        ... (carries need to propagated)
+        res = 7271c11d dba1ea00 aae396ee 8e52a99f f55718a0 54b2726f ac7736ca e33844b8
+    ----------------------------
+    So, the final result is 7271c11ddba1ea00aae396ee8e52a99ff55718a054b2726fac7736cae33844b8
+    ----------------------------
+
+    Output can be verified:
+        subhrajit@fedora:~/Large-Number-Arithmetic-Operations$ python
+        Python 3.13.1 (main, Dec  9 2024, 00:00:00) [GCC 14.2.1 20240912 (Red Hat 14.2.1-3)] on linux
+        Type "help", "copyright", "credits" or "license" for more information.
+        >>> a = 0xab32ef0112f0987afe01fabc12349f24
+        >>> b = 0xab21fe1024ab5c2e234f867c664f3abe
+        >>> c = a*b
+        >>> print(hex(c))
+        0x7271c11ddba1ea00aae396ee8e52a99ff55718a054b2726fac7736cae33844b8
+
+------------------------------------------------------------
+For the implementation of the above algorithm:
+    1. Assumed n = 8 (8 * 32 = 256 bits)
+    2. Implementation only works for 256-bit multiplication
+    3. Combined ACCUMULATE and ELEMENTWISE_MULTIPLY into a single function
+       - ACCUMULATE_AND_MULTIPLY(a, b, n); utilizes the same logic as ACCUMULATE and ELEMENTWISE_MULTIPLY
+       - Manually unrolled the loop: 8 iterations
+       - Loaded the 256-bit values in a zero-extended 8 64-bit integers inside AVX-512 registers
+       - Based on permutation index, formed the cross-multiplication format inside the AVX-512 registers using permute intrinsics
+       - Multiplied and stored the results in 64-bit integers
+    4. Implemented ADD_LIMBS using AVX-2
+        - Unrolled the loops for adding the limbs; handled each group size separately for better performance (bypassing branching logic)
+        - Used SSE-2 intrinsics for vectorized horizontal addition
+    5. Implemented ADJUST_LIMBS
+        - Did not implement it using any SIMD instructions
+Code can be found here: https://github.com/iamsubhrajit10/Large-Number-Arithmetic-Operations/blob/multiplication/multiplication/naive/test4.c
+
+        
+    
+    

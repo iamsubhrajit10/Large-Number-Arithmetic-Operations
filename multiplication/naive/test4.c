@@ -6,10 +6,165 @@
     This is a testing file for the Urdhva Tiryakbhyam algorithm
     The algorithm is tested against GMP's multiplication function
 
-    Assumptions: it does not take in account the preparation of the numbers to be multiplied and read using AVX instructions
-    The numbers are assumed to be already prepared and stored in the arrangement order needed for the algorithm
-
     Current speedup: 10%
+*/
+
+/*
+Algorithm:
+    func multiply(a,b,res,n){
+        accumulate(a,b,c,d,n);  // accumulates the multiplicands into c and multipliers into d; length n^2
+        multiply(c,d,res,n^2);  // multiplies the accumulated values and stores in res
+        add(res,n^2);           // adds the limbs set-wise, produces length 2n-1
+        adjust(res,2n-1);         // adjusts the limbs to 32-bit format
+        return res;
+    }
+
+    /* Accumulates the multiplicands and multipliers in cross-multiplication format
+    func accumulate(a,b,c,d,n){
+        idx = 0;
+        threshold = n - 1;
+
+        // First loop: processes sets of size 1 to n - 1
+        // prefix sets
+        for (set_idx = 0; set_idx < n; set_idx++)
+        {
+            start = 0;
+            end = set_idx;
+            // loads a[start:end] into c and b[end:start] into d
+            for (i = start; i <= end; i++)
+            {
+                c[idx] = a[i];
+                d[idx] = b[set_idx - i];
+                idx++;
+            }
+        }
+
+        // Second loop: processes sets of size n to 1
+        // suffix sets
+        for (set_idx = n; set_idx < 2n - 1; set_idx++)
+        {
+            start = set_idx - threshold;
+            end = threshold;
+            // loads a[start:end] into c and b[end:start] into d
+            for (i = start; i <= end; i++)
+            {
+                c[idx] = a[i];
+                d[idx] = b[set_idx - i];
+                idx++;
+            }
+        }
+
+    }
+
+    /* Multiplies the accumulated values
+    func multiply(c,d,res,n){
+        for (i = 0; i < n; i++)
+        {
+            res[i] = c[i] * d[i];
+        }
+    }
+
+    /* Adds the limbs set-wise
+    func add(res,n){
+        start = 1;
+        // Phase 1: adds the sets of sizes 2,3,4,5,6,7,8.
+        for (adds = 1; adds < n; adds++)
+        {
+            set_size = adds + 1;
+            sum = 0;
+            for (i = 0; i < set_size; i++)
+            {
+                sum += res[start + i];
+            }
+            res[start] = sum_acc;
+            start += set_size;
+        }
+
+        // Phase 2: adds the sets of sizes 7,6,5,4,3,2.
+        for (adds = n-2; adds > 0; adds--)
+        {
+            set_size = adds + 1;
+            sum = 0;
+            for (i = 0; i < set_size; i++)
+            {
+                sum += res[start + i];
+            }
+            res[start] = sum_acc;
+            start += set_size;
+        }
+        // Copy the last limb
+        res[start] = res[n-1];
+    }
+
+    /* Adjusts the limbs to lower digits format (basically, propagate extra digits)
+    func adjust(res,n){
+        low_flag = true;
+        for (i = n - 1; i > 0; i--)
+        {
+            high = higher digits of res[i];
+            low = lower digits of res[i-1];
+            sum = high + low;
+            if (sum < high)
+            {
+                propagate carry to higher digits of res[i-1];
+            }
+            if (low_flag)
+            {
+                lower digits of res[i] = lower digits of sum;
+                low_flag = false;
+            }
+            else
+            {
+                higher digits of res[i] = lower digits of sum;
+                low_flag = true;
+            }
+        }
+    }
+
+    Example:
+
+    128-bit * 128-bit multiplication
+    n = 4
+    a = ab32ef01 12f0987a fe01fabc 12349f24
+    b = ab21fe10 24ab5c2e 234f867c 664f3abe
+
+    accumulate(a,b,c,d,n);
+    // basically, first increases set size from 1 to n-1 and then decreases set size from n to 1
+    // and arranges the multiplicands and multipliers in cross-multiplication format
+    c = ab32ef01 ab32ef01 12f0987a ab32ef01 12f0987a fe01fabc ab32ef01 12f0987a fe01fabc 12349f24 12f0987a fe01fabc 12349f24 fe01fabc 12349f24 12349f24
+    d = ab21fe10 24ab5c2e ab21fe10 234f867c 24ab5c2e ab21fe10 664f3abe 234f867c 24ab5c2e ab21fe10 664f3abe 234f867c 24ab5c2e 664f3abe 234f867c 664f3abe
+
+    multiply(c,d,res,n);
+    // multiplies the accumulated values
+    res = ab32ef01*ab21fe10 ab32ef01*24ab5c2e 12f0987a*ab21fe10 ab32ef01*234f867c 12f0987a*24ab5c2e fe01fabc*ab21fe10 ab32ef01*664f3abe 12f0987a*234f867c fe01fabc*24ab5c2e 12349f24*ab21fe10 12f0987a*664f3abe fe01fabc*234f867c 12349f24*24ab5c2e fe01fabc*664f3abe 12349f24*234f867c 12349f24*664f3abe
+    res = 7271c11db672ee10 1885c246dab64e2e 0ca939a90c0c93a0 179d25547a154a7c 02b682f8df853dec a9cd0cd2bd2233c0 446b473ac1429cbe 029cc70ad7ffb718 24624e0b460a9dc8 0c2b9126e8d3aa40 0791b9583ac2ce8c 23092d542637db10 029b96158bb18878 658366cc404aaf88 0282d98f64e5ed70 074699d2e33844b8
+
+    add(res,n);
+    // adds the limbs set-wise
+    res = (7271c11db672ee10) (1885c246dab64e2e + 0ca939a90c0c93a0) (179d25547a154a7c + 02b682f8df853dec + a9cd0cd2bd2233c0) (446b473ac1429cbe + 029cc70ad7ffb718 + 24624e0b460a9dc8 + 0c2b9126e8d3aa40) (0791b9583ac2ce8c + 23092d542637db10 + 029b96158bb18878) (658366cc404aaf88 + 0282d98f64e5ed70) 074699d2e33844b8
+    res = 7271c11db672ee10 252efbefe6c2e1ce c420b52016bcbc28 7795ed77c8209bde 2d367cc1ecac3214 6806405ba5309cf8 074699d2e33844b8
+
+    adjust(res,n);
+    // adjusts the limbs to 32-bit format
+    res = 7271c11db672ee10 252efbefe6c2e1ce c420b52016bcbc28 7795ed77c8209bde 2d367cc1ecac3214 6806405ba5309cf8 074699d2e33844b8
+    ... (can be seen as:)
+    res = 7271c11d b672ee10 252efbef e6c2e1ce c420b520 16bcbc28 7795ed77 c8209bde 2d367cc1 ecac3214 6806405b a5309cf8 074699d2 e33844b8
+    res = 7271c11d (b672ee10 + 252efbef) (e6c2e1ce + c420b520) (16bcbc28 + 7795ed77) (c8209bde + 2d367cc1) (ecac3214 + 6806405b) (a5309cf8 + 074699d2) e33844b8
+    res = 7271c11d dba1e9ff 1aae396ee 8e52a99f f557189f 154b2726f ac7736ca e33844b8
+    ... (carries need to propagated)
+    res = 7271c11d dba1ea00 aae396ee 8e52a99f f55718a0 54b2726f ac7736ca e33844b8
+
+    So, the final result is 7271c11ddba1ea00aae396ee8e52a99ff55718a054b2726fac7736cae33844b8
+
+    Output can be verified:
+    subhrajit@fedora:~/Large-Number-Arithmetic-Operations$ python
+    Python 3.13.1 (main, Dec  9 2024, 00:00:00) [GCC 14.2.1 20240912 (Red Hat 14.2.1-3)] on linux
+    Type "help", "copyright", "credits" or "license" for more information.
+    >>> a = 0xab32ef0112f0987afe01fabc12349f24
+    >>> b = 0xab21fe1024ab5c2e234f867c664f3abe
+    >>> c = a*b
+    >>> print(hex(c))
+    0x7271c11ddba1ea00aae396ee8e52a99ff55718a054b2726fac7736cae33844b8
 */
 
 #include <stdio.h>
