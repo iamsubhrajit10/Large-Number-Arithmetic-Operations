@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
     int measure_type = atoi(argv[4]);
 
     run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    // run_benchmarking_test(test_case, measure_type);
 
     return 0;
 }

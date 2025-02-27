@@ -69,6 +69,8 @@ void limb_t_free(limb_t *limb);
  */
 char *limb_get_str(const limb_t *num);
 
+void limb_get_str32(__uint32_t *result, int n, char **result_str);
+
 /**
  * @biref Internal function to convert a limb_t structure into a hex-string, usually called by limb_get_str
  *

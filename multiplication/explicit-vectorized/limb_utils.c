@@ -217,6 +217,21 @@ char *limb_get_str(const limb_t *num)
     return str;
 }
 
+void limb_get_str32(__uint32_t *result, int n, char **result_str)
+{
+    int idx = 0;
+    for (int i = 0; i < n; i++)
+    {
+        idx += snprintf(*result_str + idx, 9, "%08" PRIx32, result[i]);
+    }
+    (*result_str)[idx] = '\0';
+    // Omit leading zeros
+    while (**result_str == '0')
+    {
+        (*result_str)++;
+    }
+}
+
 void __set_str(aligned_uint32_ptr digits, size_t n, limb_t *num)
 {
     // Convert the digits to limbs
