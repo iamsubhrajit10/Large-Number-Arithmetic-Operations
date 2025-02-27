@@ -14,24 +14,16 @@
 #define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
 
 // Define the aligned data types
-typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
-typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
-
-// Declare threshold for borrow propagation and limb digits
-extern aligned_uint64 LIMB_DIGITS; // 10^18, used for carry/borrow-propagation, as we're using 64-bit integers; mostly saturated
+typedef uint32_t aligned_uint32 __attribute__((aligned(64)));      // Define an aligned uint64_t
+typedef uint32_t *aligned_uint32_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
 
 // A structure to store the limbs
 typedef struct
 {
-    aligned_uint64_ptr limbs; // Pointer to the limbs
+    aligned_uint32_ptr limbs; // Pointer to the limbs
     bool sign;                // Sign of the number
     size_t size;              // Size of the limbs
 } limb_t;
-
-// Declare the SIMD constants
-extern __m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
-extern __m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
-extern __m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -100,13 +92,13 @@ limb_t *limb_set_str(const char *str);
 /**
  * @brief Internal function to convert a hex-string into a limb_t structure, usually called by limb_set_str
  *
- * @param aligned_uint64_ptr digits The digits of the number
+ * @param aligned_uint32_ptr digits The digits of the number
  * @param size_t n The number of digits
  * @param limb_t *num The number to convert
  *
  * @return void
  */
-void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num);
+void __set_str(aligned_uint32_ptr digits, size_t n, limb_t *num);
 
 /**
  * @brief Adjusts the sizes of two limb_t structures to be equal.

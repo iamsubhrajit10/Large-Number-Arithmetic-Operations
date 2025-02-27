@@ -15,18 +15,13 @@
 #include <ctype.h>
 #include "limb_utils.h"
 
-#define LIMB_BITS 64             // Number of hex digits in each limb
+#define LIMB_BITS 32             // Number of hex digits in each limb
 #define bits 4                   // Number of bits in each hex digit
 #define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
 
 // Define the aligned data types
-typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
-typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
-
-// Declare the SIMD constants
-__m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
-__m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
-__m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
+typedef uint32_t aligned_uint32 __attribute__((aligned(64)));      // Define an aligned uint64_t
+typedef uint32_t *aligned_uint32_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -45,9 +40,6 @@ void init_memory_pool()
         exit(EXIT_FAILURE);
     }
     memory_pool_offset = 0;
-    AVX512_ZEROS = _mm512_set1_epi64(0);
-    AVX512_ONES = _mm512_set1_epi64(1);
-    AVX512_LIMB_DIGITS = _mm512_set1_epi64(LIMB_BITS);
 }
 
 void *memory_pool_alloc(size_t size)
@@ -104,7 +96,7 @@ limb_t *limb_t_alloc(size_t size)
     }
 
     // Allocate memory with fixed alignment of 64
-    limb->limbs = (uint64_t *)memory_pool_alloc(size * sizeof(uint64_t));
+    limb->limbs = (uint32_t *)memory_pool_alloc(size * sizeof(uint32_t));
     // check if the memory allocation failed
     if (limb->limbs == NULL)
     {
@@ -135,7 +127,7 @@ limb_t *limb_t_realloc(limb_t *limb, size_t new_size)
     }
 
     // Allocate new memory with fixed alignment of 64
-    uint64_t *new_limbs = (uint64_t *)memory_pool_alloc(new_size * sizeof(uint64_t));
+    uint32_t *new_limbs = (uint32_t *)memory_pool_alloc(new_size * sizeof(uint32_t));
     if (new_limbs == NULL)
     {
         return NULL;
@@ -143,8 +135,8 @@ limb_t *limb_t_realloc(limb_t *limb, size_t new_size)
 
     // Copy old data to new memory, while prepending zeros
     size_t copy_size = limb->size < new_size ? limb->size : new_size;
-    memcpy(new_limbs + (new_size - copy_size), limb->limbs, copy_size * sizeof(uint64_t));
-    memset(new_limbs, 0, (new_size - copy_size) * sizeof(uint64_t));
+    memcpy(new_limbs + (new_size - copy_size), limb->limbs, copy_size * sizeof(uint32_t));
+    memset(new_limbs, 0, (new_size - copy_size) * sizeof(uint32_t));
 
     // Update limb structure
     limb->limbs = new_limbs;
@@ -225,11 +217,11 @@ char *limb_get_str(const limb_t *num)
     return str;
 }
 
-void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num)
+void __set_str(aligned_uint32_ptr digits, size_t n, limb_t *num)
 {
     // Convert the digits to limbs
     size_t num_limbs = num->size;
-    aligned_uint64 limb = 0;
+    aligned_uint32 limb = 0;
     unsigned shift = 0;
     int limb_index = num_limbs - 1;
     for (int i = n - 1; i >= 0;)
@@ -264,7 +256,7 @@ limb_t *limb_set_str(const char *str)
     // allocate temporary memory for hex-string to digit conversion
     size_t hex_len = strlen(str);
 
-    aligned_uint64_ptr digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
+    aligned_uint32_ptr digits = (uint32_t *)memory_pool_alloc(hex_len * sizeof(uint32_t));
     if (digits == NULL)
     {
         perror("Memory allocation failed for digits\n");

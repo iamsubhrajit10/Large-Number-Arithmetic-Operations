@@ -177,6 +177,7 @@ Algorithm:
 #include <immintrin.h>
 #include <mm_malloc.h>
 #include <omp.h>
+#include <cpuid.h>
 #include "myutils.h"
 #include "perf_utils.h"
 
@@ -184,6 +185,9 @@ Algorithm:
 
 void accumulate_multiply_AVX(uint32_t *num1, uint32_t *num2, uint64_t *__restrict res)
 {
+
+    // _mm_prefetch((char *)num1, _MM_HINT_T0);
+    // _mm_prefetch((char *)num2, _MM_HINT_T0);
 
     // Load and convert in cache-friendly 64-byte chunks
     __m512i base_1 = _mm512_cvtepu32_epi64(_mm256_load_si256((__m256i *)num1));
@@ -224,9 +228,9 @@ void accumulate_multiply_AVX(uint32_t *num1, uint32_t *num2, uint64_t *__restric
     // Group 5
     __m512i perm_idx_15 = _mm512_set_epi64(4, 3, 2, 1, 7, 6, 5, 4);
     __m512i a_vec_5 = _mm512_permutexvar_epi64(perm_idx_15, base_1);
-    __m512i perm_idx_25 = _mm512_set_epi64(4, 5, 6, 7, 0, 1, 2, 3);
-    __m512i b_vec_5 = _mm512_permutexvar_epi64(perm_idx_25, base_2);
-    __m512i res_5 = _mm512_mul_epu32(a_vec_5, b_vec_5);
+    // __m512i perm_idx_25 = _mm512_set_epi64(4, 5, 6, 7, 0, 1, 2, 3);
+    // __m512i b_vec_5 = _mm512_permutexvar_epi64(perm_idx_25, base_2);
+    __m512i res_5 = _mm512_mul_epu32(a_vec_5, b_vec_4);
     _mm512_store_si512(res + 32, res_5);
 
     // Group 6
@@ -255,13 +259,20 @@ void accumulate_multiply_AVX(uint32_t *num1, uint32_t *num2, uint64_t *__restric
 }
 
 // Helper: Horizontally sum two 64-bit integers in a 128-bit vector.
+// uint64_t horizontal_sum_128(__m128i v)
+// {
+//     // Extract the lower 64 bits.
+//     uint64_t lo = _mm_cvtsi128_si64x(v);
+//     // Move the upper 64 bits to the lower 64-bit position.
+//     uint64_t hi = _mm_cvtsi128_si64x(_mm_unpackhi_epi64(v, v));
+//     return lo + hi;
+// }
+
 uint64_t horizontal_sum_128(__m128i v)
 {
-    // Extract the lower 64 bits.
-    uint64_t lo = _mm_cvtsi128_si64x(v);
-    // Move the upper 64 bits to the lower 64-bit position.
-    uint64_t hi = _mm_cvtsi128_si64x(_mm_unpackhi_epi64(v, v));
-    return lo + hi;
+    __m128i high_shifted = _mm_srli_si128(v, 8);
+    __m128i sum = _mm_add_epi64(v, high_shifted);
+    return _mm_cvtsi128_si64(sum);
 }
 
 void add_limbs(uint64_t *result)
@@ -282,34 +293,34 @@ void add_limbs(uint64_t *result)
 
     // Block size 4: result[3] = result[6] + result[7] + result[8] + result[9]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[6]); // loads result[6], result[7]
-        __m128i v2 = _mm_loadu_si128((__m128i *)&result[8]); // loads result[8], result[9]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[6]); // loads result[6], result[7]
+        __m128i v2 = _mm_load_si128((__m128i *)&result[8]); // loads result[8], result[9]
         __m128i sum_v = _mm_add_epi64(v1, v2);
         result[3] = horizontal_sum_128(sum_v);
     }
 
     // Block size 5: result[4] = result[10] + result[11] + result[12] + result[13] + result[14]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[10]); // loads result[10], result[11]
-        __m128i v2 = _mm_loadu_si128((__m128i *)&result[12]); // loads result[12], result[13]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[10]); // loads result[10], result[11]
+        __m128i v2 = _mm_load_si128((__m128i *)&result[12]); // loads result[12], result[13]
         __m128i sum_v = _mm_add_epi64(v1, v2);
         result[4] = horizontal_sum_128(sum_v) + result[14];
     }
 
     // Block size 6: result[5] = result[15] + result[16] + result[17] + result[18] + result[19] + result[20]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[15]); // loads result[15], result[16]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[15]);  // loads result[15], result[16]
         __m128i v2 = _mm_loadu_si128((__m128i *)&result[17]); // loads result[17], result[18]
-        __m128i v3 = _mm_loadu_si128((__m128i *)&result[19]); // loads result[19], result[20]
+        __m128i v3 = _mm_load_si128((__m128i *)&result[19]);  // loads result[19], result[20]
         __m128i sum_v = _mm_add_epi64(_mm_add_epi64(v1, v2), v3);
         result[5] = horizontal_sum_128(sum_v);
     }
 
     // Block size 7: result[6] = result[21] + result[22] + result[23] + result[24] + result[25] + result[26] + result[27]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[21]); // loads result[21], result[22]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[21]);  // loads result[21], result[22]
         __m128i v2 = _mm_loadu_si128((__m128i *)&result[23]); // loads result[23], result[24]
-        __m128i v3 = _mm_loadu_si128((__m128i *)&result[25]); // loads result[25], result[26]
+        __m128i v3 = _mm_load_si128((__m128i *)&result[25]);  // loads result[25], result[26]
         uint64_t tail = result[27];
         __m128i sum_v = _mm_add_epi64(_mm_add_epi64(v1, v2), v3);
         result[6] = horizontal_sum_128(sum_v) + tail;
@@ -317,10 +328,10 @@ void add_limbs(uint64_t *result)
 
     // Block size 8: result[7] = result[28] + result[29] + result[30] + result[31] + result[32] + result[33] + result[34] + result[35]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[28]); // loads result[28], result[29]
-        __m128i v2 = _mm_loadu_si128((__m128i *)&result[30]); // loads result[30], result[31]
-        __m128i v3 = _mm_loadu_si128((__m128i *)&result[32]); // loads result[32], result[33]
-        __m128i v4 = _mm_loadu_si128((__m128i *)&result[34]); // loads result[34], result[35]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[28]); // loads result[28], result[29]
+        __m128i v2 = _mm_load_si128((__m128i *)&result[30]); // loads result[30], result[31]
+        __m128i v3 = _mm_load_si128((__m128i *)&result[32]); // loads result[32], result[33]
+        __m128i v4 = _mm_load_si128((__m128i *)&result[34]); // loads result[34], result[35]
         __m128i sum_v = _mm_add_epi64(_mm_add_epi64(v1, v2), _mm_add_epi64(v3, v4));
         result[7] = horizontal_sum_128(sum_v);
     }
@@ -329,9 +340,9 @@ void add_limbs(uint64_t *result)
 
     // Block size 7: result[8] = result[36] + result[37] + result[38] + result[39] + result[40] + result[41] + result[42]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[36]); // loads result[36], result[37]
-        __m128i v2 = _mm_loadu_si128((__m128i *)&result[38]); // loads result[38], result[39]
-        __m128i v3 = _mm_loadu_si128((__m128i *)&result[40]); // loads result[40], result[41]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[36]); // loads result[36], result[37]
+        __m128i v2 = _mm_load_si128((__m128i *)&result[38]); // loads result[38], result[39]
+        __m128i v3 = _mm_load_si128((__m128i *)&result[40]); // loads result[40], result[41]
         uint64_t tail = result[42];
         __m128i sum_v = _mm_add_epi64(_mm_add_epi64(v1, v2), v3);
         result[8] = horizontal_sum_128(sum_v) + tail;
@@ -339,16 +350,16 @@ void add_limbs(uint64_t *result)
 
     // Block size 6: result[9] = result[43] + result[44] + result[45] + result[46] + result[47] + result[48]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[43]); // loads result[43], result[44]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[43]);  // loads result[43], result[44]
         __m128i v2 = _mm_loadu_si128((__m128i *)&result[45]); // loads result[45], result[46]
-        __m128i v3 = _mm_loadu_si128((__m128i *)&result[47]); // loads result[47], result[48]
+        __m128i v3 = _mm_load_si128((__m128i *)&result[47]);  // loads result[47], result[48]
         __m128i sum_v = _mm_add_epi64(_mm_add_epi64(v1, v2), v3);
         result[9] = horizontal_sum_128(sum_v);
     }
 
     // Block size 5: result[10] = result[49] + result[50] + result[51] + result[52] + result[53]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[49]); // loads result[49], result[50]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[49]);  // loads result[49], result[50]
         __m128i v2 = _mm_loadu_si128((__m128i *)&result[51]); // loads result[51], result[52]
         uint64_t tail = result[53];
         __m128i sum_v = _mm_add_epi64(v1, v2);
@@ -357,15 +368,15 @@ void add_limbs(uint64_t *result)
 
     // Block size 4: result[11] = result[54] + result[55] + result[56] + result[57]
     {
-        __m128i v1 = _mm_loadu_si128((__m128i *)&result[54]); // loads result[54], result[55]
-        __m128i v2 = _mm_loadu_si128((__m128i *)&result[56]); // loads result[56], result[57]
+        __m128i v1 = _mm_load_si128((__m128i *)&result[54]); // loads result[54], result[55]
+        __m128i v2 = _mm_load_si128((__m128i *)&result[56]); // loads result[56], result[57]
         __m128i sum_v = _mm_add_epi64(v1, v2);
         result[11] = horizontal_sum_128(sum_v);
     }
 
     // Block size 3: result[12] = result[58] + result[59] + result[60]
     {
-        __m128i v = _mm_loadu_si128((__m128i *)&result[58]); // loads result[58], result[59]
+        __m128i v = _mm_load_si128((__m128i *)&result[58]); // loads result[58], result[59]
         result[12] = horizontal_sum_128(v) + result[60];
     }
 
@@ -401,7 +412,7 @@ void adjust_limbs(__uint64_t *a)
     uint64_t s_high = 0, s_low = 0;
     uint64_t mask = 0, mask_low = 0;
     // Process pairs of iterations.
-    while (i + 1 < 15)
+    while (i < 14)
     {
         s_high = (((uint32_t)a[i] + (uint32_t)(a[i + 1] >> 32)) & 0xFFFFFFFF);
         mask = (s_high < (uint32_t)a[i]);
@@ -417,7 +428,7 @@ void adjust_limbs(__uint64_t *a)
         i += 2;
     }
     // Adjust the ending element's lower half.
-    a[last_pair] = (((a[i - 1]) << 32) & 0xFFFFFFFF00000000ULL) | (uint32_t)((a[last_pair] - (mask_low << 32)));
+    a[last_pair] = (((a[14]) << 32) & 0xFFFFFFFF00000000ULL) | ((a[last_pair] - (mask_low << 32)) & 0xFFFFFFFF);
 }
 
 /*
@@ -479,6 +490,9 @@ void test()
         __uint32_t *num2 = (__uint32_t *)_mm_malloc(n * sizeof(__uint32_t), 64);
         uint64_t *result = (__uint64_t *)_mm_malloc(2 * n * sizeof(__uint64_t), 64);
         double t; // for timing
+        int niter;
+        int cpu_info[4], decimals;
+        double ops_per_sec, f;
         mpz_t gmp_num1, gmp_num2, gmp_result;
         mpz_init(gmp_num1);
         mpz_init(gmp_num2);
@@ -521,6 +535,7 @@ void test()
         stop_perf();
 
         read_perf(values);
+        printf("Performance counters for Urdhva:\n");
         write_perf(stdout, values);
 
         // limb_get_str(result, n, &result_str);
@@ -531,18 +546,89 @@ void test()
         // // memfence & cpuid to make sure all previous instructions have been completed
         asm volatile("mfence" ::
                          : "memory");
-        start_perf();
+        printf("Calibrating CPU speed using timespec\n");
+        fflush(stdout);
+        // interrupt
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
+
         TIME_TIMESPEC(t, multiply(num1, num2, result));
-        stop_perf();
-        printf("Time taken by Urdhva Tiryakbhyam: %f microseconds\n", t);
-        read_perf(values);
-        write_perf(stdout, values);
+        printf("done\n");
+        printf("CPU Calibrated time for: %f microseconds\n", t);
+
+        niter = 1 + (unsigned long)(1e7 / t);
+        printf("multiplying %d times\n", niter);
+        fflush(stdout);
+
+        struct timespec ts_0, ts_1;
+
+        ts_0 = get_timespec();
+        for (int i = 0; i < niter; i++)
+        {
+            multiply(num1, num2, result);
+        }
+        ts_1 = get_timespec();
+        long long t1 = diff_timespec_us(ts_0, ts_1);
+
+        // convert t1 from microseconds to seconds for the ops_per_sec calculation
+        ops_per_sec = (1e6 * niter) / t1;
+
+        f = 100.0;
+
+        for (decimals = 0;; decimals++)
+        {
+            if (ops_per_sec > f)
+                break;
+            f = f * 0.1;
+        }
+
+        printf("RESULT: %.*f ops/sec\n", decimals, ops_per_sec);
 
         asm volatile("mfence" ::
                          : "memory");
 
+        start_perf();
+        mpz_mul(gmp_result, gmp_num1, gmp_num2);
+        stop_perf();
+
+        read_perf(values);
+        printf("Performance counters for GMP:\n");
+        write_perf(stdout, values);
+
+        printf("Calibrating CPU speed using timespec\n");
+        fflush(stdout);
+        // interrupt
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
+
         TIME_TIMESPEC(t, mpz_mul(gmp_result, gmp_num1, gmp_num2));
-        printf("Time taken by GMP: %f microseconds\n", t);
+
+        printf("done\n");
+        printf("CPU Calibrated time for GMP: %f microseconds\n", t);
+
+        niter = 1 + (unsigned long)(1e7 / t);
+        printf("multiplying %d times\n", niter);
+        fflush(stdout);
+
+        ts_0 = get_timespec();
+        for (int i = 0; i < niter; i++)
+        {
+            mpz_mul(gmp_result, gmp_num1, gmp_num2);
+        }
+        ts_1 = get_timespec();
+        t1 = diff_timespec_us(ts_0, ts_1);
+
+        // convert t1 from microseconds to seconds for the ops_per_sec calculation
+        ops_per_sec = (1e6 * niter) / t1;
+
+        f = 100.0;
+
+        for (decimals = 0;; decimals++)
+        {
+            if (ops_per_sec > f)
+                break;
+            f = f * 0.1;
+        }
+
+        printf("RESULT: %.*f ops/sec\n", decimals, ops_per_sec);
 
         bool flag = true;
         // compare the result with the expected result
