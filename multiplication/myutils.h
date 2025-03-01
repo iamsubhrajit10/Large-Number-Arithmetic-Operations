@@ -105,6 +105,13 @@ bool check_result(char *result, char *result_gmp, int result_size)
     trim_trailing_newline(result);
     trim_trailing_newline(result_gmp);
 
+    // convert the result to lower case
+    for (int i = 0; i < result_size; i++)
+    {
+        result[i] = tolower(result[i]);
+        result_gmp[i] = tolower(result_gmp[i]);
+    }
+
     // Check if the lengths of the adjusted strings are equal
     if (strlen(result) != strlen(result_gmp))
     {

@@ -1,11 +1,11 @@
 /*
- This program computes multiplication of two numbers using GMP library, with the test cases for the same.
+ This program computes multiplication of two numbers using our optimized multiplication, with the test cases for the same.
  Also, it writes various data like performance counters, rdtsc values to files, for analysis.
 */
 
 /* This is the baseline version, without explicit SIMD */
 /*
-This code multiplies two numbers, represented as array of digits.
+This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
 b --> array of digits of second number, of length m
 #Pre-processing:
@@ -44,16 +44,160 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <cpuid.h>
 #include <sys/resource.h>
 #include "myutils.h"
+#include "limb_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
-
-extern int CORE_NO; // Core number to run the tests on
-
+extern int CORE_NO;
 int NUM_BITS; // Number of bits for the numbers
 
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
+
+__m512i one;
+__m512i mask;
+__m512i ZEROS;
+
+void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
+{
+    uint64_t *num1 = a->limbs;
+    uint64_t *num2 = b->limbs;
+
+    // Load the numbers into base
+    __m512i base_1 = _mm512_load_si512(num1);
+    __m512i base_2 = _mm512_load_si512(num2);
+
+    // 1,0,2,1,0,1,0,0
+    __m512i perm_idx_11 = _mm512_set_epi64(1, 0, 2, 1, 0, 1, 0, 0);
+    // 1,4,3,2,1,0,3,2
+    __m512i perm_idx_12 = _mm512_set_epi64(1, 4, 3, 2, 1, 0, 3, 2);
+
+    // 4,0,1,2,3,4,0,1
+    __m512i perm_idx_22 = _mm512_set_epi64(4, 0, 1, 2, 3, 4, 0, 1);
+
+    // 2,3,0,1,2,0,1,0
+    __m512i perm_idx_21 = _mm512_set_epi64(2, 3, 0, 1, 2, 0, 1, 0);
+
+    // 4,3,4,3,2,4,3,2
+    __m512i perm_idx_13 = _mm512_set_epi64(4, 3, 4, 3, 2, 4, 3, 2);
+
+    // 3,4,2,3,4,1,2,3
+    __m512i perm_idx_23 = _mm512_set_epi64(3, 4, 2, 3, 4, 1, 2, 3);
+
+    // extra permutation indices
+    __m512i perm_idx_0 = _mm512_set_epi64(0, 0, 0, 7, 6, 4, 3, 1);
+
+    __m512i perm_idx_1 = _mm512_set_epi64(3, 2, 0, 0, 0, 0, 0, 0);
+
+    __m512i perm_idx_2 = _mm512_set_epi64(0, 0, 0, 0, 0, 7, 5, 4);
+
+    __m512i perm_idx_3 = _mm512_set_epi64(3, 0, 2, 1, 0, 0, 0, 0);
+    __m512i perm_idx_4 = _mm512_set_epi64(0, 0, 0, 7, 6, 0, 5, 4);
+
+    __m512i a_vec_1 = _mm512_permutexvar_epi64(perm_idx_11, base_1);
+    __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
+
+    __m512i res_0_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
+
+    __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
+    __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
+    __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
+
+    /*res_0_lo = _mm512_madd52lo_epu64(X, a_vec_1, b_vec_1);
+        where, X = fun(res_0_hi,res_1_hi)
+        res_0_hi = 7 ,6 ,5 ,4 ,3 ,2 ,1,0
+        res_1_hi = 15,14,13,12,11,10,9,8
+                                3, 2,1,0
+        X = <11,10,8,7,6,4,3,1>
+    */
+
+    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
+    __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
+    __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
+    __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
+
+    __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
+    __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
+    __m512i res_2_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
+
+    /* res_1_lo = _mm512_madd52lo_epu64(x, a_vec_2, b_vec_2);
+       X = fun(res_1_hi,res_2_hi)
+        res_1_hi = 15,14,13,12,11,10,9,8
+        res_2_hi = 23,22,21,20,19,18,17,16
+        x = <19,zero,18,17,16,15,13,12>
+    */
+
+    __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
+    __m512i res_2_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_3, res_2_hi);
+    __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
+    __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
+    __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
+
+    // Group 3
+
+    // res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
+    // y = fun(res_2_hi)
+    /*
+    res_2_hi = 23,22,21,20,19,18,17,16
+    y = <zero,24*,zero,23,22,zero,21,20>
+    */
+    __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
+    __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
+    __m512i res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
+
+    // store the results
+    _mm512_store_si512(res_lo, res_0_lo);
+    _mm512_store_si512(res_lo + 8, res_1_lo);
+    _mm512_store_si512(res_lo + 16, res_2_lo);
+
+    // store res_0_hi
+    _mm512_store_si512(res_hi, res_0_hi);
+    _mm512_store_si512(res_hi + 8, res_1_hi);
+
+    // Assuming res_lo and res_hi are uint64_t arrays and index 24 corresponds to a specific lane
+    __m512i a_ = _mm512_set1_epi64(num1[4]);          // Broadcast num1[4] to all lanes
+    __m512i b_ = _mm512_set1_epi64(num2[4]);          // Broadcast num2[4] to all lanes
+    __m512i zero = _mm512_setzero_si512();            // Zero vector for no accumulation
+    __m512i lo = _mm512_madd52lo_epu64(zero, a_, b_); // Low 52 bits
+    __m512i hi = _mm512_madd52hi_epu64(zero, a_, b_); // High 52 bits
+
+    // Store results into scalar arrays (assuming lane 0 corresponds to index 24)
+    res_lo[24] = _mm_cvtsi128_si64(_mm512_extracti64x2_epi64(lo, 0)) & ((1ULL << 52) - 1); // Extract lane 0 of lo
+    res_hi[24] = _mm_cvtsi128_si64(_mm512_extracti64x2_epi64(hi, 0)) & ((1ULL << 52) - 1); // Extract lane 0 of hi
+
+    // manual addition
+    res_lo[23] += res_hi[24];
+    // _mm512_store_si512(res_hi + 16, res_2_hi); not needed
+    res_lo[0] += res_hi[2];
+    res_lo[2] += res_hi[5];
+    res_lo[5] += res_hi[9];
+    res_lo[9] += res_hi[14];
+
+    // man_add_lo
+    res_hi[1] = res_lo[0];
+    res_hi[2] = res_lo[1] + res_lo[2];
+    res_hi[3] = res_lo[3] + res_lo[4] + res_lo[5];
+    res_hi[4] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9];
+    res_hi[5] = res_lo[10] + res_lo[11] + res_lo[12] + res_lo[13] + res_lo[14];
+    res_hi[6] = res_lo[15] + res_lo[16] + res_lo[17] + res_lo[18];
+    res_hi[7] = res_lo[19] + res_lo[20] + res_lo[21];
+    res_hi[8] = res_lo[22] + res_lo[23];
+    res_hi[9] = res_lo[24];
+
+    int i = 9;
+    while (i > 0)
+    {
+        uint64_t carry = res_hi[i] >> 52;
+        res_hi[i] &= 0xFFFFFFFFFFFFF;
+        res_hi[i - 1] += carry;
+        --i;
+    }
+}
+
+void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
+{
+    __mul_acc_mul_AVXIFMA(a, b, res_lo, res_hi);
+}
 
 // main function with cmd arguments
 int main(int argc, char *argv[])
@@ -83,8 +227,13 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
+    init_memory_pool();
+
     run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
+    // test_data(test_case);
+
+    destroy_memory_pool();
 
     return 0;
 }
@@ -100,14 +249,11 @@ int main(int argc, char *argv[])
 */
 void run_correctness_test(int test_case)
 {
-    printf("Trying to run correctness test\n");
-    // Create directories for the results
-    create_directory("experiments/results");
-    // open the perf file
-    gzFile timespec_file, rdtsc_file, cputime_file;
 
+    // read the test case from the file
+
+    gzFile test_file;
     char test_filename[100];
-
     switch (test_case)
     {
     case 0:
@@ -132,7 +278,7 @@ void run_correctness_test(int test_case)
     }
 
     // open the test file
-    gzFile test_file = open_gzfile(test_filename, "rb");
+    test_file = open_gzfile(test_filename, "rb");
 
     // skip the first line, header
     skip_first_line(test_file);
@@ -140,6 +286,7 @@ void run_correctness_test(int test_case)
     // Read ITERATIONS test cases
     for (int i = 0; i < ITERATIONS; i++)
     {
+        printf("Running test case %d\n", i);
         // Read the next line
         char buffer[CHUNK];
         // Read the next line
@@ -168,57 +315,36 @@ void run_correctness_test(int test_case)
             gzclose(test_file);
             exit(EXIT_FAILURE);
         }
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
 
-        mpz_t a, b, result_gmp;
-        mpz_init(a);
-        mpz_init(b);
+        // Adjust the sizes of the two numbers
+        limb_t_adjust_limb_sizes(a, b);
 
-        // convert the strings to mpz_t
-        if (mpz_set_str(a, a_str, 16) != 0)
-        {
-            perror("Error: Failed to set mpz_t from string a_str");
-            exit(EXIT_FAILURE);
-        }
-        if (mpz_set_str(b, b_str, 16) != 0)
-        {
-            perror("Error: Failed to set mpz_t from string b_str");
-            exit(EXIT_FAILURE);
-        }
+        // Get the number of limbs
+        int n = a->size;
+        ZEROS = _mm512_setzero_si512();
 
-        /***** Start of multiplication *****/
-        mpz_mul(result_gmp, a, b);
+        limb_t *res_lo = limb_t_alloc(n * n * sizeof(uint64_t));
+        limb_t *res_hi = limb_t_alloc(n * n * sizeof(uint64_t));
 
-        /***** End of multiplication *****/
+        limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
 
-        char *mul_str = mpz_get_str(NULL, 16, result_gmp);
-        int mul_size = strlen(mul_str);
-
+        // print the results
+        res_hi->size = 2 * n;
+        char *res_lo_str = limb_get_str(res_hi);
+        int str_len = strlen(res_lo_str);
+        // check with the result
         // verify the converted string with result
-        if (!check_result(mul_str, result_str, mul_size))
+        if (!check_result(res_lo_str, result_str, str_len))
         {
             printf("Test case failed, at iteration %d\n", i);
-            printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
-            printf("Experimental result = %s\n", mul_str);
             exit(EXIT_FAILURE);
         }
+        printf("Test case passed: %d\n", i);
     }
-    switch (test_case)
-    {
-    case 0:
-        printf("Random test cases completed\n");
-        break;
-    case 1:
-        printf("Equal test cases completed\n");
-        break;
-    case 2:
-        printf("Greater test cases completed\n");
-        break;
-    case 3:
-        printf("Smaller test cases completed\n");
-        break;
-    }
-    // close the test file
-    gzclose(test_file);
+    printf("All test cases passed\n");
 }
 
 /*
@@ -468,47 +594,38 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
-        // convert the strings to mpz_t
-        mpz_t a, b, result_gmp;
-        mpz_init(a);
-        mpz_init(b);
+        int n_1 = strlen(a_str);
+        int n_2 = strlen(b_str);
 
-        // convert the strings to mpz_t
-        if (mpz_set_str(a, a_str, 16) != 0)
-        {
-            perror("Error: Failed to set mpz_t from string a_str");
-            exit(EXIT_FAILURE);
-        }
-        if (mpz_set_str(b, b_str, 16) != 0)
-        {
-            perror("Error: Failed to set mpz_t from string b_str");
-            exit(EXIT_FAILURE);
-        }
+        // convert a and b into limbs
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
+
+        // Adjust the sizes of the two numbers
+        limb_t_adjust_limb_sizes(a, b);
+
+        // Get the number of limbs
+        int n = a->size;
+        ZEROS = _mm512_setzero_si512();
+
+        limb_t *res_lo = limb_t_alloc(n * n * sizeof(uint64_t));
+        limb_t *res_hi = limb_t_alloc(n * n * sizeof(uint64_t));
 
         printf("Starting multiplication\n");
-
-        double time_taken;
-
-        // clear cache before each test case
-        size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
-        size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
-
-        for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
-        {
-            _mm_clflush((char *)a->_mp_d + i);
-        }
-
-        for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
-        {
-            _mm_clflush((char *)b->_mp_d + i);
-        }
-        // Ensure that the cache flush operations are completed
-        _mm_mfence();
-        // Ensure the flush is completed
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
         int niter;
-        double f, ops_per_sec, time_taken_ms;
+        double f, ops_per_sec, time_taken_ms, time_taken;
+        // clear cache content for a_limbs, b_limbs
+        for (int i = 0; i < n; i += 64)
+        {
+            _mm_clflush((char *)a + i);
+            _mm_clflush((char *)b + i);
+        }
+
+        // Ensure that the cache flush operations are completed
+        _mm_mfence();
 
         switch (measure_type)
         {
@@ -519,7 +636,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, mpz_mul(result_gmp, a, b));
+            TIME_RDTSC(time_taken, limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -530,7 +647,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                mpz_mul(result_gmp, a, b);
+                limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -557,7 +674,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, mpz_mul(result_gmp, a, b));
+            TIME_TIMESPEC(time_taken, limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -570,7 +687,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                mpz_mul(result_gmp, a, b);
+                limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -597,7 +714,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, mpz_mul(result_gmp, a, b));
+            TIME_RUSAGE(time_taken, limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs));
 
             printf("done\n");
 
@@ -610,7 +727,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                mpz_mul(result_gmp, a, b);
+                limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
             }
             t1 = cputime() - t0;
             printf("done!\n");

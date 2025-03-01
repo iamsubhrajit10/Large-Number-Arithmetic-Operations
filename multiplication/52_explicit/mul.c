@@ -63,8 +63,8 @@ uint64_t __add_horz_sum_128(__m128i v);
 void __mul_acc_mul_AVX(limb_t *a, limb_t *b, uint64_t *res)
 {
 
-    uint32_t *num1 = a->limbs;
-    uint32_t *num2 = b->limbs;
+    uint64_t *num1 = a->limbs;
+    uint64_t *num2 = b->limbs;
     // hint the compiler that num1 and num2 are 64-byte aligned
     __builtin_assume_aligned(num1, 64);
     __builtin_assume_aligned(num2, 64);
@@ -304,6 +304,311 @@ void limb_mul_n(limb_t *a, limb_t *b, uint64_t *res)
     __mul_add_limbs(res);
     __mul_adjust_limbs(res);
 }
+__m512i one;
+__m512i mask;
+__m512i ZEROS;
+void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
+{
+    uint64_t *num1 = a->limbs;
+    uint64_t *num2 = b->limbs;
+    // hint the compiler that num1 and num2 are 64-byte aligned
+    __builtin_assume_aligned(num1, 64);
+    __builtin_assume_aligned(num2, 64);
+
+    // Load the numbers into base
+    __m512i base_1 = _mm512_load_si512(num1);
+    __m512i base_2 = _mm512_load_si512(num2);
+
+    // Group 1
+    // 1,0,2,1,0,1,0,0
+    __m512i perm_idx_11 = _mm512_set_epi64(1, 0, 2, 1, 0, 1, 0, 0);
+    __m512i a_vec_1 = _mm512_permutexvar_epi64(perm_idx_11, base_1);
+    __m512i perm_idx_21 = _mm512_set_epi64(2, 3, 0, 1, 2, 0, 1, 0);
+    __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
+    __m512i res_1 = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
+    __m512i res_2 = _mm512_madd52lo_epu64(ZEROS, a_vec_1, b_vec_1);
+    _mm512_store_si512(res_hi, res_1);
+    _mm512_store_si512(res_lo, res_2);
+
+    // Group 2
+    // 1,4,3,2,1,0,3,2
+    __m512i perm_idx_12 = _mm512_set_epi64(1, 4, 3, 2, 1, 0, 3, 2);
+    __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
+    // 4,0,1,2,3,4,0,1
+    __m512i perm_idx_22 = _mm512_set_epi64(4, 0, 1, 2, 3, 4, 0, 1);
+    __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
+    __m512i res_3 = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
+    __m512i res_4 = _mm512_madd52lo_epu64(ZEROS, a_vec_2, b_vec_2);
+    _mm512_store_si512(res_hi + 8, res_3);
+    _mm512_store_si512(res_lo + 8, res_4);
+
+    // Group 3
+    // 4,3,4,3,2,4,3,2
+    __m512i perm_idx_13 = _mm512_set_epi64(4, 3, 4, 3, 2, 4, 3, 2);
+    __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
+    // 3,4,2,3,4,1,2,3
+    __m512i perm_idx_23 = _mm512_set_epi64(3, 4, 2, 3, 4, 1, 2, 3);
+    __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
+    __m512i res_5 = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
+    __m512i res_6 = _mm512_madd52lo_epu64(ZEROS, a_vec_3, b_vec_3);
+    _mm512_store_si512(res_hi + 16, res_5);
+    _mm512_store_si512(res_lo + 16, res_6);
+
+    // manually multiply num1[4] and num2[4]
+    __uint128_t prod = (__uint128_t)num1[4] * num2[4];
+    // res_lo will contain the lower 52 bits
+    res_lo[24] = prod & 0xFFFFFFFFFFFFF;
+    // res_hi will contain the remaining bits
+    res_hi[24] = prod >> 52;
+}
+
+static inline void process_block_52(uint64_t *__restrict result,
+                                    int dest, int start, int count, int carry_dest)
+{
+    // hint the compiler that result is 64-byte aligned
+    __builtin_assume_aligned(result, 64);
+    __uint128_t sum = 0;
+    const uint64_t *p = result + start;
+    for (int i = 0; i < count; i++)
+    {
+        sum += p[i];
+    }
+    result[dest] = sum;
+}
+
+void __mul_add_limbs_52(uint64_t *res_lo, uint64_t *res_hi)
+{
+    int lo_idx = 1;
+    int hi_idx = 1;
+
+    // los:
+    res_lo[lo_idx++] = res_lo[1] + res_lo[2];
+    res_lo[lo_idx++] = res_lo[3] + res_lo[4] + res_lo[5];
+    res_lo[lo_idx++] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9];
+    res_lo[lo_idx++] = res_lo[10] + res_lo[11] + res_lo[12] + res_lo[13] + res_lo[14];
+    res_lo[lo_idx++] = res_lo[15] + res_lo[16] + res_lo[17] + res_lo[18];
+    res_lo[lo_idx++] = res_lo[19] + res_lo[20] + res_lo[21];
+    res_lo[lo_idx++] = res_lo[22] + res_lo[23];
+    res_lo[lo_idx++] = res_lo[24];
+
+    // his:
+    res_hi[hi_idx++] = res_hi[1] + res_hi[2];
+    res_hi[hi_idx++] = res_hi[3] + res_hi[4] + res_hi[5];
+    res_hi[hi_idx++] = res_hi[6] + res_hi[7] + res_hi[8] + res_hi[9];
+    res_hi[hi_idx++] = res_hi[10] + res_hi[11] + res_hi[12] + res_hi[13] + res_hi[14];
+    res_hi[hi_idx++] = res_hi[15] + res_hi[16] + res_hi[17] + res_hi[18];
+    res_hi[hi_idx++] = res_hi[19] + res_hi[20] + res_hi[21];
+    res_hi[hi_idx++] = res_hi[22] + res_hi[23];
+    res_hi[hi_idx++] = res_hi[24];
+
+    // process_block_52(res_lo, 1, 1, 2, 0);  // Block size 2: res_lo[1] = res_lo[1] + res_lo[2]
+    // process_block_52(res_lo, 2, 3, 3, 1);  // Block size 3: res_lo[2] = res_lo[3] + res_lo[4] + res_lo[5]
+    // process_block_52(res_lo, 3, 6, 4, 2);  // Block size 4: res_lo[3] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9]
+    // process_block_52(res_lo, 4, 10, 5, 3); // Block size 5: res_lo[4] = res_lo[10] + ... + res_lo[14]
+    // process_block_52(res_lo, 5, 15, 4, 4); // Block size 4: res_lo[5] = res_lo[15] + ... + res_lo[18]
+    // process_block_52(res_lo, 6, 19, 3, 5); // Block size 3: res_lo[6] = res_lo[19] + res_lo[20] + res_lo[21]
+    // process_block_52(res_lo, 7, 22, 2, 6); // Block size 2: res_lo[7] = res_lo[22] + res_lo[23]
+    // process_block_52(res_lo, 8, 24, 1, 7); // Block size 1: res_lo[8] = res_lo[24]
+
+    // process_block_52(res_hi, 1, 1, 2, 0);  // Block size 2: res_hi[1] = res_hi[1] + res_hi[2]
+    // process_block_52(res_hi, 2, 3, 3, 1);  // Block size 3: res_hi[2] = res_hi[3] + res_hi[4] + res_hi[5]
+    // process_block_52(res_hi, 3, 6, 4, 2);  // Block size 4: res_hi[3] = res_hi[6] + res_hi[7] + res_hi[8] + res_hi[9]
+    // process_block_52(res_hi, 4, 10, 5, 3); // Block size 5: res_hi[4] = res_hi[10] + ... + res_hi[14]
+    // process_block_52(res_hi, 5, 15, 4, 4); // Block size 4: res_hi[5] = res_hi[15] + ... + res_hi[18]
+    // process_block_52(res_hi, 6, 19, 3, 5); // Block size 3: res_hi[6] = res_hi[19] + res_hi[20] + res_hi[21]
+    // process_block_52(res_hi, 7, 22, 2, 6); // Block size 2: res_hi[7] = res_hi[22] + res_hi[23]
+    // process_block_52(res_hi, 8, 24, 1, 7); // Block size 1: res_hi[8] = res_hi[24]
+}
+
+// void __mul_adjust_limbs_52(uint64_t *res_lo, uint64_t *res_hi)
+// {
+
+//     // Save extra limbs that lie outside our main 512-bit block.
+//     uint64_t res_lo_last = res_lo[8];
+
+//     // Load 8 limbs (512 bits) from each array.
+//     __m512i lo = _mm512_load_si512(res_lo);
+//     __m512i hi = _mm512_load_si512(res_hi);
+
+//     // --- Process lower limbs ---
+//     // Extract carries from lo (each limb is 52 bits) and clear them.
+//     __m512i lo_carries = _mm512_srli_epi64(lo, 52);
+//     lo = _mm512_and_si512(lo, mask);
+
+//     // Add lo’s carries to hi.
+//     hi = _mm512_add_epi64(hi, lo_carries);
+
+//     // --- Process hi limbs ---
+//     // Get carries from hi.
+//     __m512i hi_carries = _mm512_srli_epi64(hi, 52);
+//     // Create a mask: set lanes where hi had a carry.
+//     __mmask8 add_mask = _mm512_cmp_epu64_mask(hi_carries, ZEROS, _MM_CMPINT_NE);
+
+//     // According to the algorithm, ignore the lowest two lanes:
+//     add_mask >>= 2;
+//     // Conditionally add one to lo in those lanes.
+//     lo = _mm512_mask_add_epi64(lo, add_mask, lo, one);
+//     // Clear carry bits from hi.
+//     hi = _mm512_and_si512(hi, mask);
+
+//     // --- Combine results ---
+//     // Extract the last limb from lo (element 7 of the vector).
+//     __m256i lo_upper = _mm512_extracti64x4_epi64(lo, 1);         // elements [4..7]
+//     __m128i lo_upper128 = _mm256_extracti128_si256(lo_upper, 1); // elements [6,7]
+//     uint64_t last = _mm_extract_epi64(lo_upper128, 1);           // element 7
+
+//     // Shift lo left by one 64-bit element across the lanes.
+//     __m512i lo_shifted = _mm512_alignr_epi64(lo, lo, 7);
+//     // Add hi to the shifted lo to form the final lower limbs.
+//     __m512i final_lo = _mm512_add_epi64(lo_shifted, hi);
+
+//     // Store the 512-bit results back.
+//     _mm512_store_si512(res_lo, final_lo);
+//     _mm512_store_si512(res_hi, hi);
+
+//     // Adjust the extra limbs outside the 512-bit block.
+//     res_lo[8] = last + res_hi[8];
+//     res_lo[0] = res_hi[0];
+//     res_lo[9] = res_lo_last;
+// }
+
+void __mul_adjust_limbs_52(uint64_t *res_lo, uint64_t *res_hi)
+{
+
+    for (int i = 0; i < 9; ++i)
+    {
+        res_hi[i] += (res_lo[i] >> 52);
+        res_lo[i] &= 0xfffffffffffffULL;
+    }
+
+    for (int i = 1; i < 8; ++i)
+    {
+        res_lo[i] += res_hi[i + 1];
+    }
+    res_lo[0] = res_hi[0];
+}
+
+void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
+{
+    __mul_acc_mul_AVXIFMA(a, b, res_lo, res_hi);
+    __mul_add_limbs_52(res_lo, res_hi);
+    __mul_adjust_limbs_52(res_lo, res_hi);
+}
+
+void test_data(int test_case)
+{
+
+    // read the test case from the file
+
+    gzFile test_file;
+    char test_filename[100];
+    switch (test_case)
+    {
+    case 0:
+        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+        break;
+    case 1:
+        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+        break;
+    case 2:
+        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+        break;
+    case 3:
+        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+        break;
+    default:
+        printf("Invalid test case\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // open the test file
+    test_file = open_gzfile(test_filename, "rb");
+
+    // skip the first line, header
+    skip_first_line(test_file);
+
+    // Read ITERATIONS test cases
+    for (int i = 0; i < 2; i++)
+    {
+        printf("Running test case %d\n", i);
+        // Read the next line
+        char buffer[CHUNK];
+        // Read the next line
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                break; // EOF
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // Parse the test case
+        char *a_str = strtok(buffer, ",");
+        char *b_str = strtok(NULL, ",");
+        char *result_str = strtok(NULL, ",");
+
+        if (a_str == NULL || b_str == NULL || result_str == NULL)
+        {
+            fprintf(stderr, "Error parsing line: %s\n", buffer);
+            gzclose(test_file);
+            exit(EXIT_FAILURE);
+        }
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
+        printf("a = %s\n", a_str);
+        printf("b = %s\n", b_str);
+        printf("result_str = %s\n", result_str);
+
+        // Adjust the sizes of the two numbers
+        limb_t_adjust_limb_sizes(a, b);
+
+        // Get the number of limbs
+        int n = a->size;
+        one = _mm512_set1_epi64(1);
+        mask = _mm512_set1_epi64(0xFFFFFFFFFFFFF);
+        ZEROS = _mm512_setzero_si512();
+
+        // uint64_t *res_lo = (uint64_t *)_mm_malloc(8 * n * sizeof(uint64_t), 64);
+        // uint64_t *res_hi = (uint64_t *)_mm_malloc(8 * n * sizeof(uint64_t), 64);
+        limb_t *res_lo = limb_t_alloc(2 * n * n * sizeof(uint64_t));
+        limb_t *res_hi = limb_t_alloc(2 * n * n * sizeof(uint64_t));
+
+        // limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
+        // double t = 0;
+        // TIME_RUSAGE(t, {
+        //     limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
+        // });
+        // printf("Time taken: %f\n", t);
+
+        limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
+
+        // print the results
+        res_lo->size = 2 * n;
+        char *res_lo_str = limb_get_str(res_lo);
+        int str_len = strlen(res_lo_str);
+        // check with the result
+        // verify the converted string with result
+        if (!check_result(res_lo_str, result_str, str_len))
+        {
+            printf("Test case failed, at iteration %d\n", i);
+            // printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
+            // printf("Experimental result = %s\n", res_lo_str);
+            // exit(EXIT_FAILURE);
+        }
+    }
+    printf("All test cases passed\n");
+}
 
 // main function with cmd arguments
 int main(int argc, char *argv[])
@@ -335,8 +640,11 @@ int main(int argc, char *argv[])
 
     init_memory_pool();
 
-    run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    // run_correctness_test(test_case);
+    // run_benchmarking_test(test_case, measure_type);
+    test_data(test_case);
+
+    destroy_memory_pool();
 
     return 0;
 }

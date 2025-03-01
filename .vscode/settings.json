@@ -71,6 +71,11 @@
     "limits": "c",
     "streambuf": "c",
     "tuple": "c",
-    "type_traits": "c"
+    "type_traits": "c",
+    "array": "c",
+    "string_view": "c",
+    "initializer_list": "c",
+    "span": "c",
+    "cstdint": "c"
   }
 }
