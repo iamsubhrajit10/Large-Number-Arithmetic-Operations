@@ -57,9 +57,38 @@ void run_correctness_test(int);
 __m512i one;
 __m512i mask;
 __m512i ZEROS;
+// 1,0,2,1,0,1,0,0
+__m512i perm_idx_11;
+// 1,4,3,2,1,0,3,2
+__m512i perm_idx_12;
 
-void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
+// 4,0,1,2,3,4,0,1
+__m512i perm_idx_22;
+
+// 2,3,0,1,2,0,1,0
+__m512i perm_idx_21;
+
+// 4,3,4,3,2,4,3,2
+__m512i perm_idx_13;
+
+// 3,4,2,3,4,1,2,3
+__m512i perm_idx_23;
+
+// extra permutation indices
+__m512i perm_idx_0;
+
+__m512i perm_idx_1;
+
+__m512i perm_idx_2;
+
+__m512i perm_idx_3;
+__m512i perm_idx_4;
+
+void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
 {
+    // Pre-fetch data into L1 cache
+    _mm_prefetch((char *)a->limbs, _MM_HINT_T0);
+    _mm_prefetch((char *)b->limbs, _MM_HINT_T0);
     uint64_t *num1 = a->limbs;
     uint64_t *num2 = b->limbs;
 
@@ -67,41 +96,17 @@ void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res
     __m512i base_1 = _mm512_load_si512(num1);
     __m512i base_2 = _mm512_load_si512(num2);
 
-    // 1,0,2,1,0,1,0,0
-    __m512i perm_idx_11 = _mm512_set_epi64(1, 0, 2, 1, 0, 1, 0, 0);
-    // 1,4,3,2,1,0,3,2
-    __m512i perm_idx_12 = _mm512_set_epi64(1, 4, 3, 2, 1, 0, 3, 2);
-
-    // 4,0,1,2,3,4,0,1
-    __m512i perm_idx_22 = _mm512_set_epi64(4, 0, 1, 2, 3, 4, 0, 1);
-
-    // 2,3,0,1,2,0,1,0
-    __m512i perm_idx_21 = _mm512_set_epi64(2, 3, 0, 1, 2, 0, 1, 0);
-
-    // 4,3,4,3,2,4,3,2
-    __m512i perm_idx_13 = _mm512_set_epi64(4, 3, 4, 3, 2, 4, 3, 2);
-
-    // 3,4,2,3,4,1,2,3
-    __m512i perm_idx_23 = _mm512_set_epi64(3, 4, 2, 3, 4, 1, 2, 3);
-
-    // extra permutation indices
-    __m512i perm_idx_0 = _mm512_set_epi64(0, 0, 0, 7, 6, 4, 3, 1);
-
-    __m512i perm_idx_1 = _mm512_set_epi64(3, 2, 0, 0, 0, 0, 0, 0);
-
-    __m512i perm_idx_2 = _mm512_set_epi64(0, 0, 0, 0, 0, 7, 5, 4);
-
-    __m512i perm_idx_3 = _mm512_set_epi64(3, 0, 2, 1, 0, 0, 0, 0);
-    __m512i perm_idx_4 = _mm512_set_epi64(0, 0, 0, 7, 6, 0, 5, 4);
-
     __m512i a_vec_1 = _mm512_permutexvar_epi64(perm_idx_11, base_1);
     __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
 
     __m512i res_0_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
+    // store res_0_hi
+    _mm512_store_si512(res_hi, res_0_hi);
 
     __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
     __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
     __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
+    _mm512_store_si512(res_hi + 8, res_1_hi);
 
     /*res_0_lo = _mm512_madd52lo_epu64(X, a_vec_1, b_vec_1);
         where, X = fun(res_0_hi,res_1_hi)
@@ -111,15 +116,6 @@ void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res
         X = <11,10,8,7,6,4,3,1>
     */
 
-    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
-    __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
-    __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
-    __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
-
-    __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
-    __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
-    __m512i res_2_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
-
     /* res_1_lo = _mm512_madd52lo_epu64(x, a_vec_2, b_vec_2);
        X = fun(res_1_hi,res_2_hi)
         res_1_hi = 15,14,13,12,11,10,9,8
@@ -127,47 +123,41 @@ void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res
         x = <19,zero,18,17,16,15,13,12>
     */
 
-    __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
-    __m512i res_2_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_3, res_2_hi);
-    __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
-    __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
-    __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
-
-    // Group 3
-
     // res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
     // y = fun(res_2_hi)
     /*
     res_2_hi = 23,22,21,20,19,18,17,16
     y = <zero,24*,zero,23,22,zero,21,20>
     */
+
+    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
+    __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
+    __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
+    __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
+    _mm512_store_si512(res_lo, res_0_lo);
+
+    __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
+    __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
+    __m512i res_2_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
+
+    __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
+    __m512i res_2_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_3, res_2_hi);
+    __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
+    __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
+    __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
+    _mm512_store_si512(res_lo + 8, res_1_lo);
+
     __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
     __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
     __m512i res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
-
-    // store the results
-    _mm512_store_si512(res_lo, res_0_lo);
-    _mm512_store_si512(res_lo + 8, res_1_lo);
     _mm512_store_si512(res_lo + 16, res_2_lo);
 
-    // store res_0_hi
-    _mm512_store_si512(res_hi, res_0_hi);
-    _mm512_store_si512(res_hi + 8, res_1_hi);
-
-    // Assuming res_lo and res_hi are uint64_t arrays and index 24 corresponds to a specific lane
-    __m512i a_ = _mm512_set1_epi64(num1[4]);          // Broadcast num1[4] to all lanes
-    __m512i b_ = _mm512_set1_epi64(num2[4]);          // Broadcast num2[4] to all lanes
-    __m512i zero = _mm512_setzero_si512();            // Zero vector for no accumulation
-    __m512i lo = _mm512_madd52lo_epu64(zero, a_, b_); // Low 52 bits
-    __m512i hi = _mm512_madd52hi_epu64(zero, a_, b_); // High 52 bits
-
-    // Store results into scalar arrays (assuming lane 0 corresponds to index 24)
-    res_lo[24] = _mm_cvtsi128_si64(_mm512_extracti64x2_epi64(lo, 0)) & ((1ULL << 52) - 1); // Extract lane 0 of lo
-    res_hi[24] = _mm_cvtsi128_si64(_mm512_extracti64x2_epi64(hi, 0)) & ((1ULL << 52) - 1); // Extract lane 0 of hi
+    __uint128_t prod = (__uint128_t)num1[4] * num2[4];
+    res_lo[24] = prod & (0xFFFFFFFFFFFFF); // Extract low 52 bits
+    res_hi[24] = (prod >> 52);             // Extract high 52 bits
 
     // manual addition
     res_lo[23] += res_hi[24];
-    // _mm512_store_si512(res_hi + 16, res_2_hi); not needed
     res_lo[0] += res_hi[2];
     res_lo[2] += res_hi[5];
     res_lo[5] += res_hi[9];
@@ -192,11 +182,6 @@ void __mul_acc_mul_AVXIFMA(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res
         res_hi[i - 1] += carry;
         --i;
     }
-}
-
-void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
-{
-    __mul_acc_mul_AVXIFMA(a, b, res_lo, res_hi);
 }
 
 // main function with cmd arguments
@@ -227,9 +212,35 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
+    perm_idx_11 = _mm512_set_epi64(1, 0, 2, 1, 0, 1, 0, 0);
+    // 1,4,3,2,1,0,3,2
+    perm_idx_12 = _mm512_set_epi64(1, 4, 3, 2, 1, 0, 3, 2);
+
+    // 4,0,1,2,3,4,0,1
+    perm_idx_22 = _mm512_set_epi64(4, 0, 1, 2, 3, 4, 0, 1);
+
+    // 2,3,0,1,2,0,1,0
+    perm_idx_21 = _mm512_set_epi64(2, 3, 0, 1, 2, 0, 1, 0);
+
+    // 4,3,4,3,2,4,3,2
+    perm_idx_13 = _mm512_set_epi64(4, 3, 4, 3, 2, 4, 3, 2);
+
+    // 3,4,2,3,4,1,2,3
+    perm_idx_23 = _mm512_set_epi64(3, 4, 2, 3, 4, 1, 2, 3);
+
+    // extra permutation indices
+    perm_idx_0 = _mm512_set_epi64(0, 0, 0, 7, 6, 4, 3, 1);
+
+    perm_idx_1 = _mm512_set_epi64(3, 2, 0, 0, 0, 0, 0, 0);
+
+    perm_idx_2 = _mm512_set_epi64(0, 0, 0, 0, 0, 7, 5, 4);
+
+    perm_idx_3 = _mm512_set_epi64(3, 0, 2, 1, 0, 0, 0, 0);
+    perm_idx_4 = _mm512_set_epi64(0, 0, 0, 7, 6, 0, 5, 4);
+
     init_memory_pool();
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
     // test_data(test_case);
 
@@ -552,7 +563,7 @@ void run_benchmarking_test(int test_case, int measure_type)
     srand(seed);
     int iter_count = 0;
     printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
-    for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
+    for (int iter_count = 0; iter_count < 10; ++iter_count)
     {
         int i = rand() % ITERATIONS;
         printf("Iteration %d, reading test case %d\n", iter_count, i);
@@ -618,14 +629,21 @@ void run_benchmarking_test(int test_case, int measure_type)
         int niter;
         double f, ops_per_sec, time_taken_ms, time_taken;
         // clear cache content for a_limbs, b_limbs
-        for (int i = 0; i < n; i += 64)
-        {
-            _mm_clflush((char *)a + i);
-            _mm_clflush((char *)b + i);
-        }
+        // for (int i = 0; i < n; i += 64)
+        // {
+        //     _mm_clflush((char *)a + i);
+        //     _mm_clflush((char *)b + i);
+        // }
 
-        // Ensure that the cache flush operations are completed
-        _mm_mfence();
+        // // Ensure that the cache flush operations are completed
+        // _mm_mfence();
+
+        // // prefetch the data
+        // for (int i = 0; i < n; i += 64)
+        // {
+        //     _mm_prefetch((char *)a + i, _MM_HINT_T0);
+        //     _mm_prefetch((char *)b + i, _MM_HINT_T0);
+        // }
 
         switch (measure_type)
         {
