@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     return 0;
@@ -493,15 +493,6 @@ void run_benchmarking_test(int test_case, int measure_type)
         size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
         size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
 
-        for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
-        {
-            _mm_clflush((char *)a->_mp_d + i);
-        }
-
-        for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
-        {
-            _mm_clflush((char *)b->_mp_d + i);
-        }
         // Ensure that the cache flush operations are completed
         _mm_mfence();
         // Ensure the flush is completed
@@ -509,6 +500,18 @@ void run_benchmarking_test(int test_case, int measure_type)
         unsigned long long int t0, t1;
         int niter;
         double f, ops_per_sec, time_taken_ms;
+
+        // clear cache content for a_limbs, b_limbs
+        for (int i = 0; i < a_size; i += 64)
+        {
+            _mm_clflush((char *)a->_mp_d + i);
+        }
+        for (int i = 0; i < b_size; i += 64)
+        {
+            _mm_clflush((char *)b->_mp_d + i);
+        }
+        // Ensure that the cache flush operations are completed
+        _mm_mfence();
 
         switch (measure_type)
         {

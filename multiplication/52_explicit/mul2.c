@@ -87,60 +87,35 @@ __m512i perm_idx_4;
 void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
 {
     // Pre-fetch data into L1 cache
-    _mm_prefetch((char *)a->limbs, _MM_HINT_T0);
-    _mm_prefetch((char *)b->limbs, _MM_HINT_T0);
+    _mm_prefetch((char *)a->limbs, _MM_HINT_NTA);
+    _mm_prefetch((char *)b->limbs, _MM_HINT_NTA);
     uint64_t *num1 = a->limbs;
     uint64_t *num2 = b->limbs;
 
     // Load the numbers into base
     __m512i base_1 = _mm512_load_si512(num1);
-    __m512i base_2 = _mm512_load_si512(num2);
-
     __m512i a_vec_1 = _mm512_permutexvar_epi64(perm_idx_11, base_1);
-    __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
+    __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
 
+    __m512i base_2 = _mm512_load_si512(num2);
+    __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
     __m512i res_0_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
-    // store res_0_hi
+    __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
+    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
+    __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
     _mm512_store_si512(res_hi, res_0_hi);
 
-    __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
-    __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
-    __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
-    _mm512_store_si512(res_hi + 8, res_1_hi);
-
-    /*res_0_lo = _mm512_madd52lo_epu64(X, a_vec_1, b_vec_1);
-        where, X = fun(res_0_hi,res_1_hi)
-        res_0_hi = 7 ,6 ,5 ,4 ,3 ,2 ,1,0
-        res_1_hi = 15,14,13,12,11,10,9,8
-                                3, 2,1,0
-        X = <11,10,8,7,6,4,3,1>
-    */
-
-    /* res_1_lo = _mm512_madd52lo_epu64(x, a_vec_2, b_vec_2);
-       X = fun(res_1_hi,res_2_hi)
-        res_1_hi = 15,14,13,12,11,10,9,8
-        res_2_hi = 23,22,21,20,19,18,17,16
-        x = <19,zero,18,17,16,15,13,12>
-    */
-
-    // res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
-    // y = fun(res_2_hi)
-    /*
-    res_2_hi = 23,22,21,20,19,18,17,16
-    y = <zero,24*,zero,23,22,zero,21,20>
-    */
-
-    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
     __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
     __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
     __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
     _mm512_store_si512(res_lo, res_0_lo);
 
+    __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
+    _mm512_store_si512(res_hi + 8, res_1_hi);
+
     __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
     __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
     __m512i res_2_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
-
-    __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
     __m512i res_2_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_3, res_2_hi);
     __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
     __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
@@ -153,35 +128,43 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     _mm512_store_si512(res_lo + 16, res_2_lo);
 
     __uint128_t prod = (__uint128_t)num1[4] * num2[4];
-    res_lo[24] = prod & (0xFFFFFFFFFFFFF); // Extract low 52 bits
-    res_hi[24] = (prod >> 52);             // Extract high 52 bits
 
-    // manual addition
-    res_lo[23] += res_hi[24];
+// add labels
+label1:
+    // _mm_mfence();
+    res_lo[23] += (prod >> 52);
     res_lo[0] += res_hi[2];
     res_lo[2] += res_hi[5];
     res_lo[5] += res_hi[9];
     res_lo[9] += res_hi[14];
 
-    // man_add_lo
-    res_hi[1] = res_lo[0];
-    res_hi[2] = res_lo[1] + res_lo[2];
-    res_hi[3] = res_lo[3] + res_lo[4] + res_lo[5];
-    res_hi[4] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9];
-    res_hi[5] = res_lo[10] + res_lo[11] + res_lo[12] + res_lo[13] + res_lo[14];
-    res_hi[6] = res_lo[15] + res_lo[16] + res_lo[17] + res_lo[18];
-    res_hi[7] = res_lo[19] + res_lo[20] + res_lo[21];
+label2:
+    res_hi[9] = prod & 0xFFFFFFFFFFFFF;
     res_hi[8] = res_lo[22] + res_lo[23];
-    res_hi[9] = res_lo[24];
-
-    int i = 9;
-    while (i > 0)
-    {
-        uint64_t carry = res_hi[i] >> 52;
-        res_hi[i] &= 0xFFFFFFFFFFFFF;
-        res_hi[i - 1] += carry;
-        --i;
-    }
+    uint carry = res_hi[8] >> 52;
+    res_hi[8] &= 0xFFFFFFFFFFFFF;
+    res_hi[7] = res_lo[19] + res_lo[20] + res_lo[21] + carry;
+    carry = res_hi[7] >> 52;
+    res_hi[7] &= 0xFFFFFFFFFFFFF;
+    res_hi[6] = res_lo[15] + res_lo[16] + res_lo[17] + res_lo[18] + carry;
+    carry = res_hi[6] >> 52;
+    res_hi[6] &= 0xFFFFFFFFFFFFF;
+    res_hi[5] = res_lo[10] + res_lo[11] + res_lo[12] + res_lo[13] + res_lo[14] + carry;
+    carry = res_hi[5] >> 52;
+    res_hi[5] &= 0xFFFFFFFFFFFFF;
+    res_hi[4] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9] + carry;
+    carry = res_hi[4] >> 52;
+    res_hi[4] &= 0xFFFFFFFFFFFFF;
+    res_hi[3] = res_lo[3] + res_lo[4] + res_lo[5] + carry;
+    carry = res_hi[3] >> 52;
+    res_hi[3] &= 0xFFFFFFFFFFFFF;
+    res_hi[2] = res_lo[1] + res_lo[2] + carry;
+    carry = res_hi[2] >> 52;
+    res_hi[2] &= 0xFFFFFFFFFFFFF;
+    res_hi[1] = res_lo[0] + carry;
+    carry = res_hi[1] >> 52;
+    res_hi[1] &= 0xFFFFFFFFFFFFF;
+    res_hi[0] += carry;
 }
 
 // main function with cmd arguments
@@ -240,9 +223,8 @@ int main(int argc, char *argv[])
 
     init_memory_pool();
 
-    // run_correctness_test(test_case);
+    run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
-    // test_data(test_case);
 
     destroy_memory_pool();
 
@@ -629,14 +611,14 @@ void run_benchmarking_test(int test_case, int measure_type)
         int niter;
         double f, ops_per_sec, time_taken_ms, time_taken;
         // clear cache content for a_limbs, b_limbs
-        // for (int i = 0; i < n; i += 64)
-        // {
-        //     _mm_clflush((char *)a + i);
-        //     _mm_clflush((char *)b + i);
-        // }
+        for (int i = 0; i < n; i += 64)
+        {
+            _mm_clflush((char *)a + i);
+            _mm_clflush((char *)b + i);
+        }
 
-        // // Ensure that the cache flush operations are completed
-        // _mm_mfence();
+        // Ensure that the cache flush operations are completed
+        _mm_mfence();
 
         // // prefetch the data
         // for (int i = 0; i < n; i += 64)
