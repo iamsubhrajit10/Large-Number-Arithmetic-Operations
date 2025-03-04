@@ -84,6 +84,11 @@ __m512i perm_idx_2;
 __m512i perm_idx_3;
 __m512i perm_idx_4;
 
+__m512i perm_idx_r_hi_0;
+__m512i perm_idx_r_hi_1;
+__m512i perm_idx_res_0_X_2_lo;
+__m512i perm_idx_res_1_X_2_lo;
+
 void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
 {
     // Pre-fetch data into L1 cache
@@ -108,7 +113,7 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
     __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
     __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
-    _mm512_store_si512(res_lo, res_0_lo);
+    // _mm512_store_si512(res_lo, res_0_lo);
 
     __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
     _mm512_store_si512(res_hi + 8, res_1_hi);
@@ -120,7 +125,7 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
     __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
     __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
-    _mm512_store_si512(res_lo + 8, res_1_lo);
+    // _mm512_store_si512(res_lo + 8, res_1_lo);
 
     __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
     __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
@@ -129,11 +134,29 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
 
     __uint128_t prod = (__uint128_t)num1[4] * num2[4];
 
-    res_lo[23] += (prod >> 52);
-    res_lo[0] += res_hi[2];
-    res_lo[2] += res_hi[5];
-    res_lo[5] += res_hi[9];
-    res_lo[9] += res_hi[14];
+    // res_lo[23] += (prod >> 52);
+    // res_lo[0] += res_hi[2];
+    // res_lo[2] += res_hi[5];
+    // res_lo[5] += res_hi[9];
+    // res_lo[9] += res_hi[14];
+
+    // permute res_hi_0 and res_hi_1
+    __m512i res_0_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_0_hi);
+    __m512i res_1_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_1_hi);
+    // blend res_hi_0_perm_1 and res_hi_1_perm_1
+    __m512i res_hi_0_1 = _mm512_mask_blend_epi64(0b00001100, res_0_hi_perm_2, res_1_hi_perm_2);
+    __m512i X_2 = _mm512_mask_blend_epi64(0b00001111, ZEROS, res_hi_0_1);
+
+    __m512i res_0_X_2_lo = _mm512_permutexvar_epi64(perm_idx_res_0_X_2_lo, X_2);
+    res_0_lo = _mm512_add_epi64(res_0_lo, res_0_X_2_lo);
+    _mm512_store_si512(res_lo, res_0_lo);
+
+    __m512i res_1_X_2_lo = _mm512_permutexvar_epi64(perm_idx_res_1_X_2_lo, X_2);
+    res_1_lo = _mm512_add_epi64(res_1_lo, res_1_X_2_lo);
+
+    // store the results
+
+    _mm512_store_si512(res_lo + 8, res_1_lo);
 
     res_hi[9] = prod & 0xFFFFFFFFFFFFF;
     res_hi[8] = res_lo[22] + res_lo[23];
@@ -216,6 +239,10 @@ int main(int argc, char *argv[])
 
     perm_idx_3 = _mm512_set_epi64(3, 0, 2, 1, 0, 0, 0, 0);
     perm_idx_4 = _mm512_set_epi64(0, 0, 0, 7, 6, 0, 5, 4);
+    perm_idx_r_hi_0 = _mm512_set_epi64(0, 0, 0, 0, 0, 0, 5, 2);
+    perm_idx_r_hi_1 = _mm512_set_epi64(0, 0, 0, 0, 6, 1, 0, 0);
+    perm_idx_res_0_X_2_lo = _mm512_set_epi64(4, 4, 2, 4, 4, 1, 4, 0);
+    perm_idx_res_1_X_2_lo = _mm512_set_epi64(4, 4, 4, 4, 4, 4, 3, 4);
 
     init_memory_pool();
 
