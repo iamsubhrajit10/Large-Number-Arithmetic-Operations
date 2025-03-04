@@ -96,6 +96,7 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     _mm_prefetch((char *)b->limbs, _MM_HINT_NTA);
     uint64_t *num1 = a->limbs;
     uint64_t *num2 = b->limbs;
+    __uint128_t prod = (__uint128_t)num1[4] * num2[4];
 
     // Load the numbers into base
     __m512i base_1 = _mm512_load_si512(num1);
@@ -106,17 +107,26 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
     __m512i res_0_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
     __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
-    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
-    __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
-    _mm512_store_si512(res_hi, res_0_hi);
 
+    __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
+
+    // permute res_hi_0 and res_hi_1
+    __m512i res_0_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_0, res_0_hi);
+    __m512i res_1_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_1_hi);
+    // extract first element of res_0_hi
+
+    // _mm512_store_si512(res_hi, res_0_hi);
+
+    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
+    __m128i lower = _mm512_extracti64x2_epi64(res_0_hi, 0);
+    res_hi[0] = _mm_extract_epi64(lower, 0);
     __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
     __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
     __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
     // _mm512_store_si512(res_lo, res_0_lo);
 
     __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
-    _mm512_store_si512(res_hi + 8, res_1_hi);
+    // _mm512_store_si512(res_hi + 8, res_1_hi);
 
     __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
     __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
@@ -126,24 +136,6 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
     __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
     // _mm512_store_si512(res_lo + 8, res_1_lo);
-
-    __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
-    __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
-    __m512i res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
-    _mm512_store_si512(res_lo + 16, res_2_lo);
-
-    __uint128_t prod = (__uint128_t)num1[4] * num2[4];
-
-    // res_lo[23] += (prod >> 52);
-    // res_lo[0] += res_hi[2];
-    // res_lo[2] += res_hi[5];
-    // res_lo[5] += res_hi[9];
-    // res_lo[9] += res_hi[14];
-
-    // permute res_hi_0 and res_hi_1
-    __m512i res_0_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_0, res_0_hi);
-    __m512i res_1_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_1_hi);
-    // blend res_hi_0_perm_1 and res_hi_1_perm_1
     __m512i res_hi_0_1 = _mm512_mask_blend_epi64(0b00001100, res_0_hi_perm_2, res_1_hi_perm_2);
     __m512i X_2 = _mm512_mask_blend_epi64(0b00001111, ZEROS, res_hi_0_1);
 
@@ -154,13 +146,26 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     __m512i res_1_X_2_lo = _mm512_permutexvar_epi64(perm_idx_res_1_X_2_lo, X_2);
     res_1_lo = _mm512_add_epi64(res_1_lo, res_1_X_2_lo);
 
+    __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
+    __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
+    __m512i res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
+    _mm512_store_si512(res_lo + 16, res_2_lo);
+
+    // res_lo[23] += (prod >> 52);
+    // res_lo[0] += res_hi[2];
+    // res_lo[2] += res_hi[5];
+    // res_lo[5] += res_hi[9];
+    // res_lo[9] += res_hi[14];
+
+    // blend res_hi_0_perm_1 and res_hi_1_perm_1
+
     // store the results
 
     _mm512_store_si512(res_lo + 8, res_1_lo);
 
     res_lo[23] += (prod >> 52);
-
     res_hi[9] = prod & 0xFFFFFFFFFFFFF;
+
     res_hi[8] = res_lo[22] + res_lo[23];
     uint carry = res_hi[8] >> 52;
     res_hi[8] &= 0xFFFFFFFFFFFFF;
@@ -248,7 +253,7 @@ int main(int argc, char *argv[])
 
     init_memory_pool();
 
-    // run_correctness_test(test_case);
+    run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
