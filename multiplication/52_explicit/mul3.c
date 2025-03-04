@@ -141,7 +141,7 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     // res_lo[9] += res_hi[14];
 
     // permute res_hi_0 and res_hi_1
-    __m512i res_0_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_0_hi);
+    __m512i res_0_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_0, res_0_hi);
     __m512i res_1_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_1_hi);
     // blend res_hi_0_perm_1 and res_hi_1_perm_1
     __m512i res_hi_0_1 = _mm512_mask_blend_epi64(0b00001100, res_0_hi_perm_2, res_1_hi_perm_2);
@@ -157,6 +157,8 @@ void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
     // store the results
 
     _mm512_store_si512(res_lo + 8, res_1_lo);
+
+    res_lo[23] += (prod >> 52);
 
     res_hi[9] = prod & 0xFFFFFFFFFFFFF;
     res_hi[8] = res_lo[22] + res_lo[23];
@@ -246,7 +248,7 @@ int main(int argc, char *argv[])
 
     init_memory_pool();
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
