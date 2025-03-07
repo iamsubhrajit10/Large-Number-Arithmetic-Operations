@@ -31,6 +31,13 @@ static uint8_t *memory_pool = NULL;
 static size_t memory_pool_offset = 0;
 static size_t memory_pool_free_count = 0;
 
+__m512i AVX512_ZEROS;   // AVX512 vector of zeros
+__m256i AVX256_ZEROS;   // AVX256 vector of zeros
+__m128i AVX128_ZEROS;   // AVX128 vector of zeros
+__m512i AVX512_52_MASK; // AVX512 vector of 52-bit mask
+__m256i AVX256_52_MASK; // AVX256 vector of 52-bit mask
+__m128i AVX128_52_MASK; // AVX128 vector of 52-bit mask
+
 void init_memory_pool()
 {
     memory_pool = (uint8_t *)_mm_malloc(MEMORY_POOL_SIZE, 64);
@@ -40,6 +47,13 @@ void init_memory_pool()
         exit(EXIT_FAILURE);
     }
     memory_pool_offset = 0;
+    AVX512_ZEROS = _mm512_setzero_si512();
+    AVX256_ZEROS = _mm256_setzero_si256();
+    AVX128_ZEROS = _mm_setzero_si128();
+
+    AVX512_52_MASK = _mm512_set1_epi64(0xFFFFFFFFFFFFF);
+    AVX256_52_MASK = _mm256_set1_epi64x(0xFFFFFFFFFFFFF);
+    AVX128_52_MASK = _mm_set1_epi64x(0xFFFFFFFFFFFFF);
 }
 
 void *memory_pool_alloc(size_t size)

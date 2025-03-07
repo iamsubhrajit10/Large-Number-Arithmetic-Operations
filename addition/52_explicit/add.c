@@ -52,6 +52,13 @@ int CORE_NO; // Core number to run the tests on
 
 int NUM_BITS; // Number of bits for the numbers
 
+extern __m512i AVX512_ZEROS;   // AVX512 vector of zeros
+extern __m256i AVX256_ZEROS;   // AVX256 vector of zeros
+extern __m128i AVX128_ZEROS;   // AVX128 vector of zeros
+extern __m512i AVX512_52_MASK; // AVX512 vector of 52-bit mask
+extern __m256i AVX256_52_MASK; // AVX256 vector of 52-bit mask
+extern __m128i AVX128_52_MASK; // AVX128 vector of 52-bit mask
+
 // Declare 64-byte aligned global pointers
 aligned_uint64_ptr sum_space;
 aligned_uint64_ptr carry_space;
@@ -98,9 +105,6 @@ void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
     uint carry = result->limbs[4] >> 52;
     result->limbs[4] &= 0xFFFFFFFFFFFFF;
 
-    // limit: 52 bit across all 4 64-bit elements
-    __m256i mask = _mm256_set1_epi64x(0xFFFFFFFFFFFFF);
-
     /* Phase1: Add the numbers without accounting for carry */
     // load 4 64-bit limb into 256-bit AVX vector
     __m256i a_vec = _mm256_load_si256((__m256i *)a->limbs);
@@ -111,7 +115,7 @@ void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
     /* Phase2: Carry Detection*/
     bool carry_detect = false;
     // check if result_vec[i] >= mask
-    __mmask8 carry_mask = _mm256_cmpgt_epu64_mask(result_vec, mask);
+    __mmask8 carry_mask = _mm256_cmpgt_epu64_mask(result_vec, AVX256_52_MASK);
     carry_mask += (carry << 4);
     carry_detect = !!carry_mask;
 
@@ -121,15 +125,9 @@ void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
     /* Phase3: Carry Propagation */
     if (carry_detect)
     {
-        carry_detect = false;
-        // based on carry_mask, perform result[i]&mask
-        result_vec = _mm256_and_si256(result_vec, mask);
-        // based on carry_mask, add 1 to the next element
-        __m256i carry_vec = _mm256_mask_set1_epi64(_mm256_setzero_si256(), carry_mask, 1);
+        __m256i carry_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1);
         result_vec = _mm256_add_epi64(result_vec, carry_vec);
-        // detect carry
-        carry_mask = _mm256_cmpgt_epu64_mask(result_vec, mask);
-        // carry_detect = !!carry_mask;
+        result_vec = _mm256_and_si256(result_vec, AVX256_52_MASK);
     }
     // store the result
     _mm256_store_si256((__m256i *)result->limbs, result_vec);
@@ -139,27 +137,24 @@ void limb_t_add_n_512(limb_t *result, limb_t *a, limb_t *b)
 {
     int n = a->size;
     /* handle the last two limb manually using 128-bit vector */
-    __m128i mask_128 = _mm_set1_epi64x(0xFFFFFFFFFFFFF);
     __m128i a_vec_128 = _mm_load_si128((__m128i *)(a->limbs + 8));
     __m128i b_vec_128 = _mm_load_si128((__m128i *)(b->limbs + 8));
     __m128i result_vec_128 = _mm_add_epi64(a_vec_128, b_vec_128);
-    __mmask8 carry_mask_128 = _mm_cmpgt_epu64_mask(result_vec_128, mask_128);
+    __mmask8 carry_mask_128 = _mm_cmpgt_epu64_mask(result_vec_128, AVX128_52_MASK);
     uint c = carry_mask_128 & 0x01;
     carry_mask_128 >>= 1;
     bool carry_detect_128 = !!carry_mask_128;
     if (carry_detect_128)
     {
-        __m128i carry_vec_128 = _mm_mask_set1_epi64(_mm_setzero_si128(), carry_mask_128, 1);
+        __m128i carry_vec_128 = _mm_mask_set1_epi64(AVX128_ZEROS, carry_mask_128, 1);
         result_vec_128 = _mm_add_epi64(result_vec_128, carry_vec_128);
-        __mmask8 carry_mask_128_1 = _mm_cmpgt_epu64_mask(result_vec_128, mask_128);
-        carry_mask_128 = carry_mask_128 | carry_mask_128_1 | c;
-        result_vec_128 = _mm_and_si128(result_vec_128, mask_128);
+        __mmask8 carry_mask_128_1 = _mm_cmpgt_epu64_mask(result_vec_128, AVX128_52_MASK);
+        result_vec_128 = _mm_and_si128(result_vec_128, AVX128_52_MASK);
     }
     // store the result
     _mm_store_si128((__m128i *)(result->limbs + 8), result_vec_128);
 
     /* Handle the first 8 elements using AVX512 */
-    __m512i mask = _mm512_set1_epi64(0xFFFFFFFFFFFFF);
 
     /* Phase1: Add the numbers without accounting for carry */
     // load 8 64-bit limb into 512-bit AVX vector
@@ -169,7 +164,7 @@ void limb_t_add_n_512(limb_t *result, limb_t *a, limb_t *b)
 
     /* Phase2: Carry Detection*/
     bool carry_detect = false;
-    __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, mask);
+    __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
     carry_mask >>= 1;
     carry_mask |= (c << 7);
     carry_detect = !!carry_mask;
@@ -177,11 +172,9 @@ void limb_t_add_n_512(limb_t *result, limb_t *a, limb_t *b)
     /* Phase3: Carry Propagation */
     if (carry_detect)
     {
-        __m512i carry_vec = _mm512_mask_set1_epi64(_mm512_setzero_si512(), carry_mask, 1);
+        __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1);
         result_vec = _mm512_add_epi64(result_vec, carry_vec);
-        __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, mask);
-        mask = mask | mask_1;
-        result_vec = _mm512_and_si512(result_vec, mask);
+        result_vec = _mm512_and_si512(result_vec, AVX512_52_MASK);
     }
     // store the result
     _mm512_store_si512((__m512i *)result->limbs, result_vec);
@@ -191,25 +184,21 @@ void limb_t_add_n_1024(limb_t *result, limb_t *a, limb_t *b)
 {
     int n = a->size;
     /* handle the last four limb manually using 256-bit vector */
-    __m256i mask_256 = _mm256_set1_epi64x(0xFFFFFFFFFFFFF);
     __m256i a_vec_256 = _mm256_load_si256((__m256i *)(a->limbs + 16));
     __m256i b_vec_256 = _mm256_load_si256((__m256i *)(b->limbs + 16));
     __m256i result_vec_256 = _mm256_add_epi64(a_vec_256, b_vec_256);
-    __mmask8 carry_mask_256 = _mm256_cmpgt_epu64_mask(result_vec_256, mask_256);
+    __mmask8 carry_mask_256 = _mm256_cmpgt_epu64_mask(result_vec_256, AVX256_52_MASK);
     uint c = carry_mask_256 & 0x01;
     carry_mask_256 >>= 1;
     bool carry_detect_256 = !!carry_mask_256;
     if (carry_detect_256)
     {
-        __m256i carry_vec_256 = _mm256_mask_set1_epi64(_mm256_setzero_si256(), carry_mask_256, 1);
+        __m256i carry_vec_256 = _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask_256, 1);
         result_vec_256 = _mm256_add_epi64(result_vec_256, carry_vec_256);
-        __mmask8 carry_mask_256_1 = _mm256_cmpgt_epu64_mask(result_vec_256, mask_256);
-        carry_mask_256 = carry_mask_256 | carry_mask_256_1 | c;
-        result_vec_256 = _mm256_and_si256(result_vec_256, mask_256);
+        result_vec_256 = _mm256_and_si256(result_vec_256, AVX256_52_MASK);
     }
     // store the result
     _mm256_store_si256((__m256i *)(result->limbs + 16), result_vec_256);
-    __m512i mask = _mm512_set1_epi64(0xFFFFFFFFFFFFF);
     uint c0 = c;
     for (int i = 8; i >= 0; i -= 8)
     {
@@ -223,7 +212,7 @@ void limb_t_add_n_1024(limb_t *result, limb_t *a, limb_t *b)
 
         /* Phase2: Carry Detection*/
         bool carry_detect = false;
-        __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, mask);
+        __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
         c = carry_mask & 0x01;
         carry_mask >>= 1;
         carry_mask |= (c0 << 7);
@@ -232,12 +221,11 @@ void limb_t_add_n_1024(limb_t *result, limb_t *a, limb_t *b)
         /* Phase3: Carry Propagation */
         if (carry_detect)
         {
-            __m512i carry_vec = _mm512_mask_set1_epi64(_mm512_setzero_si512(), carry_mask, 1);
+            __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1);
             result_vec = _mm512_add_epi64(result_vec, carry_vec);
-            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, mask);
+            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
             c = mask_1 & 0x01;
-            mask = (mask | mask_1) | c0;
-            result_vec = _mm512_and_si512(result_vec, mask);
+            result_vec = _mm512_and_si512(result_vec, AVX512_52_MASK);
         }
         // store the result
         _mm512_store_si512((__m512i *)(result->limbs + i), result_vec);
@@ -247,7 +235,6 @@ void limb_t_add_n_1024(limb_t *result, limb_t *a, limb_t *b)
 void limb_t_add_n_2048(limb_t *result, limb_t *a, limb_t *b)
 {
     int n = a->size;
-    __m512i mask = _mm512_set1_epi64(0xFFFFFFFFFFFFF);
     uint c0 = 0, c = 0;
     for (int i = 32; i >= 0; i -= 8)
     {
@@ -261,7 +248,59 @@ void limb_t_add_n_2048(limb_t *result, limb_t *a, limb_t *b)
 
         /* Phase2: Carry Detection*/
         bool carry_detect = false;
-        __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, mask);
+        __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
+        c = carry_mask & 0x01;
+        carry_mask >>= 1;
+        carry_mask |= (c0 << 7);
+        carry_detect = !!carry_mask;
+
+        /* Phase3: Carry Propagation */
+        if (carry_detect)
+        {
+            __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1);
+            result_vec = _mm512_add_epi64(result_vec, carry_vec);
+            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
+            c = mask_1 & 0x01;
+            result_vec = _mm512_and_si512(result_vec, AVX512_52_MASK);
+        }
+        // store the result
+        _mm512_store_si512((__m512i *)(result->limbs + i), result_vec);
+    }
+}
+
+void limb_t_add_n_16384(limb_t *result, limb_t *a, limb_t *b)
+{
+    int n = a->size;
+    /* handle the last four limb manually using 256-bit vector */
+    __m256i a_vec_256 = _mm256_load_si256((__m256i *)(a->limbs + 312));
+    __m256i b_vec_256 = _mm256_load_si256((__m256i *)(b->limbs + 312));
+    __m256i result_vec_256 = _mm256_add_epi64(a_vec_256, b_vec_256);
+    __mmask8 carry_mask_256 = _mm256_cmpgt_epu64_mask(result_vec_256, AVX256_52_MASK);
+    uint c = carry_mask_256 & 0x01;
+    carry_mask_256 >>= 1;
+    bool carry_detect_256 = !!carry_mask_256;
+    if (carry_detect_256)
+    {
+        __m256i carry_vec_256 = _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask_256, 1);
+        result_vec_256 = _mm256_add_epi64(result_vec_256, carry_vec_256);
+        result_vec_256 = _mm256_and_si256(result_vec_256, AVX256_52_MASK);
+    }
+    // store the result
+    _mm256_store_si256((__m256i *)(result->limbs + 312), result_vec_256);
+    uint c0 = c;
+    for (int i = 304; i >= 0; i -= 8)
+    {
+        c0 = c;
+
+        /* Phase1: Add the numbers without accounting for carry */
+        // load 8 64-bit limb into 512-bit AVX vector
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a->limbs + i));
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b->limbs + i));
+        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);
+
+        /* Phase2: Carry Detection*/
+        bool carry_detect = false;
+        __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
         c = carry_mask & 0x01;
         carry_mask >>= 1;
         carry_mask |= (c0 << 7);
@@ -272,13 +311,18 @@ void limb_t_add_n_2048(limb_t *result, limb_t *a, limb_t *b)
         {
             __m512i carry_vec = _mm512_mask_set1_epi64(_mm512_setzero_si512(), carry_mask, 1);
             result_vec = _mm512_add_epi64(result_vec, carry_vec);
-            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, mask);
+            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);
             c = mask_1 & 0x01;
-            mask = (mask | mask_1) | c0;
-            result_vec = _mm512_and_si512(result_vec, mask);
+            result_vec = _mm512_and_si512(result_vec, AVX512_52_MASK);
         }
         // store the result
         _mm512_store_si512((__m512i *)(result->limbs + i), result_vec);
+    }
+    if (c)
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
     }
 }
 
@@ -368,6 +412,33 @@ void run_correctness_test(int test_case)
     // skip the first line, header
     skip_first_line(test_file);
 
+    // extract bit size
+    int bits = NUM_BITS;
+
+    void *func_ptr;
+
+    switch (bits)
+    {
+    case 256:
+        func_ptr = limb_t_add_n_256;
+        break;
+    case 512:
+        func_ptr = limb_t_add_n_512;
+        break;
+    case 1024:
+        func_ptr = limb_t_add_n_1024;
+        break;
+    case 2048:
+        func_ptr = limb_t_add_n_2048;
+        break;
+    case 16384:
+        func_ptr = limb_t_add_n_16384;
+        break;
+    default:
+        printf("Invalid bit size\n");
+        exit(EXIT_FAILURE);
+    }
+
     // Read ITERATIONS test cases
     for (int i = 0; i < ITERATIONS; i++)
     {
@@ -414,8 +485,12 @@ void run_correctness_test(int test_case)
 
         limb_t *sum_limb = limb_t_alloc(n);
 
+        // Call the function to add a and b
+        void (*add_func)(limb_t *, limb_t *, limb_t *) = func_ptr;
+
         /***** Start of addition *****/
-        limb_t_add_n_2048(sum_limb, a, b);
+
+        add_func(sum_limb, a, b);
 
         /***** End of addition *****/
 
@@ -491,6 +566,30 @@ void run_benchmarking_test(int test_case, int measure_type)
     char test_filename[100];
     char timespec_filename[100];
     char cputime_filename[100];
+
+    int bits = NUM_BITS;
+    void *func_ptr;
+    switch (bits)
+    {
+    case 256:
+        func_ptr = limb_t_add_n_256;
+        break;
+    case 512:
+        func_ptr = limb_t_add_n_512;
+        break;
+    case 1024:
+        func_ptr = limb_t_add_n_1024;
+        break;
+    case 2048:
+        func_ptr = limb_t_add_n_2048;
+        break;
+    case 16384:
+        func_ptr = limb_t_add_n_16384;
+        break;
+    default:
+        printf("Invalid bit size\n");
+        exit(EXIT_FAILURE);
+    }
 
     switch (test_case)
     {
@@ -708,6 +807,9 @@ void run_benchmarking_test(int test_case, int measure_type)
 
         limb_t *sum_limb = limb_t_alloc(n);
 
+        // Call the function to add a and b
+        void (*add_func)(limb_t *, limb_t *, limb_t *) = func_ptr;
+
         printf("Starting addition\n");
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
@@ -733,7 +835,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_add_n_2048(a, b, sum_limb));
+            TIME_RDTSC(time_taken, add_func(a, b, sum_limb));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -744,7 +846,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n_2048(a, b, sum_limb);
+                add_func(a, b, sum_limb);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -771,7 +873,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_add_n_2048(a, b, sum_limb));
+            TIME_TIMESPEC(time_taken, add_func(a, b, sum_limb));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -784,7 +886,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n_2048(a, b, sum_limb);
+                add_func(a, b, sum_limb);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -811,7 +913,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_add_n_2048(a, b, sum_limb));
+            TIME_RUSAGE(time_taken, add_func(a, b, sum_limb));
 
             printf("done\n");
 
@@ -824,7 +926,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n_2048(a, b, sum_limb);
+                add_func(a, b, sum_limb);
             }
             t1 = cputime() - t0;
             printf("done!\n");
