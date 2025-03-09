@@ -84,6 +84,7 @@ void trim_trailing_newline(char *str)
 }
 
 // Function to check if the result of the addition is correct
+// Function to check if the result of the addition is correct
 bool check_result(char *result, char *result_gmp, int result_size)
 {
     // Check if both results start with a negative symbol
@@ -103,6 +104,13 @@ bool check_result(char *result, char *result_gmp, int result_size)
     // Trim trailing newline characters from both strings
     trim_trailing_newline(result);
     trim_trailing_newline(result_gmp);
+
+    // convert the result to lower case
+    for (int i = 0; i < result_size; i++)
+    {
+        result[i] = tolower(result[i]);
+        result_gmp[i] = tolower(result_gmp[i]);
+    }
 
     // Check if the lengths of the adjusted strings are equal
     if (strlen(result) != strlen(result_gmp))
@@ -244,32 +252,32 @@ static inline unsigned long long measure_rdtscp_end()
 }
 
 // Function to measure the time taken by a function using the rusage system call
-#define TIME_RUSAGE(t, func)                    \
-    do                                          \
-    {                                           \
-        long int __t0, __times, __t, __tmp;     \
-        __times = 1;                            \
-        {                                       \
-            func;                               \
-        }                                       \
-        do                                      \
-        {                                       \
-            __times <<= 1;                      \
-            __t0 = cputime();                   \
-            for (__t = 0; __t < __times; __t++) \
-            {                                   \
-                func;                           \
-            }                                   \
-            __tmp = cputime() - __t0;           \
-        } while (__tmp < 250000);               \
-        (t) = (double)__tmp / __times;          \
+#define TIME_RUSAGE(t, func)                     \
+    do                                           \
+    {                                            \
+        long long int __t0, __times, __t, __tmp; \
+        __times = 1;                             \
+        {                                        \
+            func;                                \
+        }                                        \
+        do                                       \
+        {                                        \
+            __times <<= 1;                       \
+            __t0 = cputime();                    \
+            for (__t = 0; __t < __times; __t++)  \
+            {                                    \
+                func;                            \
+            }                                    \
+            __tmp = cputime() - __t0;            \
+        } while (__tmp < 250000);                \
+        (t) = (double)__tmp / __times;           \
     } while (0)
 
 // Function to measure the time taken by a function using the timespec clock_gettime system call
 #define TIME_TIMESPEC(t, func)                      \
     do                                              \
     {                                               \
-        long int __tmp, __times;                    \
+        long long int __tmp, __times;               \
         struct timespec __t0, __t1;                 \
         __times = 1;                                \
         {                                           \
@@ -290,27 +298,27 @@ static inline unsigned long long measure_rdtscp_end()
     } while (0)
 
 // Function to measure the time taken by a function using the rdtsc instruction
-#define TIME_RDTSC(t, func)                            \
-    do                                                 \
-    {                                                  \
-        unsigned long long __t0, __t1, __times, __tmp; \
-        __times = 1;                                   \
-        {                                              \
-            func;                                      \
-        }                                              \
-        do                                             \
-        {                                              \
-            __times <<= 1;                             \
-            __t0 = measure_rdtsc_start();              \
-            for (int __t = 0; __t < __times; __t++)    \
-            {                                          \
-                func;                                  \
-            }                                          \
-            __t1 = measure_rdtscp_end();               \
-            __tmp = __t1 - __t0;                       \
-        } while (__tmp < 700000000);                   \
-        __tmp = __tmp * 0.000357;                      \
-        (t) = (double)(__tmp) / __times;               \
+#define TIME_RDTSC(t, func)                         \
+    do                                              \
+    {                                               \
+        long long __t0, __t1, __times, __tmp;       \
+        __times = 1;                                \
+        {                                           \
+            func;                                   \
+        }                                           \
+        do                                          \
+        {                                           \
+            __times <<= 1;                          \
+            __t0 = measure_rdtsc_start();           \
+            for (int __t = 0; __t < __times; __t++) \
+            {                                       \
+                func;                               \
+            }                                       \
+            __t1 = measure_rdtscp_end();            \
+            __tmp = __t1 - __t0;                    \
+        } while (__tmp < 700000000);                \
+        __tmp = __tmp * 0.000357;                   \
+        (t) = (double)(__tmp) / __times;            \
     } while (0)
 
 #endif // MYUTILS_H
