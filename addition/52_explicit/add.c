@@ -59,35 +59,18 @@ extern __m512i AVX512_52_MASK; // AVX512 vector of 52-bit mask
 extern __m256i AVX256_52_MASK; // AVX256 vector of 52-bit mask
 extern __m128i AVX128_52_MASK; // AVX128 vector of 52-bit mask
 
-// Declare 64-byte aligned global pointers
-aligned_uint64_ptr sum_space;
-aligned_uint64_ptr carry_space;
-// uint8_t *carry_masks; // Array to store the carry masks
-
-// Declare the global variables
-int sum_space_ptr = 0;   // pointer to the next available space in sum_space
-int carry_space_ptr = 0; // pointer to the next available space in carry_space
-
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
 
-inline void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b) __attribute__((always_inline));
-inline void right_shift(__mmask8 *carry_mask, size_t n) __attribute__((always_inline));
-
-// Function to right shift the carry mask by one bit
-inline void right_shift(__mmask8 *carry_mask, size_t n)
-{
-    __mmask8 carry_prev = 0;
-
-    for (int i = 0; i < n; i++)
-    {
-        __mmask8 carry_next = carry_mask[i] & 0x1;
-        carry_mask[i] = (carry_mask[i] >> 1) | carry_prev;
-        carry_prev = carry_next << 7;
-    }
-}
-
+/*
+ * @brief Adds two single limb numbers
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @param carry The carry generated from the addition
+ * @return none
+ */
 #define __ADD_N_1(result, a, b, carry) \
     do                                 \
     {                                  \
@@ -96,6 +79,14 @@ inline void right_shift(__mmask8 *carry_mask, size_t n)
         *(result) &= 0xFFFFFFFFFFFFF;  \
     } while (0)
 
+/*
+ * @brief Adds two two-limbed numbers, using 128-bit vectors
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @param carry The carry generated from the addition
+ * @return none
+ */
 #define __ADD_N_2(result, a, b, carry)                                            \
     do                                                                            \
     {                                                                             \
@@ -116,6 +107,15 @@ inline void right_shift(__mmask8 *carry_mask, size_t n)
         _mm_store_si128((__m128i *)result, result_vec);                           \
     } while (0)
 
+/*
+ * @brief Adds two four-limbed numbers, using 256-bit vectors
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @param c_in The carry-in generated from the previous addition
+ * @param c_out The carry-out generated from the addition
+ * @return none
+ */
 #define __ADD_N_4(result, a, b, c_in, c_out)                                                    \
     do                                                                                          \
     {                                                                                           \
@@ -141,6 +141,15 @@ inline void right_shift(__mmask8 *carry_mask, size_t n)
         _mm256_store_si256((__m256i *)(result), result_vec);                                    \
     } while (0)
 
+/*
+ * @brief Adds two eight-limbed numbers, using 512-bit vectors
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @param c_in The carry-in generated from the previous addition
+ * @param c_out The carry-out generated from the addition
+ * @return none
+ */
 #define __ADD_N_8(result, a, b, c_in, c_out)                                         \
     do                                                                               \
     {                                                                                \
@@ -164,11 +173,13 @@ inline void right_shift(__mmask8 *carry_mask, size_t n)
     } while (0)
 
 /**
- * @brief Adds two numbers represented as limb_t, and stores the sum in result
- *
- * @param result The result of the addition, stored as limb_t
- * @param a The first number to add, stored as limb_t
- * @param b The second number to add, stored as limb_t
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 5 limbs are required to store 256-bit number.
+ * @brief Handles the last limb first, then the remaining limbs at once.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
  * @return none
  */
 void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
@@ -176,8 +187,27 @@ void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
     int c_in = 0, c_out = 0;
     __ADD_N_1((result->limbs + 4), (a->limbs + 4), (b->limbs + 4), &c_in);
     __ADD_N_4((result->limbs), (a->limbs), (b->limbs), &c_in, &c_out);
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 10 limbs are required to store 512-bit number.
+ * @brief Handles the last 2 limbs first, then the remaining limbs at once.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_512(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -187,8 +217,27 @@ void limb_t_add_n_512(limb_t *result, limb_t *a, limb_t *b)
 
     __ADD_N_2((res_ptr + 8), (a_ptr + 8), (b_ptr + 8), &c_in);
     __ADD_N_8((res_ptr), (a_ptr), (b_ptr), &c_in, &c_out);
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 20 limbs are required to store 1024-bit number.
+ * @brief Handles the last 4 limbs first, then the remaining limbs using two successive 512-bit addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_1024(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -197,12 +246,32 @@ void limb_t_add_n_1024(limb_t *result, limb_t *a, limb_t *b)
     uint64_t *a_ptr = a->limbs;
     uint64_t *b_ptr = b->limbs;
 
-    __ADD_N_8((res_ptr + 16), (a_ptr + 16), (b_ptr + 16), &c_in, &c_out);
+    __ADD_N_4((res_ptr + 16), (a_ptr + 16), (b_ptr + 16), &c_in, &c_out);
     c_in = c_out;
     __ADD_N_8((res_ptr + 8), (a_ptr + 8), (b_ptr + 8), &c_in, &c_out);
     c_in = c_out;
     __ADD_N_8((res_ptr), (a_ptr), (b_ptr), &c_in, &c_out);
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
+
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 40 limbs are required to store 2048-bit number.
+ * @brief Handles it using five successive 512-bit addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 
 void limb_t_add_n_2048(limb_t *result, limb_t *a, limb_t *b)
 {
@@ -221,8 +290,27 @@ void limb_t_add_n_2048(limb_t *result, limb_t *a, limb_t *b)
     __ADD_N_8((res_ptr + 8), (a_ptr + 8), (b_ptr + 8), &c_in, &c_out);
     c_in = c_out;
     __ADD_N_8((res_ptr), (a_ptr), (b_ptr), &c_in, &c_out);
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 79 limbs are required to store 4096-bit number.
+ * @brief Handles it using one 1-limb addition, one 2-limb addition, one 4-limb addition, and nine 8-limb addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_4096(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -244,8 +332,27 @@ void limb_t_add_n_4096(limb_t *result, limb_t *a, limb_t *b)
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), &c_in, &c_out);
         c_in = c_out;
     }
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 158 limbs are required to store 8192-bit number.
+ * @brief Handles it using one 2-limb addition, one 4-limb addition, and nineteen 8-limb addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_8192(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -271,9 +378,21 @@ void limb_t_add_n_8192(limb_t *result, limb_t *a, limb_t *b)
         int n = a->size;
         limb_t_realloc(result, n + 1);
         result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
     }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 316 limbs are required to store 16384-bit number.
+ * @brief Handles it using one 4-limb addition, and thirty-nine 8-limb addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_16384(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -295,9 +414,21 @@ void limb_t_add_n_16384(limb_t *result, limb_t *a, limb_t *b)
         int n = a->size;
         limb_t_realloc(result, n + 1);
         result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
     }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 631 limbs are required to store 32768-bit number.
+ * @brief Handles it using one 1-limb addition, one 2-limb addition, one 4-limb addition, and seventy-eight 8-limb addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_32768(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -314,8 +445,27 @@ void limb_t_add_n_32768(limb_t *result, limb_t *a, limb_t *b)
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), &c_in, &c_out);
         c_in = c_out;
     }
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 1261 limbs are required to store 65536-bit number.
+ * @brief Handles it using one 1-limb addition one 4-limb addition, and one hundred fifty-seven 8-limb addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_65536(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -331,8 +481,27 @@ void limb_t_add_n_65536(limb_t *result, limb_t *a, limb_t *b)
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), &c_in, &c_out);
         c_in = c_out;
     }
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
 }
 
+/**
+ * @brief Adds two numbers represented as limb_t, and stores the sum in result.
+ * @brief Adds from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 2521 limbs are required to store 131072-bit number.
+ * @brief Handles it using one 1-limb addition, and three hundred fifteen 8-limb addition.
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @return none
+ */
 void limb_t_add_n_131072(limb_t *result, limb_t *a, limb_t *b)
 {
     int c_in = 0, c_out = 0;
@@ -346,6 +515,15 @@ void limb_t_add_n_131072(limb_t *result, limb_t *a, limb_t *b)
     {
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), &c_in, &c_out);
         c_in = c_out;
+    }
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
     }
 }
 
