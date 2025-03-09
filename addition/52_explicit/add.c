@@ -319,13 +319,10 @@ void limb_t_add_n_4096(limb_t *result, limb_t *a, limb_t *b)
     uint64_t *a_ptr = a->limbs;
     uint64_t *b_ptr = b->limbs;
 
-    // Process initial non-uniform blocks
     __ADD_N_1((res_ptr + 78), (a_ptr + 78), (b_ptr + 78), &c_in);
     __ADD_N_2((res_ptr + 76), (a_ptr + 76), (b_ptr + 76), &c_in);
     __ADD_N_4((res_ptr + 72), (a_ptr + 72), (b_ptr + 72), &c_in, &c_out);
     c_in = c_out;
-
-    // Main loop: Unrolling by 16 instead of 8
 
     for (int i = 64; i >= 0; i -= 8)
     {
@@ -361,7 +358,6 @@ void limb_t_add_n_8192(limb_t *result, limb_t *a, limb_t *b)
     uint64_t *a_ptr = a->limbs;
     uint64_t *b_ptr = b->limbs;
 
-    // Process initial non-uniform blocks
     __ADD_N_2((res_ptr + 156), (a_ptr + 156), (b_ptr + 156), &c_in);
     __ADD_N_4((res_ptr + 152), (a_ptr + 152), (b_ptr + 152), &c_in, &c_out);
     c_in = c_out;
@@ -546,27 +542,27 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     {
         limb_t_add_n_2048(result, a, b);
     }
-    else if (n <= 80)
+    else if (n <= 79)
     {
         limb_t_add_n_4096(result, a, b);
     }
-    else if (n <= 160)
+    else if (n <= 158)
     {
         limb_t_add_n_8192(result, a, b);
     }
-    else if (n <= 320)
+    else if (n <= 316)
     {
         limb_t_add_n_16384(result, a, b);
     }
-    else if (n <= 640)
+    else if (n <= 631)
     {
         limb_t_add_n_32768(result, a, b);
     }
-    else if (n <= 1280)
+    else if (n <= 1261)
     {
         limb_t_add_n_65536(result, a, b);
     }
-    else if (n <= 2560)
+    else if (n <= 2521)
     {
         limb_t_add_n_131072(result, a, b);
     }
@@ -606,7 +602,7 @@ int main(int argc, char *argv[])
 
     init_memory_pool();
 
-    // run_correctness_test(test_case);
+    run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
