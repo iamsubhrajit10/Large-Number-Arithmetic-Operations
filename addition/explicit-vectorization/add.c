@@ -52,125 +52,133 @@ int CORE_NO; // Core number to run the tests on
 
 int NUM_BITS; // Number of bits for the numbers
 
-// Declare 64-byte aligned global pointers
-aligned_uint64_ptr sum_space;
-aligned_uint64_ptr carry_space;
-// uint8_t *carry_masks; // Array to store the carry masks
-
-// Declare the global variables
-int sum_space_ptr = 0;   // pointer to the next available space in sum_space
-int carry_space_ptr = 0; // pointer to the next available space in carry_space
+extern __m512i AVX512_ZEROS; // AVX512 vector of zeros
+extern __m256i AVX256_ZEROS; // AVX256 vector of zeros
+extern __m128i AVX128_ZEROS; // AVX128 vector of zeros
+extern __m512i AVX512_MASK;  // AVX512 vector of 64-bit mask
+extern __m256i AVX256_MASK;  // AVX256 vector of 64-bit mask
+extern __m128i AVX128_MASK;  // AVX128 vector of 64-bit mask
 
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
 
-inline void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b) __attribute__((always_inline));
-inline void right_shift(__mmask8 *carry_mask, size_t n) __attribute__((always_inline));
-
-// Function to right shift the carry mask by one bit
-inline void right_shift(__mmask8 *carry_mask, size_t n)
-{
-    __mmask8 carry_prev = 0;
-
-    for (int i = 0; i < n; i++)
-    {
-        __mmask8 carry_next = carry_mask[i] & 0x1;
-        carry_mask[i] = (carry_mask[i] >> 1) | carry_prev;
-        carry_prev = carry_next << 7;
-    }
-}
-
-/**
- * @brief Adds two numbers represented as limb_t, and stores the sum in result
- *
- * @param result The result of the addition, stored as limb_t
- * @param a The first number to add, stored as limb_t
- * @param b The second number to add, stored as limb_t
+/*
+ * @brief Adds two four-limbed numbers, using 256-bit vectors
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @param c_in The carry-in generated from the previous addition
+ * @param c_out The carry-out generated from the addition
  * @return none
  */
-void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
+#define __ADD_N_4(result, a, b, c_in, c_out)                                                                \
+    do                                                                                                      \
+    {                                                                                                       \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                                                  \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                                                  \
+        __m256i result_vec = _mm256_add_epi64(a_vec, b_vec);                                                \
+        __mmask8 carry_mask = _mm256_cmplt_epu64_mask(result_vec, a_vec);                                   \
+        *(c_out) = carry_mask & 1;                                                                          \
+        carry_mask |= (*(c_in) << 4);                                                                       \
+        bool carry_detect = !!carry_mask;                                                                   \
+        carry_mask >>= 1;                                                                                   \
+        if (carry_detect)                                                                                   \
+        {                                                                                                   \
+            __m256i result_vec_new = _mm256_add_epi64(result_vec,                                           \
+                                                      _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1)); \
+            __mmask8 mask_1 = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                          \
+            *(c_out) = (mask_1 & 0b1) | *(c_out);                                                           \
+            result_vec = result_vec_new;                                                                    \
+        }                                                                                                   \
+        _mm256_store_si256((__m256i *)(result), result_vec);                                                \
+    } while (0)
+
+/*
+ * @brief Adds two eight-limbed numbers, using 512-bit vectors
+ * @param result The result of the addition
+ * @param a The first number to add
+ * @param b The second number to add
+ * @param c_in The carry-in generated from the previous addition
+ * @param c_out The carry-out generated from the addition
+ * @return none
+ */
+#define __ADD_N_8(result, a, b, c_in, c_out)                                         \
+    do                                                                               \
+    {                                                                                \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                           \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                           \
+        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                         \
+        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);            \
+        *(c_out) = carry_mask & 1;                                                   \
+        carry_mask >>= 1;                                                            \
+        carry_mask |= (*(c_in) << 7);                                                \
+        bool carry_detect = !!carry_mask;                                            \
+        if (carry_detect)                                                            \
+        {                                                                            \
+            __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1); \
+            __m512i result_vec_new = _mm512_add_epi64(result_vec, carry_vec);        \
+            __mmask8 mask_1 = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);   \
+            result_vec = result_vec_new;                                             \
+            *(c_out) = (mask_1 & 0b1) | *(c_out);                                    \
+        }                                                                            \
+        _mm512_store_si512((__m512i *)(result), result_vec);                         \
+    } while (0)
+
+void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
+    int c_in = 0, c_out = 0;
 
-    size_t n = a->size;
-    bool more_digit = false;
-    int bit_mask_size = (n + 7) >> 3;
-    int bm_itr = bit_mask_size - 1;
-    __mmask8 bm[bit_mask_size];
-    int i = 0;
-
-    aligned_uint64_ptr a_limbs = a->limbs;
-    aligned_uint64_ptr b_limbs = b->limbs;
-    aligned_uint64_ptr result_limbs = result->limbs;
-
-    while (i < n)
-    {
-        // load 8 64-bit integers from a and b
-        __m512i a_vec = _mm512_load_epi64((const void *)(a_limbs + i));
-        __m512i b_vec = _mm512_load_epi64((const void *)(b_limbs + i));
-
-        // add a and b
-        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);
-
-        // store the result
-        _mm512_store_epi64((void *)(result_limbs + i), result_vec);
-
-        // check if result_vec[j] < a_vec[j]
-        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);
-
-        bm[bm_itr] = carry_mask;
-        i += 8;
-        bm_itr--;
-    }
-
-    if (unlikely(bm[bit_mask_size - 1] & 0x1))
-    {
-        more_digit = true;
-    }
-
-    right_shift(bm, bit_mask_size);
-
-    int last_carry_block = -1;
-    bm_itr = bit_mask_size - 1;
-    i = 0;
-
-    while (i < n)
-    {
-        // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_load_epi64((const void *)(result_limbs + i));
-        // load 8-bit mask from bm[j]
-        __mmask8 carry_mask = bm[bm_itr];
-
-        // perform the addition
-        __m512i temp_result_vec = _mm512_mask_add_epi64(result_vec, carry_mask, result_vec, AVX512_ONES);
-        _mm512_store_epi64((void *)(result_limbs + i), temp_result_vec);
-
-        // check if result_vec[j] >= LIMB_DIGITS
-        carry_mask = _mm512_cmplt_epu64_mask(temp_result_vec, result_vec);
-        if (unlikely(carry_mask))
-        {
-            last_carry_block = i;
-            // update the borrow array
-            bm[bm_itr] = carry_mask;
-        }
-        i += 8;
-        bm_itr--;
-    }
-
-    // TODO: implement sequential carry propagation for worst case
-    // if (unlikely(last_carry_block != -1))
-    // {
-    //     }
-
-    // check if more digit is needed
-    if (more_digit)
+    __ADD_N_4((result->limbs), (a->limbs), (b->limbs), &c_in, &c_out);
+    if (unlikely(c_out))
     {
         // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
         limb_t_realloc(result, n + 1);
         result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
     }
 }
 
+void __add_n(limb_t *result, limb_t *a, limb_t *b)
+{
+    int c_in = 0, c_out = 0;
+
+    uint64_t *res_ptr = result->limbs;
+    uint64_t *a_ptr = a->limbs;
+    uint64_t *b_ptr = b->limbs;
+    int n = a->size;
+    for (int i = n - 8; i >= 0; i -= 8)
+    {
+        __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), &c_in, &c_out);
+        c_in = c_out;
+    }
+    if (unlikely(c_out))
+    {
+        // shift the result by one digit to the right, before reallocate the memory
+        int n = a->size;
+        limb_t_realloc(result, n + 1);
+        result->limbs[0] = 1;
+        result->size = n + 1;
+        result->sign = a->sign;
+    }
+}
+
+void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
+{
+    int n = a->size;
+    if (n <= 4)
+    {
+        limb_t_add_n_256(result, a, b);
+    }
+    else
+    {
+        __add_n(result, a, b);
+    }
+}
+
+// main function with cmd arguments
 int main(int argc, char *argv[])
 {
     if (argc != 5)
@@ -198,28 +206,14 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
-    // Use _mm_malloc to allocate memory aligned to 64 bytes
-    sum_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    carry_space = (aligned_uint64_ptr)_mm_malloc(1 << 30, 64);
-    // borrow_masks = (uint8_t *)malloc(1 << 30);
-
-    if (sum_space == NULL || carry_space == NULL)
-    {
-        perror("Memory allocation failed for sum_space or carry_space\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // set sum_space_ptr and carry_space_ptr to 0
-    sum_space_ptr = 0;
-    carry_space_ptr = 0;
-
-    // set sum_space and carry_space to 0
     init_memory_pool();
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
+
+    return 0;
 }
 
 /*
@@ -317,19 +311,18 @@ void run_correctness_test(int test_case)
         limb_t *sum_limb = limb_t_alloc(n);
 
         /***** Start of addition *****/
+
         limb_t_add_n(sum_limb, a, b);
 
         /***** End of addition *****/
 
         char *sum_str = limb_get_str(sum_limb);
-        // sum_size = strlen(sum_str);
+        int str_len = strlen(sum_str);
 
         // verify the converted string with result
-        if (!check_result(sum_str, result_str, sum_limb->size))
+        if (!check_result(sum_str, result_str, str_len))
         {
             printf("Test case failed, at iteration %d\n", i);
-            printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
-            printf("Experimental result = %s\n", sum_str);
             exit(EXIT_FAILURE);
         }
         limb_t_free(a);
@@ -615,7 +608,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         printf("Starting addition\n");
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
-        int niter;
+        unsigned long long niter;
         double f, ops_per_sec, time_taken_ms, time_taken;
         // clear cache content for a_limbs, b_limbs
         for (int i = 0; i < n; i += 64)
@@ -642,7 +635,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = measure_rdtsc_start();
@@ -681,7 +674,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             struct timespec ts_0, ts_1;
@@ -722,7 +715,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = cputime();

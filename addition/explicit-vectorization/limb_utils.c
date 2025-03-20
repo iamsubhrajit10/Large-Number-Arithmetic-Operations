@@ -24,9 +24,12 @@ typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an 
 typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
 
 // Declare the SIMD constants
-__m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
-__m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
-__m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
+__m512i AVX512_ZEROS; // AVX512 vector of zeros
+__m256i AVX256_ZEROS; // AVX256 vector of zeros
+__m128i AVX128_ZEROS; // AVX128 vector of zeros
+__m512i AVX512_MASK;  // AVX512 vector of 52-bit mask
+__m256i AVX256_MASK;  // AVX256 vector of 52-bit mask
+__m128i AVX128_MASK;  // AVX128 vector of 52-bit mask
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -45,9 +48,13 @@ void init_memory_pool()
         exit(EXIT_FAILURE);
     }
     memory_pool_offset = 0;
-    AVX512_ZEROS = _mm512_set1_epi64(0);
-    AVX512_ONES = _mm512_set1_epi64(1);
-    AVX512_LIMB_DIGITS = _mm512_set1_epi64(LIMB_BITS);
+    AVX512_ZEROS = _mm512_setzero_si512();
+    AVX256_ZEROS = _mm256_setzero_si256();
+    AVX128_ZEROS = _mm_setzero_si128();
+
+    AVX512_MASK = _mm512_set1_epi64(0xFFFFFFFFFFFFFFFF);
+    AVX256_MASK = _mm256_set1_epi64x(0xFFFFFFFFFFFFFFFF);
+    AVX128_MASK = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF);
 }
 
 void *memory_pool_alloc(size_t size)
