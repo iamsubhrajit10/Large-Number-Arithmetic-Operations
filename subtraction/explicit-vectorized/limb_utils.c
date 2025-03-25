@@ -24,9 +24,12 @@ typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an 
 typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an aligned pointer to uint64_t
 
 // Declare the SIMD constants
-__m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
-__m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
-__m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
+__m512i AVX512_ZEROS; // AVX512 vector of zeros
+__m256i AVX256_ZEROS; // AVX256 vector of zeros
+__m128i AVX128_ZEROS; // AVX128 vector of zeros
+__m512i AVX512_MASK;  // AVX512 vector of 52-bit mask
+__m256i AVX256_MASK;  // AVX256 vector of 52-bit mask
+__m128i AVX128_MASK;  // AVX128 vector of 52-bit mask
 
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
@@ -45,9 +48,13 @@ void init_memory_pool()
         exit(EXIT_FAILURE);
     }
     memory_pool_offset = 0;
-    AVX512_ZEROS = _mm512_set1_epi64(0);
-    AVX512_ONES = _mm512_set1_epi64(1);
-    AVX512_LIMB_DIGITS = _mm512_set1_epi64(LIMB_BITS);
+    AVX512_ZEROS = _mm512_setzero_si512();
+    AVX256_ZEROS = _mm256_setzero_si256();
+    AVX128_ZEROS = _mm_setzero_si128();
+
+    AVX512_MASK = _mm512_set1_epi64(0xFFFFFFFFFFFFFFFF);
+    AVX256_MASK = _mm256_set1_epi64x(0xFFFFFFFFFFFFFFFF);
+    AVX128_MASK = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF);
 }
 
 void *memory_pool_alloc(size_t size)
@@ -62,7 +69,6 @@ void *memory_pool_alloc(size_t size)
     }
 
     void *ptr = memory_pool + aligned_offset;
-    memset(ptr, 0, size + 64);
     memory_pool_offset = aligned_offset + size;
     return ptr;
 }
@@ -88,8 +94,6 @@ void destroy_memory_pool()
     }
 }
 
-int turn = 0;
-
 limb_t *limb_t_alloc(size_t size)
 {
     // check if the size is 0
@@ -106,14 +110,15 @@ limb_t *limb_t_alloc(size_t size)
         exit(EXIT_FAILURE);
     }
 
+    // Allocate memory with fixed alignment of 64
     limb->limbs = (uint64_t *)memory_pool_alloc(size * sizeof(uint64_t));
-
     // check if the memory allocation failed
     if (limb->limbs == NULL)
     {
         perror("Memory allocation failed for limb_t_alloc\n");
         exit(EXIT_FAILURE);
     }
+
     limb->size = size;
     limb->sign = false; // Initialize sign to false (positive)
 
@@ -228,7 +233,7 @@ char *limb_get_str(const limb_t *num)
     return str;
 }
 
-void __set_str(uint8_t *digits, size_t n, limb_t *num)
+void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num)
 {
     // Convert the digits to limbs
     size_t num_limbs = num->size;
@@ -243,7 +248,7 @@ void __set_str(uint8_t *digits, size_t n, limb_t *num)
             {
                 break;
             }
-            limb |= ((aligned_uint64)digits[i]) << shift;
+            limb |= digits[i] << shift;
             i--;
         }
         num->limbs[limb_index--] = limb;
@@ -267,7 +272,7 @@ limb_t *limb_set_str(const char *str)
     // allocate temporary memory for hex-string to digit conversion
     size_t hex_len = strlen(str);
 
-    uint8_t *digits = (uint8_t *)memory_pool_alloc(hex_len * sizeof(uint8_t));
+    aligned_uint64_ptr digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
     if (digits == NULL)
     {
         perror("Memory allocation failed for digits\n");

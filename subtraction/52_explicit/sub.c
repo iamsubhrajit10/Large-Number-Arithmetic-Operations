@@ -48,7 +48,7 @@ Note: For pre-processing, we can use the realloc function to sub leading AVX512_
 
 #define ITERATIONS 100000 // Number of iterations for each test
 
-extern int CORE_NO; // Core number to run the tests on
+int CORE_NO; // Core number to run the tests on
 
 int NUM_BITS; // Number of bits for the numbers
 

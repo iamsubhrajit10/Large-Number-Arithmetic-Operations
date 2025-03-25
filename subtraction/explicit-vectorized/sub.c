@@ -9,7 +9,7 @@ This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
 b --> array of digits of second number, of length m
 #Pre-processing:
-1. Equalize the length of both arrays by Subtracting leading AVX512_ZEROS to the smaller array.
+1. Equalize the length of both arrays by adding leading AVX512_ZEROS to the smaller array.
 Note: For pre-processing, we can use the realloc function to sub leading AVX512_ZEROS to the smaller array.
 */
 
@@ -45,156 +45,182 @@ Note: For pre-processing, we can use the realloc function to sub leading AVX512_
 #include <sys/resource.h>
 #include "myutils.h"
 #include "limb_utils.h"
-#include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
 
-extern int CORE_NO; // Core number to run the tests on
+int CORE_NO; // Core number to run the tests on
 
 int NUM_BITS; // Number of bits for the numbers
+
+extern __m512i AVX512_ZEROS; // AVX512 vector of zeros
+extern __m256i AVX256_ZEROS; // AVX256 vector of zeros
+extern __m128i AVX128_ZEROS; // AVX128 vector of zeros
+extern __m512i AVX512_MASK;  // AVX512 vector of 64-bit mask
+extern __m256i AVX256_MASK;  // AVX256 vector of 64-bit mask
+extern __m128i AVX128_MASK;  // AVX128 vector of 64-bit mask
 
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
-void run_perf_events(int test_case);
 
-inline void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b) __attribute__((always_inline));
-inline void right_shift(__mmask8 *borrow_mask, size_t n) __attribute__((always_inline));
-
-inline bool is_less_than(uint64_t *a, uint64_t *b, uint64_t n)
-{
-    int i = 0;
-    __builtin_assume_aligned(a, 64);
-    __builtin_assume_aligned(b, 64);
-    do
-    {
-        if (*(a + i) < *(b + i))
-        {
-            return true;
-        }
-        else if (*(a + i) > *(b + i))
-        {
-            return false;
-        }
-        i++;
-    } while (unlikely(i < n));
-}
-
-// Function to right shift the borrow mask by one bit
-inline void right_shift(__mmask8 *borrow_mask, size_t n)
-{
-    __mmask8 borrow_prev = 0;
-
-    for (int i = 0; i < n; i++)
-    {
-        __mmask8 borrow_next = borrow_mask[i] & 0x1;
-        borrow_mask[i] = (borrow_mask[i] >> 1) | borrow_prev;
-        borrow_prev = borrow_next << 7;
-    }
-}
-
-/**
- * @brief Adds two numbers represented as limb_t, and stores the sum in result
- *
- * @param result The result of the subtraction, stored as limb_t
- * @param a The first number to add, stored as limb_t
- * @param b The second number to add, stored as limb_t
+/*
+ * @brief Subtracts two four-limbed numbers, using 256-bit vectors
+ * @param result The result of the subtraction
+ * @param a The first number to subtract
+ * @param b The second number to subtract
+ * @param b_in The borrow-in generated from the previous subtraction
+ * @param b_out The borrow-out generated from the subtraction
  * @return none
  */
-void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
+#define __SUB_N_4(result, a, b, b_in, b_out)                                           \
+    do                                                                                 \
+    {                                                                                  \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                             \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                             \
+        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                           \
+        __mmask8 borrow_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                  \
+        *(b_out) = borrow_mask & 1;                                                    \
+        borrow_mask |= ((*b_in) << 4);                                                 \
+        bool borrow_detect = !!borrow_mask;                                            \
+        borrow_mask >>= 1;                                                             \
+        if (borrow_detect)                                                             \
+        {                                                                              \
+            __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
+            __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
+            __mmask8 mask_1 = _mm256_cmpgt_epu64_mask(result_vec_new, result_vec);     \
+            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
+            result_vec = result_vec_new;                                               \
+        }                                                                              \
+        _mm256_store_si256((__m256i *)(result), result_vec);                           \
+    } while (0)
+
+/*
+ * @brief Subtracts two eight-limbed numbers, using 512-bit vectors
+ * @param result The result of the subtraction
+ * @param a The first number to subtract
+ * @param b The second number to subtract
+ * @param b_in The borrow-in generated from the previous subtraction
+ * @param b_out The borrow-out generated from the subtraction
+ * @return none
+ */
+#define __SUB_N_8(result, a, b, b_in, b_out)                                           \
+    do                                                                                 \
+    {                                                                                  \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                             \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                             \
+        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                           \
+        __mmask8 borrow_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                  \
+        (*b_out) = borrow_mask & 1;                                                    \
+        borrow_mask >>= 1;                                                             \
+        borrow_mask |= ((*b_in) << 7);                                                 \
+        bool borrow_detect = !!borrow_mask;                                            \
+        if (borrow_detect)                                                             \
+        {                                                                              \
+            __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
+            __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
+            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);     \
+            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
+            result_vec = result_vec_new;                                               \
+        }                                                                              \
+        _mm512_store_si512((__m512i *)(result), result_vec);                           \
+    } while (0)
+/**
+ * @brief Subtracts two numbers represented as limb_t, and stores the sum in result.
+ * @brief Subtracts from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 5 limbs are required to store 256-bit number.
+ * @brief Handles the last limb first, then the remaining limbs at once.
+ * @param result The result of the subtraction
+ * @param a The first number to subtract
+ * @param b The second number to subtract
+ * @return none
+ */
+void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
-
-    bool is_less = false;
-
-    size_t n = a->size;
-
-    aligned_uint64_ptr a_limbs = a->limbs;
-    aligned_uint64_ptr b_limbs = b->limbs;
-    aligned_uint64_ptr result_limbs = result->limbs;
-
-    // check if a < b, if so, swap a and b; also check if a == b and return 0
-    int j = 0;
+    int b_in = 0, b_out = 0;
+    // swap a and b if a < b
+    int i = 0;
     do
     {
-        if (likely(a_limbs[j] > b_limbs[j]))
+        if (likely(a->limbs[i] > b->limbs[i]))
         {
             break;
         }
-        if (unlikely(a_limbs[j] < b_limbs[j]))
+        else if (a->limbs[i] < b->limbs[i])
         {
-            is_less = true;
-            result->sign = true;
-            // swap a and b
-            aligned_uint64_ptr temp = a_limbs;
-            a_limbs = b_limbs;
-            b_limbs = temp;
+            limb_t *temp = a;
+            a = b;
+            b = temp;
+            result->sign = 1;
             break;
         }
-        j++;
-        if (unlikely(j == n))
+        ++i;
+        if (unlikely(i == 4))
         {
             // a and b are equal
-            *result_limbs = 0;
+            result->size = 1;
+            result->limbs[0] = 0;
             return;
         }
-    } while (j < n);
-
-    int bit_mask_size = (n + 7) >> 3;
-    int bm_itr = bit_mask_size - 1;
-
-    __mmask8 bm[bit_mask_size];
-
-    for (int i = 0; i < n; i += 8)
-    {
-        // load 8 64-bit integers from a and b
-        __m512i a_vec = _mm512_load_epi64((const void *)(a_limbs + i));
-        __m512i b_vec = _mm512_load_epi64((const void *)(b_limbs + i));
-
-        // // check if a_vec[j] < b_vec[j]
-        __mmask8 borrow_mask = _mm512_cmplt_epu64_mask(a_vec, b_vec);
-
-        // add a and b
-        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);
-
-        // store the result
-        _mm512_store_epi64((void *)(result_limbs + i), result_vec);
-        bm[bm_itr] = borrow_mask;
-        bm_itr--;
-    }
-
-    right_shift(bm, bit_mask_size);
-
-    int last_borrow_block = -1;
-    bm_itr = bit_mask_size - 1;
-
-    for (int i = 0; i < n; i += 8)
-    {
-        // load 8 64-bit integers from result
-        __m512i result_vec = _mm512_load_epi64((const void *)(result_limbs + i));
-        // load 8-bit mask from bm[j]
-        __mmask8 borrow_mask = bm[bm_itr];
-
-        // perform the subtraction
-        __m512i temp_result_vec = _mm512_mask_sub_epi64(result_vec, borrow_mask, result_vec, AVX512_ONES);
-        _mm512_store_epi64((void *)(result_limbs + i), temp_result_vec);
-        // check if result_vec[j] >= LIMB_DIGITS
-        borrow_mask = _mm512_cmpgt_epu64_mask(temp_result_vec, result_vec);
-        if (unlikely(borrow_mask))
-        {
-            last_borrow_block = i;
-            // update the borrow array
-            bm[bm_itr] = borrow_mask;
-        }
-        bm_itr--;
-    }
-
-    // TODO: implement sequential borrow propagation for worst case
-    // if (unlikely(last_borrow_block != -1))
-    // {
-    //     printf("hmm..\n");
-    // }
+    } while (i < 4);
+    __SUB_N_4((result->limbs), (a->limbs), (b->limbs), &b_in, &b_out);
 }
 
+void __sub_n(limb_t *result, limb_t *x, limb_t *y)
+{
+    int b_in = 0, b_out = 0;
+    int n = x->size;
+    // swap x and y if x < y
+    int i = 0;
+    do
+    {
+        if (likely(x->limbs[i] > y->limbs[i]))
+        {
+            break;
+        }
+        else if (x->limbs[i] < y->limbs[i])
+        {
+            limb_t *temp = x;
+            x = y;
+            y = temp;
+            result->sign = 1;
+            break;
+        }
+        ++i;
+        if (unlikely(i == n))
+        {
+            // a and b are equal
+            result->size = 1;
+            result->limbs[0] = 0;
+            return;
+        }
+    } while (i < n);
+
+    uint64_t *res_ptr = result->limbs;
+    uint64_t *x_ptr = x->limbs;
+    uint64_t *y_ptr = y->limbs;
+
+    for (int i = n - 8; i >= 0; i -= 8)
+    {
+        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), &b_in, &b_out);
+        b_in = b_out;
+    }
+}
+
+void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
+{
+    int n = a->size;
+
+    if (n <= 4)
+    {
+        limb_t_sub_n_256(result, a, b);
+    }
+    else
+    {
+        __sub_n(result, a, b);
+    }
+}
+
+// main function with cmd arguments
 int main(int argc, char *argv[])
 {
     if (argc != 6)
@@ -209,8 +235,6 @@ int main(int argc, char *argv[])
         printf("benchmark measure type: 2 --> RUSAGE\n");
         printf("type of measure: 0 --> correctness test\n");
         printf("type of measure: 1 --> benchmarking test\n");
-        printf("type of measure: 2 --> perf events\n");
-
         return 1;
     }
 
@@ -229,9 +253,7 @@ int main(int argc, char *argv[])
     assert(atoi(argv[5]) >= 0 && atoi(argv[5]) < 3);
     int type_of_measure = atoi(argv[5]);
 
-    // set sum_space and borrow_space to 0
     init_memory_pool();
-
     switch (type_of_measure)
     {
     case 0:
@@ -240,15 +262,14 @@ int main(int argc, char *argv[])
     case 1:
         run_benchmarking_test(test_case, measure_type);
         break;
-    case 2:
-        run_perf_events(test_case);
-        break;
     default:
         printf("Invalid type of measure\n");
         exit(EXIT_FAILURE);
     }
 
     destroy_memory_pool();
+
+    return 0;
 }
 
 /*
@@ -343,27 +364,26 @@ void run_correctness_test(int test_case)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sub_limb = limb_t_alloc(n);
+        limb_t *sum_limb = limb_t_alloc(n);
 
         /***** Start of subtraction *****/
-        limb_t_sub_n(sub_limb, a, b);
+
+        limb_t_sub_n(sum_limb, a, b);
 
         /***** End of subtraction *****/
 
-        char *sum_str = limb_get_str(sub_limb);
-        // sum_size = strlen(sum_str);
+        char *sum_str = limb_get_str(sum_limb);
+        int str_len = strlen(sum_str);
 
         // verify the converted string with result
-        if (!check_result(sum_str, result_str, sub_limb->size))
+        if (!check_result(sum_str, result_str, str_len))
         {
             printf("Test case failed, at iteration %d\n", i);
-            printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
-            printf("Experimental result = %s\n", sum_str);
             exit(EXIT_FAILURE);
         }
         limb_t_free(a);
         limb_t_free(b);
-        limb_t_free(sub_limb);
+        limb_t_free(sum_limb);
     }
     switch (test_case)
     {
@@ -588,9 +608,11 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
+    printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
+    for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
     {
-        int i = 1;
-        printf("reading test case %d\n", i);
+        int i = rand() % ITERATIONS;
+        printf("Iteration %d, reading test case %d\n", iter_count, i);
         // buffer to read the test case
         char buffer[CHUNK];
         // reset the file pointer to the beginning of the file
@@ -637,12 +659,12 @@ void run_benchmarking_test(int test_case, int measure_type)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sub_limb = limb_t_alloc(n);
+        limb_t *sum_limb = limb_t_alloc(n);
 
         printf("Starting subtraction\n");
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
-        int niter;
+        unsigned long long niter;
         double f, ops_per_sec, time_taken_ms, time_taken;
         // clear cache content for a_limbs, b_limbs
         for (int i = 0; i < n; i += 64)
@@ -664,18 +686,18 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, sub_limb));
+            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, sum_limb));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Subtracting %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sub_limb);
+                limb_t_sub_n(a, b, sum_limb);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -702,20 +724,20 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, sub_limb));
+            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, sum_limb));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Subtracting %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             struct timespec ts_0, ts_1;
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sub_limb);
+                limb_t_sub_n(a, b, sum_limb);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -742,20 +764,20 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, sub_limb));
+            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, sum_limb));
 
             printf("done\n");
 
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Subtracting %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sub_limb);
+                limb_t_sub_n(a, b, sum_limb);
             }
             t1 = cputime() - t0;
             printf("done!\n");
@@ -794,145 +816,4 @@ void run_benchmarking_test(int test_case, int measure_type)
     {
         gzclose(cputime_file);
     }
-}
-
-void run_perf_events(int test_case)
-{
-    printf("Trying to run perf events\n");
-
-    char test_filename[100];
-    long long values[MAX_EVENTS];
-
-    switch (test_case)
-    {
-    case 0:
-        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
-        break;
-    case 1:
-        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
-        break;
-    case 2:
-        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
-        break;
-    case 3:
-        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
-        break;
-    default:
-        printf("Invalid test case\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // open the test file
-    gzFile test_file = open_gzfile(test_filename, "rb");
-
-    // skip the first line, header
-    skip_first_line(test_file);
-
-    // initialize the perf events
-    initialize_perf();
-    int i = 1;
-    printf("Reading test case %d\n", i);
-    // buffer to read the test case
-    char buffer[CHUNK];
-    // reset the file pointer to the beginning of the file
-    gzrewind(test_file);
-    // skip the first line, header
-    skip_first_line(test_file);
-    // read ith line from the test_file
-    for (int j = 0; j < i; j++)
-    {
-        // flush the buffer
-        memset(buffer, 0, CHUNK);
-        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
-        {
-            if (gzeof(test_file))
-            {
-                return; // End of file reached
-            }
-            else
-            {
-                perror("Error reading line");
-                gzclose(test_file);
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
-
-    // Parse the test case
-    char *a_str = strtok(buffer, ",");
-    char *b_str = strtok(NULL, ",");
-    char *result_str = strtok(NULL, ",");
-
-    if (a_str == NULL || b_str == NULL || result_str == NULL)
-    {
-        fprintf(stderr, "Error parsing line: %s\n", buffer);
-        gzclose(test_file);
-        exit(EXIT_FAILURE);
-    }
-    limb_t *a, *b;
-    a = limb_set_str(a_str);
-    b = limb_set_str(b_str);
-
-    // adjust the sizes of a and b
-    limb_t_adjust_limb_sizes(a, b);
-    int n = a->size;
-
-    limb_t *sub_limb = limb_t_alloc(n);
-
-    printf("Starting subtraction\n");
-
-    // clear cache content for a_limbs, b_limbs
-    for (int i = 0; i < n; i += 64)
-    {
-        _mm_clflush((char *)a + i);
-        _mm_clflush((char *)b + i);
-    }
-
-    // Ensure that the cache flush operations are completed
-    _mm_mfence();
-
-    // start the perf events
-    start_perf();
-
-    unsigned long long t0, t1;
-
-    /*** Start of subtraction ***/
-    limb_t_sub_n(a, b, sub_limb);
-    /*** End of subtraction ***/
-
-    // Stop performance monitoring
-    stop_perf();
-
-    printf("Time taken for subtraction: %llu\n", t1 - t0);
-
-    // Read performance counters
-    read_perf(values);
-
-    // Write performance counters to a file or stdout
-    write_perf(stdout, values);
-
-    limb_t_free(a);
-    limb_t_free(b);
-    limb_t_free(sub_limb);
-    switch (test_case)
-    {
-    case 0:
-        printf("Random test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    case 1:
-        printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    case 2:
-        printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    case 3:
-        printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    }
-    // close the test file
-    gzclose(test_file);
 }
