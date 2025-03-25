@@ -83,13 +83,32 @@ void run_correctness_test(int);
         borrow_mask |= ((*b_in) << 4);                                                 \
         bool borrow_detect = !!borrow_mask;                                            \
         borrow_mask >>= 1;                                                             \
+        __mmask8 mask_1;                                                               \
         if (borrow_detect)                                                             \
         {                                                                              \
             __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
             __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
-            __mmask8 mask_1 = _mm256_cmpgt_epu64_mask(result_vec_new, result_vec);     \
+            mask_1 = _mm256_cmpgt_epu64_mask(result_vec_new, result_vec);              \
             *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
             result_vec = result_vec_new;                                               \
+            if (unlikely(mask_1 & 254))                                                \
+            {                                                                          \
+                printf("mask_1: %d\n", mask_1);                                        \
+                mask_1 >>= 1;                                                          \
+                _mm256_store_si256((__m256i *)(result), result_vec);                   \
+                for (int i = 6; i >= 0; i--)                                           \
+                {                                                                      \
+                    if (mask_1 >> i)                                                   \
+                    {                                                                  \
+                        result[i] -= 1;                                                \
+                        if (result[i] == -1)                                           \
+                        {                                                              \
+                            mask_1 |= (1 << (i - 1));                                  \
+                        }                                                              \
+                    }                                                                  \
+                }                                                                      \
+                break;                                                                 \
+            }                                                                          \
         }                                                                              \
         _mm256_store_si256((__m256i *)(result), result_vec);                           \
     } while (0)
@@ -114,13 +133,31 @@ void run_correctness_test(int);
         borrow_mask >>= 1;                                                             \
         borrow_mask |= ((*b_in) << 7);                                                 \
         bool borrow_detect = !!borrow_mask;                                            \
+        __mmask8 mask_1;                                                               \
         if (borrow_detect)                                                             \
         {                                                                              \
             __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
             __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
-            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);     \
+            mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);              \
             *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
             result_vec = result_vec_new;                                               \
+            if (unlikely(mask_1 & 254))                                                \
+            {                                                                          \
+                mask_1 >>= 1;                                                          \
+                _mm512_store_si512((__m512i *)(result), result_vec);                   \
+                for (int i = 6; i >= 0; i--)                                           \
+                {                                                                      \
+                    if (mask_1 >> i)                                                   \
+                    {                                                                  \
+                        result[i] -= 1;                                                \
+                        if (result[i] == -1)                                           \
+                        {                                                              \
+                            mask_1 |= (1 << (i - 1));                                  \
+                        }                                                              \
+                    }                                                                  \
+                }                                                                      \
+                break;                                                                 \
+            }                                                                          \
         }                                                                              \
         _mm512_store_si512((__m512i *)(result), result_vec);                           \
     } while (0)
@@ -161,7 +198,7 @@ void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
             result->limbs[0] = 0;
             return;
         }
-    } while (i < 4);
+    } while (i);
     __SUB_N_4((result->limbs), (a->limbs), (b->limbs), &b_in, &b_out);
 }
 
@@ -193,7 +230,7 @@ void __sub_n(limb_t *result, limb_t *x, limb_t *y)
             result->limbs[0] = 0;
             return;
         }
-    } while (i < n);
+    } while (1);
 
     uint64_t *res_ptr = result->limbs;
     uint64_t *x_ptr = x->limbs;
