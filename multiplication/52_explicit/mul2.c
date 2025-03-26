@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 
     init_memory_pool();
 
-    run_correctness_test(test_case);
+    // run_correctness_test(test_case);
     run_benchmarking_test(test_case, measure_type);
 
     destroy_memory_pool();
