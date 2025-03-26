@@ -344,7 +344,7 @@ limb_t *limb_set_str(const char *str)
 }
 
 void limb_t_adjust_limb_sizes(limb_t *num1, limb_t *num2)
-{
+
     if (num1->size == num2->size)
     {
         return;
@@ -373,4 +373,4 @@ void limb_t_adjust_limb_sizes(limb_t *num1, limb_t *num2)
         }
         num2->size = max_size;
     }
-}
+-–
