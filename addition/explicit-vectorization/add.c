@@ -90,6 +90,23 @@ void run_correctness_test(int);
             __mmask8 mask_1 = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                          \
             *(c_out) = (mask_1 & 0b1) | *(c_out);                                                           \
             result_vec = result_vec_new;                                                                    \
+            if (unlikely(mask_1 & 254))                                                                     \
+            {                                                                                               \
+                mask_1 >>= 1;                                                                               \
+                _mm256_store_si256((__m256i *)(result), result_vec);                                        \
+                for (int i = 6; i >= 0; --i)                                                                \
+                {                                                                                           \
+                    if (mask_1 >> i)                                                                        \
+                    {                                                                                       \
+                        result[i] += 1;                                                                     \
+                        if (result[i] == 0)                                                                 \
+                        {                                                                                   \
+                            mask_1 |= (1 << (i - 1));                                                       \
+                        }                                                                                   \
+                    }                                                                                       \
+                }                                                                                           \
+                break;                                                                                      \
+            }                                                                                               \
         }                                                                                                   \
         _mm256_store_si256((__m256i *)(result), result_vec);                                                \
     } while (0)
@@ -121,6 +138,23 @@ void run_correctness_test(int);
             __mmask8 mask_1 = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);   \
             result_vec = result_vec_new;                                             \
             *(c_out) = (mask_1 & 0b1) | *(c_out);                                    \
+            if (unlikely(mask_1 & 254))                                              \
+            {                                                                        \
+                mask_1 >>= 1;                                                        \
+                _mm512_store_si512((__m512i *)(result), result_vec);                 \
+                for (int i = 6; i >= 0; --i)                                         \
+                {                                                                    \
+                    if (mask_1 >> i)                                                 \
+                    {                                                                \
+                        result[i] += 1;                                              \
+                        if (result[i] == 0)                                          \
+                        {                                                            \
+                            mask_1 |= (1 << (i - 1));                                \
+                        }                                                            \
+                    }                                                                \
+                }                                                                    \
+                break;                                                               \
+            }                                                                        \
         }                                                                            \
         _mm512_store_si512((__m512i *)(result), result_vec);                         \
     } while (0)
@@ -181,16 +215,18 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
-    if (argc != 5)
+    if (argc != 6)
     {
-        printf("Usage: %s <number of bits> <core number> <test-case number> <measure_type>\n", argv[0]);
+        printf("Usage: %s <number of bits> <core number> <test-case number> <benchmark measure type> <type of measure>\n", argv[0]);
         printf("test-case number: 0 --> Random numbers\n");
         printf("test-case number: 1 --> Random numbers with a < b\n");
         printf("test-case number: 2 --> Random numbers with a > b\n");
         printf("test-case number: 3 --> Random numbers with a = b\n");
-        printf("measure_type: 0 --> RDTSC\n");
-        printf("measure_type: 1 --> Timespec\n");
-        printf("measure_type: 2 --> RUSAGE\n");
+        printf("benchmark measure type: 0 --> RDTSC\n");
+        printf("benchmark measure type: 1 --> Timespec\n");
+        printf("benchmark measure type: 2 --> RUSAGE\n");
+        printf("type of measure: 0 --> correctness test\n");
+        printf("type of measure: 1 --> benchmarking test\n");
         return 1;
     }
 
@@ -206,10 +242,22 @@ int main(int argc, char *argv[])
     assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
     int measure_type = atoi(argv[4]);
 
-    init_memory_pool();
+    assert(atoi(argv[5]) >= 0 && atoi(argv[5]) < 3);
+    int type_of_measure = atoi(argv[5]);
 
-    // run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    init_memory_pool();
+    switch (type_of_measure)
+    {
+    case 0:
+        run_correctness_test(test_case);
+        break;
+    case 1:
+        run_benchmarking_test(test_case, measure_type);
+        break;
+    default:
+        printf("Invalid type of measure\n");
+        exit(EXIT_FAILURE);
+    }
 
     destroy_memory_pool();
 
