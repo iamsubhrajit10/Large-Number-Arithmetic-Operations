@@ -2,7 +2,7 @@
 
 # Step 1: Create directories for each bit-size
 # bit_sizes=(256 512 1024 2048 4096 8192 16384 32768 65536 131072)
-bit_sizes=(8192 16384 32768 65536 131072)
+bit_sizes=(512 1024 2048 4096 8192 16384 32768 65536 131072)
 for bit_size in "${bit_sizes[@]}"; do
     mkdir -p "cases/${bit_size}"
 done

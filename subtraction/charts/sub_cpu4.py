@@ -13,12 +13,12 @@ rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitst
 # New Data
 data = {
     "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
-    "GMP_SUB Time (ns)": [8.3, 9.8, 12.1, 18, 31.3, 60.8, 151.7, 334.9, 664.7, 913.9],
-    "PML_SUB Time (ns)": [3.2, 3.9, 4.7, 6.8, 11.6, 20.5, 52.7, 97.5, 182.4, 352],
-    "Speedup (PML_SUB) Time": [2.59, 2.51, 2.57, 2.65, 2.70, 2.97, 2.88, 3.43, 3.64, 2.60],
-    "GMP_SUB Ops": [119949519, 102192237, 82181593, 55512883, 31930662, 16441343, 6589119, 2986773, 1504512, 1093815],
-    "PML_SUB Ops": [301817286, 250997087, 209040772, 143917609, 85866428, 48350473, 18939456, 10249878, 5484733, 2842293],
-    "Speedup (PML_SUB) Ops": [2.52, 2.46, 2.54, 2.59, 2.69, 2.94, 2.87, 3.43, 3.65, 2.60],
+    "GMP_SUB Time (ns)": [6.4, 7, 8.3, 13.7, 22.5, 41.7, 81.9, 164.9, 317.8, 718.8],
+    "PML_SUB Time (ns)": [3.1, 2.8, 4.2, 6.7, 13.4, 22.4, 41.8, 83, 161.9, 410.2],
+    "Speedup (PML_SUB) Time": [2.06, 2.50, 1.98, 2.04, 1.68, 1.86, 1.96, 1.99, 1.96, 1.75],
+    "GMP_SUB Ops": [155554994, 142605381, 120042385, 73240931, 44406159, 23986549, 12205695, 6068295, 3151154, 1398327],
+    "PML_SUB Ops": [311083429, 355805672, 235170574, 148520306, 74784538, 44391549, 23858464, 12052580, 6162511, 2111471],
+    "Speedup (PML_SUB) Ops": [2.00, 2.50, 1.96, 2.03, 1.68, 1.85, 1.95, 1.99, 1.96, 1.51],
 }
 
 df = pd.DataFrame(data)
@@ -110,7 +110,7 @@ ax1.set_xlabel("Bit Size", fontsize=14, fontweight="bold", labelpad=12)
 ax1.set_ylabel("Avg. Execution Time (ns, log₁₀ scale)", fontsize=14, fontweight="bold", labelpad=12)
 
 # Add a subtle spline to the title
-title = ax1.set_title("Timing Comparison on Intel Xeon E-2314 for\nLarge-Number Subtraction (Log-scale)", 
+title = ax1.set_title("Timing Comparison on AMD EPYC 9B14 for\nLarge-Number Subtraction (Log-scale)", 
                      fontsize=16, fontweight="bold", pad=20)
 plt.setp(title, bbox=dict(facecolor=bg_color, edgecolor=None, alpha=0.8, 
                          pad=5, boxstyle='round,pad=0.5'))
@@ -135,4 +135,4 @@ for spine in ax1.spines.values():
     spine.set_linewidth(1.5)
 
 plt.tight_layout(pad=1)
-plt.savefig("cpu1_execution_time_sub.svg", dpi=300, bbox_inches='tight', facecolor=bg_color)
+plt.savefig("cpu4_execution_time_sub.svg", dpi=300, bbox_inches='tight', facecolor=bg_color)

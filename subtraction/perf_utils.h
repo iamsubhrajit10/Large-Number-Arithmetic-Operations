@@ -13,7 +13,7 @@
 #define MAX_EVENTS 6
 // #define CORE_NO -1
 
-int CORE_NO;
+extern int CORE_NO;
 
 extern struct perf_event_attr pe[MAX_EVENTS];
 extern int fd[MAX_EVENTS];

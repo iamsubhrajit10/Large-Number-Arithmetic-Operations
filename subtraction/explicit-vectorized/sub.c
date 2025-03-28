@@ -45,6 +45,7 @@ Note: For pre-processing, we can use the realloc function to sub leading AVX512_
 #include <sys/resource.h>
 #include "myutils.h"
 #include "limb_utils.h"
+#include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
 
@@ -257,6 +258,8 @@ void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
     }
 }
 
+void run_perf_test();
+
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
@@ -299,6 +302,9 @@ int main(int argc, char *argv[])
     case 1:
         run_benchmarking_test(test_case, measure_type);
         break;
+    case 2:
+        run_perf_test();
+        break;
     default:
         printf("Invalid type of measure\n");
         exit(EXIT_FAILURE);
@@ -307,6 +313,105 @@ int main(int argc, char *argv[])
     destroy_memory_pool();
 
     return 0;
+}
+
+void run_perf_test()
+{
+    printf("Running perf test\n");
+    char test_filename[100];
+    snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
+    // skip the first line, header
+    skip_first_line(test_file);
+    // Read random test case number
+    // seed the random number generator
+    srand(time(NULL));
+    int i = rand() % ITERATIONS;
+    printf("Iteration %d, reading test case %d\n", 0, i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
+    limb_t *a, *b;
+    a = limb_set_str(a_str);
+    b = limb_set_str(b_str);
+
+    // adjust the sizes of a and b
+    limb_t_adjust_limb_sizes(a, b);
+
+    int n = a->size;
+    limb_t *sum_limb = limb_t_alloc(n);
+    limb_t_sub_n(sum_limb, a, b);
+    // perf variables
+    initialize_perf();
+
+    // perf overhead
+    start_perf();
+
+    stop_perf();
+    long long values_overhead[MAX_EVENTS];
+    read_perf(values_overhead);
+    printf("Perf overhead: \n");
+    // write the perf values to file
+    write_perf(stdout, values_overhead);
+
+    printf("Starting perf test\n");
+    start_perf();
+    // Start the perf test
+    limb_t_sub_n(sum_limb, a, b);
+    stop_perf();
+    long long values[MAX_EVENTS];
+    read_perf(values);
+    write_perf(stdout, values);
+    // close the test file
+
+    // print user instructions (values[1] - values_overhead[1]), L1D Cache Miss % (values[4] - values_overhead[4])/(values[5] - values_overhead[5])*100
+    printf("User instructions: %lld\n", values[1] - values_overhead[1]);
+    printf("L1D Cache Reads: %lld\n", (values[4] - values_overhead[4]));
+    printf("L1D Cache Misses: %lld\n", (values[5] - values_overhead[5]));
+    printf("L1D Cache Miss %: %f\n", ((double)(values[5] - values_overhead[5]) / (double)(values[4] - values_overhead[4])) * 100);
+
+    // start measuring RDTSC Ticks
+    double t;
+    RECORD_RDTSC(t, limb_t_sub_n(sum_limb, a, b));
+
+    printf("Avg. RDTSC Ticks: %f\n", t);
+
+    // close the test file
+    gzclose(test_file);
 }
 
 /*

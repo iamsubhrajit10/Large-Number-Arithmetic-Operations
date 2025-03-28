@@ -1,7 +1,7 @@
 #include "perf_utils.h"
 #include <stdint.h>
 
-int CORE_NO;
+extern int CORE_NO;
 
 struct perf_event_attr pe[MAX_EVENTS];
 int fd[MAX_EVENTS];
