@@ -328,7 +328,7 @@ void run_perf_test()
     int n = a->size;
     printf("n = %d\n", n);
     limb_t *s = limb_t_alloc(n);
-    limb_t_sub_n(a, b, s);
+    limb_t_sub_n(s, a, b);
     // perf variables
     initialize_perf();
 
@@ -355,7 +355,7 @@ void run_perf_test()
     printf("Starting perf test\n");
     start_perf();
     // Start the perf test
-    limb_t_sub_n(a, b, s);
+    limb_t_sub_n(s, a, b);
     stop_perf();
     long long values[MAX_EVENTS];
     read_perf(values);
