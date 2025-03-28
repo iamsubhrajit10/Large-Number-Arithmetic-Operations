@@ -73,98 +73,52 @@ void run_correctness_test(int);
  * @param c_out The carry-out generated from the addition
  * @return none
  */
-#define __ADD_N_4(result, a, b, c_in, c_out)                                                                \
-    do                                                                                                      \
-    {                                                                                                       \
-        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                                                  \
-        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                                                  \
-        __m256i result_vec = _mm256_add_epi64(a_vec, b_vec);                                                \
-        __mmask8 carry_mask = _mm256_cmplt_epu64_mask(result_vec, a_vec);                                   \
-        *(c_out) = carry_mask & 1;                                                                          \
-        carry_mask |= (*(c_in) << 4);                                                                       \
-        bool carry_detect = !!carry_mask;                                                                   \
-        carry_mask >>= 1;                                                                                   \
-        if (carry_detect)                                                                                   \
-        {                                                                                                   \
-            __m256i result_vec_new = _mm256_add_epi64(result_vec,                                           \
-                                                      _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1)); \
-            __mmask8 mask_1 = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                          \
-            *(c_out) = (mask_1 & 0b1) | *(c_out);                                                           \
-            result_vec = result_vec_new;                                                                    \
-            if (unlikely(mask_1 & 254))                                                                     \
-            {                                                                                               \
-                mask_1 >>= 1;                                                                               \
-                _mm256_store_si256((__m256i *)(result), result_vec);                                        \
-                for (int i = 6; i >= 0; --i)                                                                \
-                {                                                                                           \
-                    if (mask_1 >> i)                                                                        \
-                    {                                                                                       \
-                        result[i] += 1;                                                                     \
-                        if (result[i] == 0)                                                                 \
-                        {                                                                                   \
-                            mask_1 |= (1 << (i - 1));                                                       \
-                        }                                                                                   \
-                    }                                                                                       \
-                }                                                                                           \
-                break;                                                                                      \
-            }                                                                                               \
-        }                                                                                                   \
-        _mm256_store_si256((__m256i *)(result), result_vec);                                                \
+#define __ADD_N_4(result, a, b, c_out)                                                                  \
+    do                                                                                                  \
+    {                                                                                                   \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                                              \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                                              \
+        __m256i result_vec = _mm256_add_epi64(a_vec, b_vec);                                            \
+        __mmask8 carry_mask = _mm256_cmplt_epu64_mask(result_vec, a_vec);                               \
+        c_out = _mm512_mask2int(_mm512_kand(carry_mask, 1));                                            \
+        carry_mask >>= 1;                                                                               \
+        __m256i result_vec_new = _mm256_add_epi64(result_vec,                                           \
+                                                  _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1)); \
+        result_vec = result_vec_new;                                                                    \
+        _mm256_store_si256((__m256i *)(result), result_vec);                                            \
     } while (0)
-
-/*
- * @brief Adds two eight-limbed numbers, using 512-bit vectors
- * @param result The result of the addition
- * @param a The first number to add
- * @param b The second number to add
- * @param c_in The carry-in generated from the previous addition
- * @param c_out The carry-out generated from the addition
- * @return none
+/*                                                                                      \
+ * @brief Adds two eight-limbed numbers, using 512-bit vectors                          \
+ * @param result The result of the addition                                             \
+ * @param a The first number to add                                                     \
+ * @param b The second number to add                                                    \
+ * @param c_in The carry-in generated from the previous addition                        \
+ * @param c_out The carry-out generated from the addition                               \
+ * @return none                                                                         \
  */
-#define __ADD_N_8(result, a, b, c_in, c_out)                                         \
-    do                                                                               \
-    {                                                                                \
-        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                           \
-        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                           \
-        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                         \
-        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);            \
-        *(c_out) = carry_mask & 1;                                                   \
-        carry_mask >>= 1;                                                            \
-        carry_mask |= (*(c_in) << 7);                                                \
-        bool carry_detect = !!carry_mask;                                            \
-        if (carry_detect)                                                            \
-        {                                                                            \
-            __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1); \
-            __m512i result_vec_new = _mm512_add_epi64(result_vec, carry_vec);        \
-            __mmask8 mask_1 = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);   \
-            result_vec = result_vec_new;                                             \
-            *(c_out) = (mask_1 & 0b1) | *(c_out);                                    \
-            if (unlikely(mask_1 & 254))                                              \
-            {                                                                        \
-                mask_1 >>= 1;                                                        \
-                _mm512_store_si512((__m512i *)(result), result_vec);                 \
-                for (int i = 6; i >= 0; --i)                                         \
-                {                                                                    \
-                    if (mask_1 >> i)                                                 \
-                    {                                                                \
-                        result[i] += 1;                                              \
-                        if (result[i] == 0)                                          \
-                        {                                                            \
-                            mask_1 |= (1 << (i - 1));                                \
-                        }                                                            \
-                    }                                                                \
-                }                                                                    \
-                break;                                                               \
-            }                                                                        \
-        }                                                                            \
-        _mm512_store_si512((__m512i *)(result), result_vec);                         \
+#define __ADD_N_8(result, a, b, c_in, c_out)                                     \
+    do                                                                           \
+    {                                                                            \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                       \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                       \
+        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                     \
+        __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);        \
+        c_out = _mm512_mask2int(_mm512_kand(carry_mask, 1));                     \
+        carry_mask >>= 1;                                                        \
+        c_in = c_in << 7;                                                        \
+        carry_mask = _mm512_kor(carry_mask, c_in);                               \
+        __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1); \
+        __m512i result_vec_new = _mm512_add_epi64(result_vec, carry_vec);        \
+        __mmask16 mask_1 = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);  \
+        result_vec = result_vec_new;                                             \
+        _mm512_store_si512((__m512i *)(result), result_vec);                     \
     } while (0)
 
 void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
-    int c_in = 0, c_out = 0;
+    __mmask16 c_out = 0;
 
-    __ADD_N_4((result->limbs), (a->limbs), (b->limbs), &c_in, &c_out);
+    __ADD_N_4((result->limbs), (a->limbs), (b->limbs), c_out);
     if (unlikely(c_out))
     {
         // shift the result by one digit to the right, before reallocate the memory
@@ -178,15 +132,15 @@ void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
 
 void __add_n(limb_t *result, limb_t *a, limb_t *b)
 {
-    int c_in = 0, c_out = 0;
 
     uint64_t *res_ptr = result->limbs;
     uint64_t *a_ptr = a->limbs;
     uint64_t *b_ptr = b->limbs;
     int n = a->size;
+    __mmask16 c_in = 0, c_out = 0;
     for (int i = n - 8; i >= 0; i -= 8)
     {
-        __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), &c_in, &c_out);
+        __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), c_in, c_out);
         c_in = c_out;
     }
     if (unlikely(c_out))
@@ -330,7 +284,7 @@ void run_perf_test()
     int n = a->size;
     printf("n = %d\n", n);
     limb_t *s = limb_t_alloc(n);
-    limb_t_add_n(a, b, s);
+    limb_t_add_n(s, a, b);
     // perf variables
     initialize_perf();
 
@@ -357,7 +311,7 @@ void run_perf_test()
     printf("Starting perf test\n");
     start_perf();
     // Start the perf test
-    limb_t_add_n(a, b, s);
+    limb_t_add_n(s, a, b);
     stop_perf();
     long long values[MAX_EVENTS];
     read_perf(values);
@@ -372,7 +326,7 @@ void run_perf_test()
 
     // start measuring RDTSC Ticks
     double t;
-    RECORD_RDTSC(t, limb_t_add_n(a, b, s));
+    RECORD_RDTSC(t, limb_t_add_n(s, a, b));
 
     printf("Avg. RDTSC Ticks: %f\n", t);
 
@@ -794,7 +748,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_add_n(a, b, s));
+            TIME_RDTSC(time_taken, limb_t_add_n(s, a, b));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -805,7 +759,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(a, b, s);
+                limb_t_add_n(s, a, b);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -832,7 +786,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_add_n(a, b, s));
+            TIME_TIMESPEC(time_taken, limb_t_add_n(s, a, b));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -845,7 +799,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(a, b, s);
+                limb_t_add_n(s, a, b);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -872,7 +826,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_add_n(a, b, s));
+            TIME_RUSAGE(time_taken, limb_t_add_n(s, a, b));
 
             printf("done\n");
 
@@ -885,7 +839,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(a, b, s);
+                limb_t_add_n(s, a, b);
             }
             t1 = cputime() - t0;
             printf("done!\n");
