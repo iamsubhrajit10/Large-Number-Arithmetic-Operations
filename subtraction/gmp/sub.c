@@ -203,6 +203,22 @@ void run_perf_test()
     // write the perf values to file
     write_perf(stdout, values_overhead);
 
+    // clear cache before each test case
+    size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
+    size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
+
+    for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
+    {
+        _mm_clflush((char *)a->_mp_d + i);
+    }
+
+    for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
+    {
+        _mm_clflush((char *)b->_mp_d + i);
+    }
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
     printf("Starting perf test\n");
     start_perf();
     // Start the perf test

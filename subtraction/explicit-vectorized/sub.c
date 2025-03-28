@@ -373,8 +373,9 @@ void run_perf_test()
     limb_t_adjust_limb_sizes(a, b);
 
     int n = a->size;
-    limb_t *sum_limb = limb_t_alloc(n);
-    limb_t_sub_n(sum_limb, a, b);
+    printf("n = %d\n", n);
+    limb_t *s = limb_t_alloc(n);
+    limb_t_sub_n(a, b, s);
     // perf variables
     initialize_perf();
 
@@ -388,10 +389,20 @@ void run_perf_test()
     // write the perf values to file
     write_perf(stdout, values_overhead);
 
+    // clear cache content for a_limbs, b_limbs
+    for (int i = 0; i < n; i += 64)
+    {
+        _mm_clflush((char *)a + i);
+        _mm_clflush((char *)b + i);
+    }
+
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
     printf("Starting perf test\n");
     start_perf();
     // Start the perf test
-    limb_t_sub_n(sum_limb, a, b);
+    limb_t_sub_n(a, b, s);
     stop_perf();
     long long values[MAX_EVENTS];
     read_perf(values);
@@ -406,7 +417,7 @@ void run_perf_test()
 
     // start measuring RDTSC Ticks
     double t;
-    RECORD_RDTSC(t, limb_t_sub_n(sum_limb, a, b));
+    RECORD_RDTSC(t, limb_t_sub_n(a, b, s));
 
     printf("Avg. RDTSC Ticks: %f\n", t);
 
@@ -506,15 +517,15 @@ void run_correctness_test(int test_case)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sum_limb = limb_t_alloc(n);
+        limb_t *s = limb_t_alloc(n);
 
         /***** Start of subtraction *****/
 
-        limb_t_sub_n(sum_limb, a, b);
+        limb_t_sub_n(s, a, b);
 
         /***** End of subtraction *****/
 
-        char *sum_str = limb_get_str(sum_limb);
+        char *sum_str = limb_get_str(s);
         int str_len = strlen(sum_str);
 
         // verify the converted string with result
@@ -525,7 +536,7 @@ void run_correctness_test(int test_case)
         }
         limb_t_free(a);
         limb_t_free(b);
-        limb_t_free(sum_limb);
+        limb_t_free(s);
     }
     switch (test_case)
     {
@@ -801,7 +812,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sum_limb = limb_t_alloc(n);
+        limb_t *s = limb_t_alloc(n);
 
         printf("Starting subtraction\n");
         int cpu_info[4], decimals;
@@ -828,7 +839,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, sum_limb));
+            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, s));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -839,7 +850,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sum_limb);
+                limb_t_sub_n(a, b, s);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -866,7 +877,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, sum_limb));
+            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, s));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -879,7 +890,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sum_limb);
+                limb_t_sub_n(a, b, s);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -906,7 +917,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, sum_limb));
+            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, s));
 
             printf("done\n");
 
@@ -919,7 +930,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, sum_limb);
+                limb_t_sub_n(a, b, s);
             }
             t1 = cputime() - t0;
             printf("done!\n");
