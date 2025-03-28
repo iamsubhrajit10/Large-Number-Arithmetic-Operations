@@ -126,6 +126,8 @@ void run_perf_test()
     // skip the first line, header
     skip_first_line(test_file);
     // Read random test case number
+    // seed the random number generator
+    srand(time(NULL));
     int i = rand() % ITERATIONS;
     printf("Reading test case %d\n", i);
     // buffer to read the test case
