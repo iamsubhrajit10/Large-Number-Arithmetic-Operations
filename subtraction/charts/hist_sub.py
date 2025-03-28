@@ -10,20 +10,19 @@ rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitst
 
 # Data from your table
 bit_sizes = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072]
-
 # GMP_SUB data
 gmp_ticks = [23, 27, 34, 50, 87, 171, 424, 943, 1867, 3773]
 gmp_instructions = [114, 131, 165, 233, 369, 641, 1185, 2273, 4449, 8801]
 gmp_l1d_reads = [29, 37, 53, 85, 149, 277, 533, 1048, 2069, 4117]
-gmp_l1d_misses = [6, 8, 12, 18, 31, 59, 104, 208, 412, 885]
-gmp_l1d_miss_pct = [16, 21.6, 22.6, 21.2, 20.8, 21.3, 19.5, 19.8, 19.9, 21.5]
+gmp_l1d_misses = [6, 7, 12, 18, 31, 59, 104, 208, 412, 885]
+gmp_l1d_miss_pct = [20.7, 18.9, 22.6, 21.2, 20.8, 21.3, 19.5, 19.8, 19.9, 21.5]
 
 # PML_SUB data
-pml_ticks = [9, 11, 13, 19, 33, 60, 147, 283, 541, 1049]
-pml_instructions = [36, 44, 64, 94, 158, 286, 542, 1054, 2078, 4126]
+pml_ticks = [11, 12, 14, 21, 34, 68, 133, 272, 547, 1074]
+pml_instructions = [27, 53, 66, 96, 153, 246, 453, 846, 1653, 3246]
 pml_l1d_reads = [25, 27, 48, 77, 124, 257, 524, 1021, 2044, 4055]
-pml_l1d_misses = [4, 3, 7, 9, 20, 55, 99, 188, 392, 738]
-pml_l1d_miss_pct = [16.0, 11.1, 14.6, 11.7, 16.1, 21.4, 18.9, 18.4, 19.2, 18.2]
+pml_l1d_misses = [4, 6, 7, 18, 47, 53, 99, 188, 392, 896]
+pml_l1d_miss_pct = [16.0, 22.2, 14.6, 23.4, 37.9, 20.6, 18.9, 18.4, 19.2, 22.1]
 
 # Calculate speedup factors
 speedup_ticks = [gmp / pml for gmp, pml in zip(gmp_ticks, pml_ticks)]

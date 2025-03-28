@@ -883,7 +883,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, s);
+                limb_t_sub_n(s, a, b);
             }
             t1 = cputime() - t0;
             printf("done!\n");

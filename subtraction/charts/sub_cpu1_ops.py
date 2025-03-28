@@ -10,26 +10,14 @@ rcParams['font.family'] = 'sans-serif'
 rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', 'sans-serif']
 
 
-# New Data
 data = {
     "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
-    "GMP_SUB Time (ns)": [8.3, 9.8, 12.1, 18, 31.3, 60.8, 151.7, 334.9, 664.7, 913.9],
-    "PML_SUB Time (ns)": [3.2, 3.9, 4.7, 6.8, 11.6, 20.5, 52.7, 97.5, 182.4, 352],
-    "Speedup (PML_SUB) Time": [2.59, 2.51, 2.57, 2.65, 2.70, 2.97, 2.88, 3.43, 3.64, 2.60],
-    "GMP_SUB Ops": [119949519, 102192237, 82181593, 55512883, 31930662, 16441343, 6589119, 2986773, 1504512, 1093815],
-    "PML_SUB Ops": [301817286, 250997087, 209040772, 143917609, 85866428, 48350473, 18939456, 10249878, 5484733, 2842293],
-    "Speedup (PML_SUB) Ops": [2.52, 2.46, 2.54, 2.59, 2.69, 2.94, 2.87, 3.43, 3.65, 2.60],
-}
-
-# New Data
-data = {
-    "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
-    "GMP_SUB Time (ns)": [6.1, 6.8, 8.7, 12.1, 21.5, 41.4, 86.7, 170.2, 347.9, 700.6],
-    "PML_SUB Time (ns)": [2.7, 3.3, 4.1, 6, 10.5, 19.3, 35.2, 74.3, 146.6, 301.8],
-    "Speedup (PML_SUB) Time": [2.26, 2.06, 2.12, 2.02, 2.05, 2.15, 2.46, 2.29, 2.37, 2.32],
-    "GMP_SUB Ops": [173771046, 153189405, 116583444, 82107176, 46464158, 24129813, 11566172, 5865885, 2877475, 1427702],
-    "PML_SUB Ops": [350122857, 296186437, 246615757, 165150595, 94609267, 52237120, 28848316, 13429935, 6821303, 3311891],
-    "Speedup (PML_SUB) Ops": [2.01, 1.93, 2.12, 2.01, 2.04, 2.16, 2.49, 2.29, 2.37, 2.32],
+    "GMP_SUB Time (ns)": [8.6, 9.8, 12.6, 18.3, 31.1, 61, 151, 334.6, 664.8, 913.1],
+    "PML_SUB Time (ns)": [3.9, 4.3, 5.1, 7.5, 12.3, 24.2, 47.5, 94.3, 190.3, 379.1],
+    "Speedup (PML_SUB) Time": [2.21, 2.28, 2.47, 2.44, 2.53, 2.52, 3.18, 3.55, 3.49, 2.41],
+    "GMP_SUB Ops": [115978795, 102187113, 79311500, 54480050, 32076268, 16394385, 6622956, 2986496, 1505049, 1095606],
+    "PML_SUB Ops": [343903979, 230498515, 192961304, 137973118, 81268450, 41188732, 21009782, 10317795, 5143623, 2582408],
+    "Speedup (PML_SUB) Ops": [2.97, 2.26, 2.43, 2.53, 2.53, 2.51, 3.17, 3.45, 3.42, 2.36]
 }
 
 df = pd.DataFrame(data)
@@ -132,7 +120,7 @@ ax2.set_ylabel("Operations per Second (log₁₀ scale)", fontsize=14, fontweigh
 
 
 # Add a subtle spline to the title
-title = ax2.set_title("Operations Throughput on Xeon E-2314 for\nLarge-Number Subtraction (Log-scale)", 
+title = ax2.set_title("Operations Throughput on Intel Xeon E-2314 for\nLarge-Number Subtraction (Log-scale)", 
                      fontsize=16, fontweight="bold", pad=20)
 plt.setp(title, bbox=dict(facecolor=bg_color, edgecolor=None, alpha=0.8, 
                          pad=5, boxstyle='round,pad=0.5'))
