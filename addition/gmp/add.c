@@ -44,6 +44,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <cpuid.h>
 #include <sys/resource.h>
 #include "myutils.h"
+#include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
 
@@ -54,6 +55,7 @@ int NUM_BITS; // Number of bits for the numbers
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
+void run_perf_test();
 
 // main function with cmd arguments
 int main(int argc, char *argv[])
@@ -84,9 +86,151 @@ int main(int argc, char *argv[])
     int measure_type = atoi(argv[4]);
 
     // run_correctness_test(test_case);
-    run_benchmarking_test(test_case, measure_type);
+    // run_benchmarking_test(test_case, measure_type);
+    run_perf_test();
 
     return 0;
+}
+
+void run_perf_test()
+{
+    printf("Trying to run perf test\n");
+
+    // test case file name
+    char test_filename[100];
+    snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
+    if (test_file == NULL)
+    {
+        perror("Error opening test file");
+        exit(EXIT_FAILURE);
+    }
+    // skip the first line, header
+    skip_first_line(test_file);
+    // Read random test case number
+    // seed the random number generator
+    srand(time(NULL));
+    int i = rand() % ITERATIONS;
+    printf("Reading test case %d\n", i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
+
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
+
+    // convert the strings to mpz_t
+    mpz_t a, b, result_gmp;
+    mpz_init(a);
+    mpz_init(b);
+
+    // convert the strings to mpz_t
+    if (mpz_set_str(a, a_str, 16) != 0)
+    {
+        perror("Error: Failed to set mpz_t from string a_str");
+        exit(EXIT_FAILURE);
+    }
+    if (mpz_set_str(b, b_str, 16) != 0)
+    {
+        perror("Error: Failed to set mpz_t from string b_str");
+        exit(EXIT_FAILURE);
+    }
+    // convert the strings to mpz_t
+    if (mpz_set_str(result_gmp, result_str, 16) != 0)
+    {
+        perror("Error: Failed to set mpz_t from string result_str");
+        exit(EXIT_FAILURE);
+    }
+    mpz_add(result_gmp, a, b);
+
+    initialize_perf();
+
+    // perf overhead
+    start_perf();
+
+    stop_perf();
+    long long values_overhead[MAX_EVENTS];
+    read_perf(values_overhead);
+    printf("Perf overhead: \n");
+    // write the perf values to file
+    write_perf(stdout, values_overhead);
+
+    // clear cache before each test case
+    size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
+    size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
+
+    for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
+    {
+        _mm_clflush((char *)a->_mp_d + i);
+    }
+
+    for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
+    {
+        _mm_clflush((char *)b->_mp_d + i);
+    }
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
+    printf("Starting perf test\n");
+    start_perf();
+    // Start the perf test
+    mpz_add(result_gmp, a, b);
+    stop_perf();
+    long long values[MAX_EVENTS];
+    read_perf(values);
+    write_perf(stdout, values);
+    // close the test file
+
+    // print user instructions (values[1] - values_overhead[1]), L1D Cache Miss % (values[4] - values_overhead[4])/(values[5] - values_overhead[5])*100
+    printf("User instructions: %lld\n", values[1] - values_overhead[1]);
+    printf("L1D Cache Reads: %lld\n", (values[4] - values_overhead[4]));
+    printf("L1D Cache Misses: %lld\n", (values[5] - values_overhead[5]));
+    printf("L1D Cache Miss %: %f\n", ((double)(values[5] - values_overhead[5]) / (double)(values[4] - values_overhead[4])) * 100);
+
+    gzclose(test_file);
+
+    // start measuring RDTSC Ticks
+    double t;
+    RECORD_RDTSC(t, mpz_add(result_gmp, a, b));
+
+    printf("Avg. RDTSC Ticks: %f\n", t);
+
+    // free the mpz_t variables
+    mpz_clear(a);
+    mpz_clear(b);
+    mpz_clear(result_gmp);
 }
 
 /*

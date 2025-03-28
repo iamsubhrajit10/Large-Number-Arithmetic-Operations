@@ -45,6 +45,7 @@ Note: For pre-processing, we can use the realloc function to sub leading AVX512_
 #include <sys/resource.h>
 #include "myutils.h"
 #include "limb_utils.h"
+#include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
 
@@ -212,6 +213,8 @@ void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
     }
 }
 
+void run_perf_test();
+
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
@@ -254,6 +257,9 @@ int main(int argc, char *argv[])
     case 1:
         run_benchmarking_test(test_case, measure_type);
         break;
+    case 2:
+        run_perf_test();
+        break;
     default:
         printf("Invalid type of measure\n");
         exit(EXIT_FAILURE);
@@ -262,6 +268,116 @@ int main(int argc, char *argv[])
     destroy_memory_pool();
 
     return 0;
+}
+
+void run_perf_test()
+{
+    printf("Running perf test\n");
+    char test_filename[100];
+    snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
+    // skip the first line, header
+    skip_first_line(test_file);
+    // Read random test case number
+    // seed the random number generator
+    srand(time(NULL));
+    int i = rand() % ITERATIONS;
+    printf("Iteration %d, reading test case %d\n", 0, i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
+    limb_t *a, *b;
+    a = limb_set_str(a_str);
+    b = limb_set_str(b_str);
+
+    // adjust the sizes of a and b
+    limb_t_adjust_limb_sizes(a, b);
+
+    int n = a->size;
+    printf("n = %d\n", n);
+    limb_t *s = limb_t_alloc(n);
+    limb_t_add_n(a, b, s);
+    // perf variables
+    initialize_perf();
+
+    // perf overhead
+    start_perf();
+
+    stop_perf();
+    long long values_overhead[MAX_EVENTS];
+    read_perf(values_overhead);
+    printf("Perf overhead: \n");
+    // write the perf values to file
+    write_perf(stdout, values_overhead);
+
+    // clear cache content for a_limbs, b_limbs
+    for (int i = 0; i < n; i += 64)
+    {
+        _mm_clflush((char *)a + i);
+        _mm_clflush((char *)b + i);
+    }
+
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
+    printf("Starting perf test\n");
+    start_perf();
+    // Start the perf test
+    limb_t_add_n(a, b, s);
+    stop_perf();
+    long long values[MAX_EVENTS];
+    read_perf(values);
+    write_perf(stdout, values);
+    // close the test file
+
+    // print user instructions (values[1] - values_overhead[1]), L1D Cache Miss % (values[4] - values_overhead[4])/(values[5] - values_overhead[5])*100
+    printf("User instructions: %lld\n", values[1] - values_overhead[1]);
+    printf("L1D Cache Reads: %lld\n", (values[4] - values_overhead[4]));
+    printf("L1D Cache Misses: %lld\n", (values[5] - values_overhead[5]));
+    printf("L1D Cache Miss %: %f\n", ((double)(values[5] - values_overhead[5]) / (double)(values[4] - values_overhead[4])) * 100);
+
+    // start measuring RDTSC Ticks
+    double t;
+    RECORD_RDTSC(t, limb_t_add_n(a, b, s));
+
+    printf("Avg. RDTSC Ticks: %f\n", t);
+
+    // close the test file
+    gzclose(test_file);
 }
 
 /*
@@ -356,15 +472,15 @@ void run_correctness_test(int test_case)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sum_limb = limb_t_alloc(n);
+        limb_t *s = limb_t_alloc(n);
 
         /***** Start of addition *****/
 
-        limb_t_add_n(sum_limb, a, b);
+        limb_t_add_n(s, a, b);
 
         /***** End of addition *****/
 
-        char *sum_str = limb_get_str(sum_limb);
+        char *sum_str = limb_get_str(s);
         int str_len = strlen(sum_str);
 
         // verify the converted string with result
@@ -375,7 +491,7 @@ void run_correctness_test(int test_case)
         }
         limb_t_free(a);
         limb_t_free(b);
-        limb_t_free(sum_limb);
+        limb_t_free(s);
     }
     switch (test_case)
     {
@@ -651,7 +767,7 @@ void run_benchmarking_test(int test_case, int measure_type)
         limb_t_adjust_limb_sizes(a, b);
         int n = a->size;
 
-        limb_t *sum_limb = limb_t_alloc(n);
+        limb_t *s = limb_t_alloc(n);
 
         printf("Starting addition\n");
         int cpu_info[4], decimals;
@@ -678,7 +794,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_add_n(a, b, sum_limb));
+            TIME_RDTSC(time_taken, limb_t_add_n(a, b, s));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -689,7 +805,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(a, b, sum_limb);
+                limb_t_add_n(a, b, s);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -716,7 +832,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_add_n(a, b, sum_limb));
+            TIME_TIMESPEC(time_taken, limb_t_add_n(a, b, s));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -729,7 +845,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(a, b, sum_limb);
+                limb_t_add_n(a, b, s);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -756,7 +872,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_add_n(a, b, sum_limb));
+            TIME_RUSAGE(time_taken, limb_t_add_n(a, b, s));
 
             printf("done\n");
 
@@ -769,7 +885,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(a, b, sum_limb);
+                limb_t_add_n(a, b, s);
             }
             t1 = cputime() - t0;
             printf("done!\n");

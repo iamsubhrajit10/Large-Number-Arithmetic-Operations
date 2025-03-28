@@ -321,4 +321,27 @@ static inline unsigned long long measure_rdtscp_end()
         (t) = (double)(__tmp) / __times;            \
     } while (0)
 
+// Function to measure the time taken by a function using the rdtsc instruction
+#define RECORD_RDTSC(t, func)                       \
+    do                                              \
+    {                                               \
+        long long __t0, __t1, __times, __tmp;       \
+        __times = 1;                                \
+        {                                           \
+            func;                                   \
+        }                                           \
+        do                                          \
+        {                                           \
+            __times <<= 1;                          \
+            __t0 = measure_rdtsc_start();           \
+            for (int __t = 0; __t < __times; __t++) \
+            {                                       \
+                func;                               \
+            }                                       \
+            __t1 = measure_rdtscp_end();            \
+            __tmp = __t1 - __t0;                    \
+        } while (__tmp < 700000000);                \
+        (t) = (double)(__tmp) / __times;            \
+    } while (0)
+
 #endif // MYUTILS_H
