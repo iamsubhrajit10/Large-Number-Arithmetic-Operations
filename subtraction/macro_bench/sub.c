@@ -1,5 +1,5 @@
 /*
- This program computes subtraction of two numbers using GMP library, with the test cases for the same.
+ This program computes subtraction of two numbers using our optimized subtraction, with the test cases for the same.
  Also, it writes various data like performance counters, rdtsc values to files, for analysis.
 */
 
@@ -9,8 +9,8 @@ This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
 b --> array of digits of second number, of length m
 #Pre-processing:
-1. Equalize the length of both arrays by subtracting leading zeros to the smaller array.
-Note: For pre-processing, we can use the realloc function to sub leading zeros to the smaller array.
+1. Equalize the length of both arrays by adding leading AVX512_ZEROS to the smaller array.
+Note: For pre-processing, we can use the realloc function to sub leading AVX512_ZEROS to the smaller array.
 */
 
 /****  All the data, stored in arrays and used for computation are aligned to 64 Bytes ****/
@@ -44,6 +44,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <cpuid.h>
 #include <sys/resource.h>
 #include "myutils.h"
+#include "limb_utils.h"
 #include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
@@ -52,9 +53,212 @@ int CORE_NO; // Core number to run the tests on
 
 int NUM_BITS; // Number of bits for the numbers
 
+extern __m512i AVX512_ZEROS; // AVX512 vector of zeros
+extern __m256i AVX256_ZEROS; // AVX256 vector of zeros
+extern __m128i AVX128_ZEROS; // AVX128 vector of zeros
+extern __m512i AVX512_MASK;  // AVX512 vector of 64-bit mask
+extern __m256i AVX256_MASK;  // AVX256 vector of 64-bit mask
+extern __m128i AVX128_MASK;  // AVX128 vector of 64-bit mask
+
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
+void run_macro_bench_test(int);
+
+/*
+ * @brief Subtracts two four-limbed numbers, using 256-bit vectors
+ * @param result The result of the subtraction
+ * @param a The first number to subtract
+ * @param b The second number to subtract
+ * @param b_in The borrow-in generated from the previous subtraction
+ * @param b_out The borrow-out generated from the subtraction
+ * @return none
+ */
+#define __SUB_N_4(result, a, b, b_in, b_out)                                           \
+    do                                                                                 \
+    {                                                                                  \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                             \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                             \
+        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                           \
+        __mmask8 borrow_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                  \
+        *(b_out) = borrow_mask & 1;                                                    \
+        borrow_mask |= ((*b_in) << 4);                                                 \
+        bool borrow_detect = !!borrow_mask;                                            \
+        borrow_mask >>= 1;                                                             \
+        __mmask8 mask_1;                                                               \
+        if (borrow_detect)                                                             \
+        {                                                                              \
+            __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
+            __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
+            mask_1 = _mm256_cmpgt_epu64_mask(result_vec_new, result_vec);              \
+            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
+            result_vec = result_vec_new;                                               \
+            if (unlikely(mask_1 & 254))                                                \
+            {                                                                          \
+                printf("mask_1: %d\n", mask_1);                                        \
+                mask_1 >>= 1;                                                          \
+                _mm256_store_si256((__m256i *)(result), result_vec);                   \
+                for (int i = 6; i >= 0; i--)                                           \
+                {                                                                      \
+                    if (mask_1 >> i)                                                   \
+                    {                                                                  \
+                        result[i] -= 1;                                                \
+                        if (result[i] == -1)                                           \
+                        {                                                              \
+                            mask_1 |= (1 << (i - 1));                                  \
+                        }                                                              \
+                    }                                                                  \
+                }                                                                      \
+                break;                                                                 \
+            }                                                                          \
+        }                                                                              \
+        _mm256_store_si256((__m256i *)(result), result_vec);                           \
+    } while (0)
+
+/*
+ * @brief Subtracts two eight-limbed numbers, using 512-bit vectors
+ * @param result The result of the subtraction
+ * @param a The first number to subtract
+ * @param b The second number to subtract
+ * @param b_in The borrow-in generated from the previous subtraction
+ * @param b_out The borrow-out generated from the subtraction
+ * @return none
+ */
+#define __SUB_N_8(result, a, b, b_in, b_out)                                           \
+    do                                                                                 \
+    {                                                                                  \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                             \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                             \
+        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                           \
+        __mmask8 borrow_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                  \
+        (*b_out) = borrow_mask & 1;                                                    \
+        borrow_mask >>= 1;                                                             \
+        borrow_mask |= ((*b_in) << 7);                                                 \
+        bool borrow_detect = !!borrow_mask;                                            \
+        __mmask8 mask_1;                                                               \
+        if (borrow_detect)                                                             \
+        {                                                                              \
+            __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
+            __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
+            mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);              \
+            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
+            result_vec = result_vec_new;                                               \
+            if (unlikely(mask_1 & 254))                                                \
+            {                                                                          \
+                mask_1 >>= 1;                                                          \
+                _mm512_store_si512((__m512i *)(result), result_vec);                   \
+                for (int i = 6; i >= 0; i--)                                           \
+                {                                                                      \
+                    if (mask_1 >> i)                                                   \
+                    {                                                                  \
+                        result[i] -= 1;                                                \
+                        if (result[i] == -1)                                           \
+                        {                                                              \
+                            mask_1 |= (1 << (i - 1));                                  \
+                        }                                                              \
+                    }                                                                  \
+                }                                                                      \
+                break;                                                                 \
+            }                                                                          \
+        }                                                                              \
+        _mm512_store_si512((__m512i *)(result), result_vec);                           \
+    } while (0)
+/**
+ * @brief Subtracts two numbers represented as limb_t, and stores the sum in result.
+ * @brief Subtracts from the least significant limb to the most significant limb.
+ * @brief Being 52-bit format, total 5 limbs are required to store 256-bit number.
+ * @brief Handles the last limb first, then the remaining limbs at once.
+ * @param result The result of the subtraction
+ * @param a The first number to subtract
+ * @param b The second number to subtract
+ * @return none
+ */
+void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
+{
+    int b_in = 0, b_out = 0;
+    // swap a and b if a < b
+    int i = 0;
+    do
+    {
+        if (likely(a->limbs[i] > b->limbs[i]))
+        {
+            break;
+        }
+        else if (a->limbs[i] < b->limbs[i])
+        {
+            limb_t *temp = a;
+            a = b;
+            b = temp;
+            result->sign = 1;
+            break;
+        }
+        ++i;
+        if (unlikely(i == 4))
+        {
+            // a and b are equal
+            result->size = 1;
+            result->limbs[0] = 0;
+            return;
+        }
+    } while (i);
+    __SUB_N_4((result->limbs), (a->limbs), (b->limbs), &b_in, &b_out);
+}
+
+void __sub_n(limb_t *result, limb_t *x, limb_t *y)
+{
+    int b_in = 0, b_out = 0;
+    int n = x->size;
+    // swap x and y if x < y
+    int i = 0;
+    do
+    {
+        if (likely(x->limbs[i] > y->limbs[i]))
+        {
+            break;
+        }
+        else if (x->limbs[i] < y->limbs[i])
+        {
+            limb_t *temp = x;
+            x = y;
+            y = temp;
+            result->sign = 1;
+            break;
+        }
+        ++i;
+        if (unlikely(i == n))
+        {
+            // a and b are equal
+            result->size = 1;
+            result->limbs[0] = 0;
+            return;
+        }
+    } while (1);
+
+    uint64_t *res_ptr = result->limbs;
+    uint64_t *x_ptr = x->limbs;
+    uint64_t *y_ptr = y->limbs;
+
+    for (int i = n - 8; i >= 0; i -= 8)
+    {
+        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), &b_in, &b_out);
+        b_in = b_out;
+    }
+}
+
+void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
+{
+    int n = a->size;
+
+    if (n <= 4)
+    {
+        limb_t_sub_n_256(result, a, b);
+    }
+    else
+    {
+        __sub_n(result, a, b);
+    }
+}
+
 void run_perf_test();
 
 // main function with cmd arguments
@@ -90,6 +294,7 @@ int main(int argc, char *argv[])
     assert(atoi(argv[5]) >= 0 && atoi(argv[5]) < 3);
     int type_of_measure = atoi(argv[5]);
 
+    init_memory_pool();
     switch (type_of_measure)
     {
     case 0:
@@ -105,18 +310,12 @@ int main(int argc, char *argv[])
         printf("Invalid type of measure\n");
         exit(EXIT_FAILURE);
     }
+
+    destroy_memory_pool();
+
     return 0;
 }
 
-/*
- Does the following for testing correctness:
-    1. read the test cases from the file
-    2. path: ../test/cases/<num_bits>/<test_case>.csv.gz
-    3. there are four test cases: random.csv.gz, equal.csv.gz, greater.csv.gz, smaller.csv.gz
-    4. first line contains a header: a, b, result
-    5. next line onwards contains the test cases, 100000 test cases
-    6. verify the results of the subtraction of a and b with the result
-*/
 void run_correctness_test(int test_case)
 {
     printf("Trying to run correctness test\n");
@@ -161,8 +360,8 @@ void run_correctness_test(int test_case)
 
     // Step 2: Allocate arrays to store test cases
     printf("Loading test cases...\n");
-    char **a_strings = (char **)malloc(ITERATIONS * sizeof(char *));
-    char **b_strings = (char **)malloc(ITERATIONS * sizeof(char *));
+    limb_t **operands_a = (limb_t **)malloc(ITERATIONS * sizeof(limb_t *));
+    limb_t **operands_b = (limb_t **)malloc(ITERATIONS * sizeof(limb_t *));
     char **expected_results = (char **)malloc(ITERATIONS * sizeof(char *));
     int actual_iterations = 0;
 
@@ -197,121 +396,43 @@ void run_correctness_test(int test_case)
             continue;
         }
 
-        // Store operands and expected result as strings
-        a_strings[i] = strdup(a_str);
-        b_strings[i] = strdup(b_str);
+        // Store operands and expected result
+        operands_a[i] = limb_set_str(a_str);
+        operands_b[i] = limb_set_str(b_str);
         expected_results[i] = strdup(result_str);
+
+        // Adjust sizes of a and b
+        limb_t_adjust_limb_sizes(operands_a[i], operands_b[i]);
+
         actual_iterations++;
     }
 
     gzclose(test_file);
     printf("Loaded %d test cases\n", actual_iterations);
 
-    // Step 4: Initialize arrays for GMP operations
-    mpz_t *a_values = (mpz_t *)malloc(actual_iterations * sizeof(mpz_t));
-    mpz_t *b_values = (mpz_t *)malloc(actual_iterations * sizeof(mpz_t));
-    mpz_t *results = (mpz_t *)malloc(actual_iterations * sizeof(mpz_t));
-
-    // Initialize GMP values
-    printf("Initializing GMP values...\n");
+    // Step 4: Allocate an array for results
+    limb_t **results = (limb_t **)malloc(actual_iterations * sizeof(limb_t *));
     for (int i = 0; i < actual_iterations; i++)
     {
-        mpz_init(a_values[i]);
-        mpz_init(b_values[i]);
-        mpz_init(results[i]);
-
-        // Convert strings to GMP values
-        if (mpz_set_str(a_values[i], a_strings[i], 16) != 0)
-        {
-            fprintf(stderr, "Error: Failed to set mpz_t from string a_str at iteration %d\n", i);
-            continue;
-        }
-        if (mpz_set_str(b_values[i], b_strings[i], 16) != 0)
-        {
-            fprintf(stderr, "Error: Failed to set mpz_t from string b_str at iteration %d\n", i);
-            continue;
-        }
+        results[i] = limb_t_alloc(operands_a[i]->size);
     }
 
-    // Step 5: Perform all subtractions
+    // Step 5: Process all subtractions
     printf("Performing subtraction operations...\n");
     fflush(stdout); // Flush stdout to ensure all output is printed
     _mm_mfence();   // Ensure all previous operations are completed
-
     long double t0 = cputime();
     for (int j = 0; j < 1000; ++j)
     {
         for (int i = 0; i < actual_iterations; ++i)
         {
-            mpz_sub(results[i], a_values[i], b_values[i]);
+            limb_t_sub_n(operands_a[i], operands_b[i], results[i]);
         }
     }
     long double t1 = cputime();
     printf("Time taken for %d subtractions: %.2Lf microseconds\n", actual_iterations, t1 - t0);
-
-    // Step 6: Verify results
-    printf("Verifying results...\n");
-    int failures = 0;
-    for (int i = 0; i < actual_iterations; i++)
-    {
-        char *result_str = mpz_get_str(NULL, 16, results[i]);
-        int result_len = strlen(result_str);
-
-        if (!check_result(result_str, expected_results[i], result_len))
-        {
-            printf("Test case failed at iteration %d\n", i);
-            printf("a = %s\nb = %s\nExpected result = %s\n",
-                   a_strings[i], b_strings[i], expected_results[i]);
-            printf("Actual result = %s\n", result_str);
-            failures++;
-        }
-
-        free(result_str); // Free the string allocated by mpz_get_str
-    }
-
-    if (failures == 0)
-    {
-        switch (test_case)
-        {
-        case 0:
-            printf("All random test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        case 1:
-            printf("All equal test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        case 2:
-            printf("All greater test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        case 3:
-            printf("All smaller test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        }
-    }
-    else
-    {
-        printf("Found %d failures out of %d test cases\n", failures, actual_iterations);
-    }
-
-    // Step 7: Clean up
-    printf("Cleaning up...\n");
-    for (int i = 0; i < actual_iterations; i++)
-    {
-        mpz_clear(a_values[i]);
-        mpz_clear(b_values[i]);
-        mpz_clear(results[i]);
-        free(a_strings[i]);
-        free(b_strings[i]);
-        free(expected_results[i]);
-    }
-    free(a_values);
-    free(b_values);
-    free(results);
-    free(a_strings);
-    free(b_strings);
-    free(expected_results);
-
-    printf("Correctness test completed\n");
 }
+
 /*
   Does the following for measuring the time taken for subtraction:
     1. read the test cases from the file
@@ -559,69 +680,53 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
-        // convert the strings to mpz_t
-        mpz_t a, b, result_gmp;
-        mpz_init(a);
-        mpz_init(b);
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
 
-        // convert the strings to mpz_t
-        if (mpz_set_str(a, a_str, 16) != 0)
-        {
-            perror("Error: Failed to set mpz_t from string a_str");
-            exit(EXIT_FAILURE);
-        }
-        if (mpz_set_str(b, b_str, 16) != 0)
-        {
-            perror("Error: Failed to set mpz_t from string b_str");
-            exit(EXIT_FAILURE);
-        }
+        // adjust the sizes of a and b
+        limb_t_adjust_limb_sizes(a, b);
+        int n = a->size;
+
+        limb_t *s = limb_t_alloc(n);
 
         printf("Starting subtraction\n");
-
-        double time_taken;
-
-        // clear cache before each test case
-        size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
-        size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
-
-        for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
-        {
-            _mm_clflush((char *)a->_mp_d + i);
-        }
-
-        for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
-        {
-            _mm_clflush((char *)b->_mp_d + i);
-        }
-        // Ensure that the cache flush operations are completed
-        _mm_mfence();
-        // Ensure the flush is completed
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
-        int niter;
-        double f, ops_per_sec, time_taken_ms;
+        unsigned long long niter;
+        double f, ops_per_sec, time_taken_ms, time_taken;
+        // clear cache content for a_limbs, b_limbs
+        for (int i = 0; i < n; i += 64)
+        {
+            _mm_clflush((char *)a + i);
+            _mm_clflush((char *)b + i);
+        }
+
+        // Ensure that the cache flush operations are completed
+        _mm_mfence();
 
         switch (measure_type)
         {
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
+
             printf("Calibrating CPU speed using RDTSC...\n");
             fflush(stdout);
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, mpz_sub(result_gmp, a, b));
+            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, s));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("subtracting %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                mpz_sub(result_gmp, a, b);
+                limb_t_sub_n(a, b, s);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -648,20 +753,20 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, mpz_sub(result_gmp, a, b));
+            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, s));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("subtracting %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             struct timespec ts_0, ts_1;
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                mpz_sub(result_gmp, a, b);
+                limb_t_sub_n(a, b, s);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -688,20 +793,20 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, mpz_sub(result_gmp, a, b));
+            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, s));
 
             printf("done\n");
 
             printf("Calibrated time: %f microseconds\n", time_taken);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("subtracting %d times\n", niter);
+            printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                mpz_sub(result_gmp, a, b);
+                limb_t_sub_n(a, b, s);
             }
             t1 = cputime() - t0;
             printf("done!\n");
@@ -741,154 +846,3 @@ void run_benchmarking_test(int test_case, int measure_type)
         gzclose(cputime_file);
     }
 }
-
-// void run_perf_events(int test_case)
-// {
-//     printf("Trying to run perf events\n");
-
-//     char test_filename[100];
-//     long long values[MAX_EVENTS];
-
-//     switch (test_case)
-//     {
-//     case 0:
-//         printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
-//         break;
-//     case 1:
-//         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
-//         break;
-//     case 2:
-//         printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
-//         break;
-//     case 3:
-//         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
-//         break;
-//     default:
-//         printf("Invalid test case\n");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // open the test file
-//     gzFile test_file = open_gzfile(test_filename, "rb");
-
-//     // skip the first line, header
-//     skip_first_line(test_file);
-
-//     // initialize the perf events
-//     initialize_perf();
-
-//     // Randomly pick an iteration
-//     int i = rand() % ITERATIONS;
-//     printf("Reading test case %d\n", i);
-//     // buffer to read the test case
-//     char buffer[CHUNK];
-//     // reset the file pointer to the beginning of the file
-//     gzrewind(test_file);
-//     // skip the first line, header
-//     skip_first_line(test_file);
-//     // read ith line from the test_file
-//     for (int j = 0; j < i; j++)
-//     {
-//         // flush the buffer
-//         memset(buffer, 0, CHUNK);
-//         if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
-//         {
-//             if (gzeof(test_file))
-//             {
-//                 return; // End of file reached
-//             }
-//             else
-//             {
-//                 perror("Error reading line");
-//                 gzclose(test_file);
-//                 exit(EXIT_FAILURE);
-//             }
-//         }
-//     }
-
-//     // Parse the test case
-//     char *a_str = strtok(buffer, ",");
-//     char *b_str = strtok(NULL, ",");
-//     char *result_str = strtok(NULL, ",");
-
-//     if (a_str == NULL || b_str == NULL || result_str == NULL)
-//     {
-//         fprintf(stderr, "Error parsing line: %s\n", buffer);
-//         gzclose(test_file);
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // convert the strings to mpz_t
-//     mpz_t a, b, result_gmp;
-//     mpz_init(a);
-//     mpz_init(b);
-
-//     // convert the strings to mpz_t
-//     if (mpz_set_str(a, a_str, 16) != 0)
-//     {
-//         perror("Error: Failed to set mpz_t from string a_str");
-//         exit(EXIT_FAILURE);
-//     }
-//     if (mpz_set_str(b, b_str, 16) != 0)
-//     {
-//         perror("Error: Failed to set mpz_t from string b_str");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     printf("Starting subtraction\n");
-
-//     // clear cache before each test case
-//     size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
-//     size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
-
-//     for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
-//     {
-//         _mm_clflush((char *)a->_mp_d + i);
-//     }
-
-//     for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
-//     {
-//         _mm_clflush((char *)b->_mp_d + i);
-//     }
-//     // Ensure that the cache flush operations are completed
-//     _mm_mfence();
-//     // Ensure the flush is completed
-
-//     // start the perf events
-//     start_perf();
-
-//     /***** Start of subtraction *****/
-//     mpz_sub(result_gmp, a, b);
-//     /***** End of subtraction *****/
-
-//     // Stop performance monitoring
-//     stop_perf();
-
-//     // Read performance counters
-//     read_perf(values);
-
-//     // Write performance counters to a file or stdout
-//     write_perf(stdout, values);
-
-//     switch (test_case)
-//     {
-//     case 0:
-//         printf("Random test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     case 1:
-//         printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     case 2:
-//         printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     case 3:
-//         printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     }
-//     // close the test file
-//     gzclose(test_file);
-// }

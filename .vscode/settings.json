@@ -60,6 +60,7 @@
     "*.dump": "asm-intel-x86-generic",
     "module.h": "c",
     "memory": "c",
-    "cstdlib": "c"
+    "cstdlib": "c",
+    "limb_utils.h": "c"
   }
 }

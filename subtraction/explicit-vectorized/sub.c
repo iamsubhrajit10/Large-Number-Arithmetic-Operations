@@ -73,45 +73,19 @@ void run_correctness_test(int);
  * @param b_out The borrow-out generated from the subtraction
  * @return none
  */
-#define __SUB_N_4(result, a, b, b_in, b_out)                                           \
-    do                                                                                 \
-    {                                                                                  \
-        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                             \
-        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                             \
-        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                  \
-        *(b_out) = borrow_mask & 1;                                                    \
-        borrow_mask |= ((*b_in) << 4);                                                 \
-        bool borrow_detect = !!borrow_mask;                                            \
-        borrow_mask >>= 1;                                                             \
-        __mmask8 mask_1;                                                               \
-        if (borrow_detect)                                                             \
-        {                                                                              \
-            __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
-            __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
-            mask_1 = _mm256_cmpgt_epu64_mask(result_vec_new, result_vec);              \
-            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
-            result_vec = result_vec_new;                                               \
-            if (unlikely(mask_1 & 254))                                                \
-            {                                                                          \
-                printf("mask_1: %d\n", mask_1);                                        \
-                mask_1 >>= 1;                                                          \
-                _mm256_store_si256((__m256i *)(result), result_vec);                   \
-                for (int i = 6; i >= 0; i--)                                           \
-                {                                                                      \
-                    if (mask_1 >> i)                                                   \
-                    {                                                                  \
-                        result[i] -= 1;                                                \
-                        if (result[i] == -1)                                           \
-                        {                                                              \
-                            mask_1 |= (1 << (i - 1));                                  \
-                        }                                                              \
-                    }                                                                  \
-                }                                                                      \
-                break;                                                                 \
-            }                                                                          \
-        }                                                                              \
-        _mm256_store_si256((__m256i *)(result), result_vec);                           \
+#define __SUB_N_4(result, a, b, b_out)                                             \
+    do                                                                             \
+    {                                                                              \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                         \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                         \
+        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                       \
+        __mmask8 borrow_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);              \
+        b_out = borrow_mask;                                                       \
+        borrow_mask >>= 1;                                                         \
+        __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
+        __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
+        result_vec = result_vec_new;                                               \
+        _mm256_store_si256((__m256i *)(result), result_vec);                       \
     } while (0)
 
 /*
@@ -122,46 +96,25 @@ void run_correctness_test(int);
  * @param b_in The borrow-in generated from the previous subtraction
  * @param b_out The borrow-out generated from the subtraction
  * @return none
- */
-#define __SUB_N_8(result, a, b, b_in, b_out)                                           \
-    do                                                                                 \
-    {                                                                                  \
-        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                             \
-        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                             \
-        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                  \
-        (*b_out) = borrow_mask & 1;                                                    \
-        borrow_mask >>= 1;                                                             \
-        borrow_mask |= ((*b_in) << 7);                                                 \
-        bool borrow_detect = !!borrow_mask;                                            \
-        __mmask8 mask_1;                                                               \
-        if (borrow_detect)                                                             \
-        {                                                                              \
-            __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
-            __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
-            mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);              \
-            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
-            result_vec = result_vec_new;                                               \
-            if (unlikely(mask_1 & 254))                                                \
-            {                                                                          \
-                mask_1 >>= 1;                                                          \
-                _mm512_store_si512((__m512i *)(result), result_vec);                   \
-                for (int i = 6; i >= 0; i--)                                           \
-                {                                                                      \
-                    if (mask_1 >> i)                                                   \
-                    {                                                                  \
-                        result[i] -= 1;                                                \
-                        if (result[i] == -1)                                           \
-                        {                                                              \
-                            mask_1 |= (1 << (i - 1));                                  \
-                        }                                                              \
-                    }                                                                  \
-                }                                                                      \
-                break;                                                                 \
-            }                                                                          \
-        }                                                                              \
-        _mm512_store_si512((__m512i *)(result), result_vec);                           \
+//  */
+#define __SUB_N_8(result, a, b, b_in, b_out)                                       \
+    do                                                                             \
+    {                                                                              \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                         \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                         \
+        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                       \
+        __mmask16 borrow_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);             \
+        b_out = borrow_mask;                                                       \
+        borrow_mask >>= 1;                                                         \
+        b_in = b_in << 7;                                                          \
+        borrow_mask = _mm512_kor(borrow_mask, b_in);                               \
+        __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
+        __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
+        __mmask16 mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);    \
+        result_vec = result_vec_new;                                               \
+        _mm512_store_si512((__m512i *)(result), result_vec);                       \
     } while (0)
+
 /**
  * @brief Subtracts two numbers represented as limb_t, and stores the sum in result.
  * @brief Subtracts from the least significant limb to the most significant limb.
@@ -174,7 +127,6 @@ void run_correctness_test(int);
  */
 void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
-    int b_in = 0, b_out = 0;
     // swap a and b if a < b
     int i = 0;
     do
@@ -200,12 +152,12 @@ void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
             return;
         }
     } while (i);
-    __SUB_N_4((result->limbs), (a->limbs), (b->limbs), &b_in, &b_out);
+    __mmask16 b_in = 0, b_out = 0;
+    __SUB_N_4((result->limbs), (a->limbs), (b->limbs), b_out);
 }
 
 void __sub_n(limb_t *result, limb_t *x, limb_t *y)
 {
-    int b_in = 0, b_out = 0;
     int n = x->size;
     // swap x and y if x < y
     int i = 0;
@@ -237,9 +189,10 @@ void __sub_n(limb_t *result, limb_t *x, limb_t *y)
     uint64_t *x_ptr = x->limbs;
     uint64_t *y_ptr = y->limbs;
 
+    __mmask16 b_in = 0, b_out = 0;
     for (int i = n - 8; i >= 0; i -= 8)
     {
-        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), &b_in, &b_out);
+        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), b_in, b_out);
         b_in = b_out;
     }
 }
@@ -917,7 +870,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, s));
+            TIME_RUSAGE(time_taken, limb_t_sub_n(s, a, b));
 
             printf("done\n");
 
