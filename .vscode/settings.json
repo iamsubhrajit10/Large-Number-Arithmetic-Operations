@@ -61,6 +61,7 @@
     "module.h": "c",
     "memory": "c",
     "cstdlib": "c",
-    "limb_utils.h": "c"
+    "limb_utils.h": "c",
+    "functional": "c"
   }
 }

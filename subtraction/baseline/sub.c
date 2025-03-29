@@ -57,30 +57,6 @@ int NUM_BITS; // Number of bits for the numbers
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
 
-/*
- * @brief Subtracts two four-limbed numbers, using 256-bit vectors
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @param b_in The borrow-in generated from the previous subtraction
- * @param b_out The borrow-out generated from the subtraction
- * @return none
- */
-// #define __SUB_N_4(result, a, b, b_out)                                             \
-//     do                                                                             \
-//     {                                                                              \
-//         __m256i a_vec = _mm256_load_si256((__m256i *)(a));                         \
-//         __m256i b_vec = _mm256_load_si256((__m256i *)(b));                         \
-//         __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                       \
-//         __mmask8 borrow_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);              \
-//         b_out = borrow_mask;                                                       \
-//         borrow_mask >>= 1;                                                         \
-//         __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
-//         __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
-//         result_vec = result_vec_new;                                               \
-//         _mm256_store_si256((__m256i *)(result), result_vec);                       \
-//     } while (0)
-
 #define __SUB_N_4(result, a, b, b_out)       \
     do                                       \
     {                                        \
@@ -94,33 +70,6 @@ void run_correctness_test(int);
             }                                \
         }                                    \
     } while (0)
-
-// /*
-//  * @brief Subtracts two eight-limbed numbers, using 512-bit vectors
-//  * @param result The result of the subtraction
-//  * @param a The first number to subtract
-//  * @param b The second number to subtract
-//  * @param b_in The borrow-in generated from the previous subtraction
-//  * @param b_out The borrow-out generated from the subtraction
-//  * @return none
-// //  */
-// #define __SUB_N_8(result, a, b, b_in, b_out)                                       \
-//     do                                                                             \
-//     {                                                                              \
-//         __m512i a_vec = _mm512_load_si512((__m512i *)(a));                         \
-//         __m512i b_vec = _mm512_load_si512((__m512i *)(b));                         \
-//         __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                       \
-//         __mmask16 borrow_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);             \
-//         b_out = borrow_mask;                                                       \
-//         borrow_mask >>= 1;                                                         \
-//         b_in = b_in << 7;                                                          \
-//         borrow_mask = _mm512_kor(borrow_mask, b_in);                               \
-//         __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
-//         __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
-//         __mmask16 mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);    \
-//         result_vec = result_vec_new;                                               \
-//         _mm512_store_si512((__m512i *)(result), result_vec);                       \
-//     } while (0)
 
 #define __SUB_N_8(result, a, b, b_in, b_out)          \
     do                                                \
