@@ -103,7 +103,7 @@ void run_correctness_test(int);
         __m512i b_vec = _mm512_load_si512((__m512i *)(b));                       \
         __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                     \
         __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);        \
-        c_out = _mm512_kand(carry_mask, 1);                                      \
+        c_out = carry_mask;                                                      \
         carry_mask >>= 1;                                                        \
         c_in = c_in << 7;                                                        \
         carry_mask = _mm512_kor(carry_mask, c_in);                               \
