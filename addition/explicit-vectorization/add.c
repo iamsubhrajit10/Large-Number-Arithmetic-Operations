@@ -119,7 +119,7 @@ void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
     __mmask16 c_out = 0;
 
     __ADD_N_4((result->limbs), (a->limbs), (b->limbs), c_out);
-    if (unlikely(c_out))
+    if (_mm512_kand(c_out, 1))
     {
         // shift the result by one digit to the right, before reallocate the memory
         int n = a->size;
