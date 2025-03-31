@@ -7,7 +7,7 @@ gcc add.c limb_utils.c -o add -I.. -lm -lgmp -lz -mavx512f -O3 -funroll-all-loop
 mkdir -p experiments/console_logs
 
 # Step 3: Define an array of bit-sizes
-bit_sizes=(256 512 1024 2048 4096 8192 16384 32768 65536)
+bit_sizes=(512 1024 2048 4096 8192 16384 32768 65536)
 # bit_sizes=(32768 65536)
 # Step 4: Define an array of test-case numbers and their descriptions
 test_cases=(0 1 2 3)

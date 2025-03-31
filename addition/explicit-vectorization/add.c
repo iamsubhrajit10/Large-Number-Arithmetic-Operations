@@ -80,7 +80,7 @@ void run_correctness_test(int);
         __m256i b_vec = _mm256_load_si256((__m256i *)(b));                                              \
         __m256i result_vec = _mm256_add_epi64(a_vec, b_vec);                                            \
         __mmask8 carry_mask = _mm256_cmplt_epu64_mask(result_vec, a_vec);                               \
-        c_out = _mm512_mask2int(_mm512_kand(carry_mask, 1));                                            \
+        c_out = carry_mask;                                                                             \
         carry_mask >>= 1;                                                                               \
         __m256i result_vec_new = _mm256_add_epi64(result_vec,                                           \
                                                   _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1)); \
@@ -103,7 +103,7 @@ void run_correctness_test(int);
         __m512i b_vec = _mm512_load_si512((__m512i *)(b));                       \
         __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                     \
         __mmask8 carry_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);        \
-        c_out = _mm512_mask2int(_mm512_kand(carry_mask, 1));                     \
+        c_out = _mm512_kand(carry_mask, 1);                                      \
         carry_mask >>= 1;                                                        \
         c_in = c_in << 7;                                                        \
         carry_mask = _mm512_kor(carry_mask, c_in);                               \
@@ -143,10 +143,9 @@ void __add_n(limb_t *result, limb_t *a, limb_t *b)
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), c_in, c_out);
         c_in = c_out;
     }
-    if (unlikely(c_out))
+    if (_mm512_kand(c_out, 1))
     {
         // shift the result by one digit to the right, before reallocate the memory
-        int n = a->size;
         limb_t_realloc(result, n + 1);
         result->limbs[0] = 1;
         result->size = n + 1;
