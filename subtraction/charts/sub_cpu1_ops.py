@@ -12,12 +12,16 @@ rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitst
 
 data = {
     "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
-    "GMP_SUB Time (ns)": [8.6, 9.8, 12.6, 18.3, 31.1, 61, 151, 334.6, 664.8, 913.1],
+    "GMP_SUB Time (ns)": [8.6, 9.8, 12.6, 18.3, 31.1, 61.0, 151.0, 334.6, 664.8, 913.1],
     "PML_SUB Time (ns)": [3.9, 4.3, 5.1, 7.5, 12.3, 24.2, 47.5, 94.3, 190.3, 379.1],
-    "Speedup (PML_SUB) Time": [2.21, 2.28, 2.47, 2.44, 2.53, 2.52, 3.18, 3.55, 3.49, 2.41],
+    "Baseline_SUB Time (ns)": [5.0, 9.8, 17.0, 32.5, 63.5, 125.6, 256.9, 506.6, 1007.6, 2016.5],
+    "Speedup (PML_SUB vs GMP) Time": [2.21, 2.28, 2.47, 2.44, 2.53, 2.52, 3.18, 3.55, 3.49, 2.41],
+    "Speedup (PML_SUB vs Baseline) Time": [1.72, 1.96, 2.62, 3.49, 4.15, 4.23, 4.69, 4.48, 4.56, 4.66],
     "GMP_SUB Ops": [115978795, 102187113, 79311500, 54480050, 32076268, 16394385, 6622956, 2986496, 1505049, 1095606],
     "PML_SUB Ops": [343903979, 230498515, 192961304, 137973118, 81268450, 41188732, 21009782, 10317795, 5143623, 2582408],
-    "Speedup (PML_SUB) Ops": [2.97, 2.26, 2.43, 2.53, 2.53, 2.51, 3.17, 3.45, 3.42, 2.36]
+    "Baseline_SUB Ops": [199172848, 103142572, 58465642, 30851921, 15765670, 7965960, 3879579, 1973103, 995678, 497444],
+    "Speedup (PML_SUB vs GMP) Ops": [2.97, 2.26, 2.43, 2.53, 2.53, 2.51, 3.17, 3.45, 3.42, 2.36],
+    "Speedup (PML_SUB vs Baseline) Ops": [1.73, 1.90, 2.61, 3.45, 4.13, 4.20, 4.70, 4.51, 4.54, 4.64]
 }
 
 df = pd.DataFrame(data)
@@ -25,121 +29,158 @@ df = pd.DataFrame(data)
 # Enhanced color palette - color-blind friendly but more vibrant
 gmp_color = "#D55E00"     # Red-orange
 pml_color = "#009E73"     # Teal green
-speedup_color = "#0072B2" # Blue
+baseline_color = "#CC79A7" # Pinkish-purple
+speedup_gmp_color = "#0072B2" # Blue (GMP vs PML speedup)
+speedup_baseline_color = "#56B4E9" # Light blue (Baseline vs PML speedup)
 bg_color = "#FFFFFF"      # White
 
-# --- Plot for Operations Per Second (Log-Log Scale) with enhanced visuals ---
-fig2 = plt.figure(figsize=(12, 10), dpi=300)
-fig2.patch.set_facecolor(bg_color)
-ax2 = fig2.add_subplot(111)
-ax2.set_facecolor(bg_color)
+# --- Plot: Operations per Second (Log-Log Scale) with enhanced visuals ---
+fig1 = plt.figure(figsize=(16, 12), dpi=300)
+fig1.patch.set_facecolor(bg_color)
+ax1 = fig1.add_subplot(111)
+ax1.set_facecolor(bg_color)
 
 # Add subtle grid with lower alpha for cleaner look
-ax2.grid(True, linestyle='--', alpha=0.3, color='#CCCCCC')
+ax1.grid(True, linestyle='--', alpha=0.3, color='#CCCCCC')
 
 # Add decade lines for the y-axis to make log scale more obvious
-y_values = [1e6, 1e7, 1e8, 1e9]
-for y in y_values:
-    ax2.axhline(y=y, linestyle='-', alpha=0.25, color='gray', zorder=1)
+y_decade_lines = [1e6, 1e7, 1e8, 1e9]
+for y in y_decade_lines:
+    ax1.axhline(y=y, linestyle='-', alpha=0.25, color='gray', zorder=1)
 
-# Enhanced line styling with more pronounced markers
-gmp_line = ax2.plot(df["Bit Size"], df["GMP_SUB Ops"], 
+# Plot lines with enhanced styling
+gmp_line = ax1.plot(df["Bit Size"], df["GMP_SUB Ops"], 
                    marker='o', linestyle='-', linewidth=3, markersize=9,
                    label="GMP_SUB Ops/s", color=gmp_color, markeredgecolor='white', 
                    markeredgewidth=1, zorder=3)
 
-pml_line = ax2.plot(df["Bit Size"], df["PML_SUB Ops"], 
+pml_line = ax1.plot(df["Bit Size"], df["PML_SUB Ops"], 
                    marker='s', linestyle='--', linewidth=3, markersize=9,
                    label="PML_SUB Ops/s", color=pml_color, markeredgecolor='white', 
                    markeredgewidth=1, zorder=3)
 
-# Add arrows and speedup annotations between the data points
-for i, bit_size in enumerate(df["Bit Size"]):
-    gmp_ops = df["GMP_SUB Ops"][i]
-    pml_ops = df["PML_SUB Ops"][i]
-    speedup = df["Speedup (PML_SUB) Ops"][i]
-    
-    # Calculate midpoint for annotation (in log space)
-    mid_y = np.sqrt(gmp_ops * pml_ops)  # Geometric mean for log scale
-    
-    # Draw arrow from GMP to PML
-    ax2.annotate('', 
-                xy=(bit_size, pml_ops),      # end point
-                xytext=(bit_size, gmp_ops),  # start point
-                arrowprops=dict(arrowstyle='<->', linestyle=':', 
-                              color=speedup_color, linewidth=1.5,
-                              shrinkA=5, shrinkB=5),
-                zorder=2)
-    
-    # Add speedup text
-    ax2.text(bit_size*0.85, mid_y, f"{speedup:.2f}×", 
-            color=speedup_color, fontweight='bold', fontsize=9,
-            bbox=dict(facecolor='white', alpha=0.9, edgecolor=speedup_color,
-                     boxstyle='round,pad=0.2'),
-            ha='left', va='center')
+baseline_line = ax1.plot(df["Bit Size"], df["Baseline_SUB Ops"], 
+                       marker='^', linestyle='-.', linewidth=3, markersize=9,
+                       label="Baseline_SUB Ops/s", color=baseline_color, markeredgecolor='white', 
+                       markeredgewidth=1, zorder=3)
 
-# Operation count annotations - formatted for readability
-for i, bit_size in enumerate(df["Bit Size"]):
-    # Format operations count in millions (M) or thousands (K)
-    if df["GMP_SUB Ops"][i] >= 1e6:
-        gmp_text = f"{df['GMP_SUB Ops'][i]/1e6:.1f}M"
-    else:
-        gmp_text = f"{df['GMP_SUB Ops'][i]/1e3:.1f}K"
-        
-    if df["PML_SUB Ops"][i] >= 1e6:
-        pml_text = f"{df['PML_SUB Ops'][i]/1e6:.1f}M"
-    else:
-        pml_text = f"{df['PML_SUB Ops'][i]/1e3:.1f}K"
+# Place callout boxes ABOVE data points at strategic points
+selected_indices = [0, 3, 6, 9]  # First, middle, and last points
+
+for i in selected_indices:
+    bit_size = df["Bit Size"][i]
+    pml_ops = df["PML_SUB Ops"][i]
     
-    ax2.text(bit_size, df["GMP_SUB Ops"][i] * 0.85, 
-             gmp_text, 
-             fontsize=10, ha='right', color=gmp_color, fontweight="bold", 
-             bbox=dict(facecolor='white', alpha=0.85, edgecolor='lightgray', 
-                      boxstyle='round,pad=0.3'))
+    # Create a callout box at this bit size
+    # Position it ABOVE the data point with some padding
+    box_y = pml_ops * 2.0  # Position ABOVE PML line
     
-    ax2.text(bit_size, df["PML_SUB Ops"][i] * 1.15, 
-             pml_text, 
-             fontsize=10, ha='left', color=pml_color, fontweight="bold", 
-             bbox=dict(facecolor='white', alpha=0.85, edgecolor='lightgray', 
-                      boxstyle='round,pad=0.3'))
+    # Format the speedup values
+    speedup_gmp = df["Speedup (PML_SUB vs GMP) Ops"][i]
+    speedup_baseline = df["Speedup (PML_SUB vs Baseline) Ops"][i]
+    
+    # Create the callout text
+    callout_text = f"Speedup\nPML vs GMP: {speedup_gmp:.2f}x\nPML vs Baseline: {speedup_baseline:.2f}x"
+    
+    # Add a fancy box with the speedup information
+    props = dict(boxstyle='round,pad=0.5', facecolor='#F8F8F8', alpha=0.9, 
+                edgecolor='gray', linewidth=1)
+    
+    # Connect the box to the PML data point with a line
+    ax1.annotate('', xy=(bit_size, pml_ops), xytext=(bit_size, box_y),
+                arrowprops=dict(arrowstyle='-', color='gray', linewidth=1, 
+                               linestyle='--', alpha=0.7))
+    
+    # Add text box
+    ax1.text(bit_size, box_y, callout_text, 
+            ha='center', va='center', fontsize=9, 
+            bbox=props, zorder=5)
+
+# Operations annotations - only at specific points
+for i in range(0, len(df["Bit Size"]), 1):  # Annotate every other point for clarity
+    bit_size = df["Bit Size"][i]
+    
+    # Format ops values in millions (M) for readability
+    gmp_ops_fmt = f"{df['GMP_SUB Ops'][i]/1e6:.1f}M"
+    pml_ops_fmt = f"{df['PML_SUB Ops'][i]/1e6:.1f}M"
+    baseline_ops_fmt = f"{df['Baseline_SUB Ops'][i]/1e6:.1f}M"
+    
+    # GMP ops annotation
+    ax1.text(bit_size * 1.05, df["GMP_SUB Ops"][i] * 1.1,  
+             gmp_ops_fmt, 
+             fontsize=9, ha='left', color=gmp_color, fontweight="bold", 
+             bbox=dict(facecolor='white', alpha=0.85, edgecolor=gmp_color, 
+                      boxstyle='round,pad=0.2'))
+    
+    # PML ops annotation
+    ax1.text(bit_size * 1.05, df["PML_SUB Ops"][i] * 1.1,  
+             pml_ops_fmt, 
+             fontsize=9, ha='left', color=pml_color, fontweight="bold", 
+             bbox=dict(facecolor='white', alpha=0.85, edgecolor=pml_color, 
+                      boxstyle='round,pad=0.2'))
+    
+    # Baseline ops annotation
+    ax1.text(bit_size * 1, df["Baseline_SUB Ops"][i] * 0.85,  
+             baseline_ops_fmt, 
+             fontsize=9, ha='right', color=baseline_color, fontweight="bold", 
+             bbox=dict(facecolor='white', alpha=0.85, edgecolor=baseline_color, 
+                      boxstyle='round,pad=0.2'))
 
 # Scale and label settings
-ax2.set_xscale("log", base=2)
-ax2.set_yscale("log", base=10)
-ax2.set_xticks(df["Bit Size"])
-ax2.set_xticklabels(df["Bit Size"], rotation=45, fontsize=12, fontweight="bold")
+ax1.set_xscale("log", base=2)
+ax1.set_yscale("log", base=10)
+ax1.set_xticks(df["Bit Size"])
+ax1.set_xticklabels(df["Bit Size"], rotation=45, fontsize=11, fontweight="bold")
 
-# Set y-axis tick formatting
+# Set y-axis ticks at decade marks
+ax1.set_yticks([1e6, 1e7, 1e8, 1e9])
 formatter = ScalarFormatter()
 formatter.set_scientific(False)
-ax2.yaxis.set_major_formatter(formatter)
+ax1.yaxis.set_major_formatter(formatter)
 
-# More prominent axis labels with log scale indicator
-ax2.set_xlabel("Bit Size", fontsize=14, fontweight="bold", labelpad=12)
-ax2.set_ylabel("Operations per Second (log₁₀ scale)", fontsize=14, fontweight="bold", labelpad=12)
+# Axis labels
+ax1.set_xlabel("Bit Size (log₂ scale)", fontsize=14, fontweight="bold", labelpad=12)
+ax1.set_ylabel("Operations per Second (log₁₀ scale)", fontsize=14, fontweight="bold", labelpad=12)
 
-
-# Add a subtle spline to the title
-title = ax2.set_title("Operations Throughput on Intel Xeon E-2314 for\nLarge-Number Subtraction (Log-scale)", 
+# Title
+title = ax1.set_title("Throughput Comparison on Xeon E-2314 for\nLarge-Number Addition (Log-scale)", 
                      fontsize=16, fontweight="bold", pad=20)
 plt.setp(title, bbox=dict(facecolor=bg_color, edgecolor=None, alpha=0.8, 
                          pad=5, boxstyle='round,pad=0.5'))
 
-# Enhanced legend with shadow
-legend = ax2.legend(loc='upper right', fontsize=12, frameon=True, 
+# Enhanced legend for operation throughput
+legend = ax1.legend(loc='upper right', fontsize=12, frameon=True, 
                    edgecolor='gray', fancybox=True, framealpha=0.9)
 
-# Add a legend item for speedup
-from matplotlib.lines import Line2D
-custom_lines = [Line2D([0], [0], color=speedup_color, linestyle=':', marker='', markersize=0)]
-custom_labels = ["PML vs GMP Speedup"]
-second_legend = ax2.legend(custom_lines, custom_labels, loc='lower left', 
-                         fontsize=10, frameon=True, edgecolor='gray', 
-                         fancybox=True, framealpha=0.9)
-ax2.add_artist(legend)  # Add back the first legend
+# Create a table-format string with the speedup data for all bit sizes
+table_text = "Speedup Factors by Bit Size:\n"
+table_text += "┌────────┬───────────┬────────────┐\n"
+table_text += "│Bit Size│ PML vs GMP│ PML vs Base│\n"
+table_text += "├────────┼───────────┼────────────┤\n"
+
+# Add each row of data
+for i, bit_size in enumerate(df["Bit Size"]):
+    gmp_speedup = df["Speedup (PML_SUB vs GMP) Ops"][i]
+    baseline_speedup = df["Speedup (PML_SUB vs Baseline) Ops"][i]
+    
+    # Format each row with proper alignment
+    bit_size_str = f"{bit_size:6d}"
+    gmp_speedup_str = f"{gmp_speedup:.2f}×"
+    baseline_speedup_str = f"{baseline_speedup:.2f}×"
+    
+    table_text += f"│ {bit_size_str} │ {gmp_speedup_str:9} │ {baseline_speedup_str:10} │\n"
+
+# Close the table
+table_text += "└────────┴───────────┴────────────┘"
+
+# Add explanation box with the data table - NOW AT LEFT BOTTOM
+ax1.text(0.03, 0.05, table_text, 
+         transform=ax1.transAxes, fontsize=9, fontfamily='monospace',
+         bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.5'),
+         ha='left', va='bottom')  # Changed ha from 'right' to 'left'
 
 # Add a subtle border to the figure
-for spine in ax2.spines.values():
+for spine in ax1.spines.values():
     spine.set_edgecolor('lightgray')
     spine.set_linewidth(1.5)
 
