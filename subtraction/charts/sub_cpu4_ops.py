@@ -143,7 +143,7 @@ ax1.set_xlabel("Bit Size (log₂ scale)", fontsize=14, fontweight="bold", labelp
 ax1.set_ylabel("Operations per Second (log₁₀ scale)", fontsize=14, fontweight="bold", labelpad=12)
 
 # Title
-title = ax1.set_title("Throughput Comparison on AMD EPYC 9B14 for\nLarge-Number Addition (Log-scale)", 
+title = ax1.set_title("Throughput Comparison on AMD EPYC 9B14 for\nLarge-Number Subtraction (Log-scale)", 
                      fontsize=16, fontweight="bold", pad=20)
 plt.setp(title, bbox=dict(facecolor=bg_color, edgecolor=None, alpha=0.8, 
                          pad=5, boxstyle='round,pad=0.5'))

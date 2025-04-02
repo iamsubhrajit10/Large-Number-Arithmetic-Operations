@@ -12,20 +12,21 @@ rcParams['font.family'] = 'sans-serif'
 rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', 'sans-serif']
 
 # Updated data with Baseline_ADD and Ops data
+# ...existing code...
 data = {
     "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
     "GMP_ADD Time (ns)": [8.6, 9.8, 12.2, 18.4, 31.7, 60.9, 151, 335, 665.1, 917],
-    "PML_ADD Time (ns)": [2.9, 5, 6.5, 9.3, 15.3, 29.7, 54.8, 113.2, 221, 433],
+    "PML_ADD Time (ns)": [2.9, 5, 6.5, 10, 15.3, 29.5, 53, 103.9, 203.9, 414.7],
     "Baseline_ADD Time (ns)": [6.5, 7.4, 14.7, 25.1, 40.7, 90.2, 191.9, 383.3, 776.6, 1563],
-    "Speedup (PML_ADD vs GMP) Time": [2.97, 1.96, 1.88, 1.98, 2.07, 2.05, 2.76, 2.96, 3.01, 2.12],
-    "Speedup (PML_ADD vs Baseline) Time": [2.24, 1.48, 2.26, 2.70, 2.66, 3.04, 3.50, 3.39, 3.51, 3.61],
+    "Speedup (PML_ADD vs GMP) Time": [2.97, 1.96, 1.88, 1.84, 2.07, 2.06, 2.85, 3.22, 3.26, 2.21],
+    "Speedup (PML_ADD vs Baseline) Time": [2.24, 1.48, 2.26, 2.51, 2.66, 3.06, 3.62, 3.69, 3.81, 3.77],
     "GMP_ADD Ops": [115621209, 100961962, 81627840, 54157396, 31536684, 16481172, 6630445, 2985090, 1504493, 1090682],
-    "PML_ADD Ops": [343921608, 196048789, 152783887, 106432596, 65076578, 33463961, 18232863, 8897816, 4521150, 2306810],
+    "PML_ADD Ops": [343921608, 196048789, 152783887, 98940660, 65076578, 33796657, 18854088, 9614968, 4903891, 2410687],
     "Baseline_ADD Ops": [152949897, 133061478, 67850597, 39685176, 24558590, 11082917, 5210652, 2607131, 1288031, 639874],
-    "Speedup (PML_ADD vs GMP) Ops": [2.97, 1.94, 1.87, 1.97, 2.06, 2.03, 2.75, 2.98, 3.01, 2.12],
-    "Speedup (PML_ADD vs Baseline) Ops": [2.25, 1.47, 2.25, 2.68, 2.65, 3.02, 3.50, 3.41, 3.51, 3.61]
+    "Speedup (PML_ADD vs GMP) Ops": [2.97, 1.94, 1.87, 1.83, 2.06, 2.05, 2.84, 3.22, 3.26, 2.21],
+    "Speedup (PML_ADD vs Baseline) Ops": [2.25, 1.47, 2.25, 2.49, 2.65, 3.05, 3.62, 3.69, 3.81, 3.77]
 }
-
+# ...existing code...
 df = pd.DataFrame(data)
 
 # Enhanced color palette - color-blind friendly but more vibrant

@@ -26,12 +26,11 @@ gmp_l1d_misses = [8, 7, 19, 20, 38, 53, 111, 218, 416, 875]
 gmp_l1d_miss_pct = [29.6, 20.0, 37.3, 24.1, 25.9, 19.3, 20.9, 20.9, 20.1, 21.3]
 
 # PML_ADD data
-pml_ticks = [14, 14, 25, 33, 47, 80, 160, 315, 619, 1220]
-pml_instructions = [67, 49, 108, 144, 206, 303, 578, 1047, 2066, 4023]
+pml_ticks = [8, 15, 20, 33, 44, 77, 149, 288, 571, 1171]
+pml_instructions = [28, 63, 87, 149, 190, 324, 592, 1128, 2226, 4370]
 pml_l1d_reads = [29, 33, 66, 105, 201, 402, 786, 1554, 3090, 6153]
-pml_l1d_misses = [9, 5, 8, 18, 29, 53, 104, 198, 413, 906]
-pml_l1d_miss_pct = [31.0, 15.2, 12.1, 17.1, 14.4, 13.2, 13.2, 12.7, 13.4, 14.7]
-
+pml_l1d_misses = [6, 6, 11, 18, 30, 53, 113, 202, 419, 917]
+pml_l1d_miss_pct = [20.7, 18.2, 16.7, 17.1, 14.9, 13.2, 14.4, 13.0, 13.6, 14.9]
 # Calculate speedup factors - PML vs GMP and PML vs Baseline
 speedup_gmp_ticks = [gmp / pml for gmp, pml in zip(gmp_ticks, pml_ticks)]
 speedup_base_ticks = [base / pml for base, pml in zip(base_ticks, pml_ticks)]
