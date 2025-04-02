@@ -30,20 +30,8 @@ typedef uint64_t *aligned_uint64_ptr __attribute__((aligned(64))); // Define an 
 static uint8_t *memory_pool = NULL;
 static size_t memory_pool_offset = 0;
 static size_t memory_pool_free_count = 0;
-__m512i AVX512_ZEROS;
-__m512i a_vec_0_perm_idx;
-__m512i a_vec_1_perm_idx;
-__m512i b_vec_1_perm_idx;
-__m512i b_vec_0_perm_idx;
-__m512i a_vec_2_perm_idx;
-__m512i b_vec_2_perm_idx;
-__m512i hi_0_perm_0_idx;
-__m512i hi_1_perm_0_idx;
-__m512i hi_1_perm_1_idx;
-__m512i hi_2_perm_0_idx;
-__m512i hi_2_perm_1_idx;
 
-void init_utils()
+void init_memory_pool()
 {
     memory_pool = (uint8_t *)_mm_malloc(MEMORY_POOL_SIZE, 64);
     if (memory_pool == NULL)
@@ -52,20 +40,9 @@ void init_utils()
         exit(EXIT_FAILURE);
     }
     memory_pool_offset = 0;
-    a_vec_0_perm_idx = _mm512_set_epi64(1, 0, 2, 1, 0, 1, 0, 0);
-    a_vec_1_perm_idx = _mm512_set_epi64(1, 4, 3, 2, 1, 0, 3, 2);
-    b_vec_1_perm_idx = _mm512_set_epi64(4, 0, 1, 2, 3, 4, 0, 1);
-    b_vec_0_perm_idx = _mm512_set_epi64(2, 3, 0, 1, 2, 0, 1, 0);
-    a_vec_2_perm_idx = _mm512_set_epi64(4, 3, 4, 3, 2, 4, 3, 2);
-    b_vec_2_perm_idx = _mm512_set_epi64(3, 4, 2, 3, 4, 1, 2, 3);
-    hi_0_perm_0_idx = _mm512_set_epi64(0, 0, 0, 7, 6, 4, 3, 1);
-    hi_1_perm_0_idx = _mm512_set_epi64(3, 2, 0, 0, 0, 0, 0, 0);
-    hi_1_perm_1_idx = _mm512_set_epi64(0, 0, 0, 0, 0, 7, 5, 4);
-    hi_2_perm_0_idx = _mm512_set_epi64(3, 0, 2, 1, 0, 0, 0, 0);
-    hi_2_perm_1_idx = _mm512_set_epi64(0, 0, 0, 7, 6, 0, 5, 4);
 }
 
-void *__memory_pool_alloc(size_t size)
+void *memory_pool_alloc(size_t size)
 {
     // Align the memory offset to 64 bytes
     size_t aligned_offset = (memory_pool_offset + 63) & ~((size_t)63);
@@ -81,7 +58,7 @@ void *__memory_pool_alloc(size_t size)
     return ptr;
 }
 
-void __memory_pool_free(void *ptr)
+void memory_pool_free(void *ptr)
 {
     // if the offset is greater than 512MB, reset the memory pool
     if (memory_pool_offset > (MEMORY_POOL_SIZE >> 1))
@@ -92,7 +69,7 @@ void __memory_pool_free(void *ptr)
     }
 }
 
-void clear_utils()
+void destroy_memory_pool()
 {
     if (memory_pool != NULL)
     {
@@ -110,7 +87,7 @@ limb_t *limb_t_alloc(size_t size)
         return NULL;
     }
 
-    limb_t *limb = (limb_t *)__memory_pool_alloc(sizeof(limb_t));
+    limb_t *limb = (limb_t *)memory_pool_alloc(sizeof(limb_t));
     // check if the memory allocation failed
     if (limb == NULL)
     {
@@ -119,7 +96,7 @@ limb_t *limb_t_alloc(size_t size)
     }
 
     // Allocate memory with fixed alignment of 64
-    limb->limbs = (uint64_t *)__memory_pool_alloc(size * sizeof(uint64_t));
+    limb->limbs = (uint64_t *)memory_pool_alloc(size * sizeof(uint64_t));
     // check if the memory allocation failed
     if (limb->limbs == NULL)
     {
@@ -143,14 +120,14 @@ limb_t *limb_t_realloc(limb_t *limb, size_t new_size)
     // Check if the new size is 0
     if (new_size == 0)
     {
-        __memory_pool_free(limb->limbs);
+        memory_pool_free(limb->limbs);
         limb->limbs = NULL;
         limb->size = 0;
         return limb;
     }
 
     // Allocate new memory with fixed alignment of 64
-    uint64_t *new_limbs = (uint64_t *)__memory_pool_alloc(new_size * sizeof(uint64_t));
+    uint64_t *new_limbs = (uint64_t *)memory_pool_alloc(new_size * sizeof(uint64_t));
     if (new_limbs == NULL)
     {
         return NULL;
@@ -174,9 +151,9 @@ void limb_t_free(limb_t *limb)
     {
         if (limb->limbs != NULL)
         {
-            __memory_pool_free(limb->limbs);
+            memory_pool_free(limb->limbs);
         }
-        __memory_pool_free(limb);
+        memory_pool_free(limb);
     }
     limb = NULL;
 }
@@ -230,7 +207,7 @@ char *limb_get_str(const limb_t *num)
 
     size_t hex_len = (num_limbs * LIMB_BITS + bits - 1) / bits + 1; // ceil(num_limbs * LIMB_BITS / bits) + 1
 
-    char *str = (char *)__memory_pool_alloc(hex_len);
+    char *str = (char *)memory_pool_alloc(hex_len);
     if (str == NULL)
     {
         perror("Memory allocation failed for string\n");
@@ -294,7 +271,7 @@ limb_t *limb_set_str(const char *str)
     // allocate temporary memory for hex-string to digit conversion
     size_t hex_len = strlen(str);
 
-    aligned_uint64_ptr digits = (uint64_t *)__memory_pool_alloc(hex_len * sizeof(uint64_t));
+    aligned_uint64_ptr digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
     if (digits == NULL)
     {
         perror("Memory allocation failed for digits\n");

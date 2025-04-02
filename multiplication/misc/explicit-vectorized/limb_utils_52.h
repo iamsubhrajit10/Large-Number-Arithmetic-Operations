@@ -28,31 +28,18 @@ typedef struct
 #define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
 
-extern __m512i AVX512_ZEROS;
-extern __m512i a_vec_0_perm_idx;
-extern __m512i a_vec_1_perm_idx;
-extern __m512i b_vec_1_perm_idx;
-extern __m512i b_vec_0_perm_idx;
-extern __m512i a_vec_2_perm_idx;
-extern __m512i b_vec_2_perm_idx;
-extern __m512i hi_0_perm_0_idx;
-extern __m512i hi_1_perm_0_idx;
-extern __m512i hi_1_perm_1_idx;
-extern __m512i hi_2_perm_0_idx;
-extern __m512i hi_2_perm_1_idx;
-
 // Memory pool functions
-void init_utils();
-void *__memory_pool_alloc(size_t size);
-void __memory_pool_free(void *ptr);
-void clear_utils();
+void init_memory_pool();
+void *memory_pool_alloc(size_t size);
+void memory_pool_free(void *ptr);
+void destroy_memory_pool();
 
 /**
  * @brief Allocates limb_t structure, with fixed alignment of 64
  *
  * @param size The number of limbs to allocate
  * @return limb_t* The pointer to the allocated memory
- * @note The memory should be freed using __memory_pool_free
+ * @note The memory should be freed using memory_pool_free
  */
 limb_t *limb_t_alloc(size_t size);
 

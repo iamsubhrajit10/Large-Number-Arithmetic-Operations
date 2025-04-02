@@ -47,579 +47,115 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include "limb_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
-extern int CORE_NO;
-int NUM_BITS; // Number of bits for the numbers
+int NUM_BITS;             // Number of bits for the numbers
 
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
 
-__m512i one;
-__m512i mask;
-__m512i ZEROS;
-// 1,0,2,1,0,1,0,0
-__m512i perm_idx_11;
-// 1,4,3,2,1,0,3,2
-__m512i perm_idx_12;
-
-// 4,0,1,2,3,4,0,1
-__m512i perm_idx_22;
-
-// 2,3,0,1,2,0,1,0
-__m512i perm_idx_21;
-
-// 4,3,4,3,2,4,3,2
-__m512i perm_idx_13;
-
-// 3,4,2,3,4,1,2,3
-__m512i perm_idx_23;
-
-// extra permutation indices
-__m512i perm_idx_0;
-
-__m512i perm_idx_1;
-
-__m512i perm_idx_2;
-
-__m512i perm_idx_3;
-__m512i perm_idx_4;
-
-__m512i perm_idx_r_hi_0;
-__m512i perm_idx_r_hi_1;
-__m512i perm_idx_res_0_X_2_lo;
-__m512i perm_idx_res_1_X_2_lo;
-
-__m512i AVX512_ZEROS;   // AVX512 vector of zeros
-__m256i AVX256_ZEROS;   // AVX256 vector of zeros
-__m128i AVX128_ZEROS;   // AVX128 vector of zeros
-__m512i AVX512_52_MASK; // AVX512 vector of 52-bit mask
-__m256i AVX256_52_MASK; // AVX256 vector of 52-bit mask
-__m128i AVX128_52_MASK; // AVX128 vector of 52-bit mask
-
-// void limb_mul_n_52(limb_t *a, limb_t *b, uint64_t *res_lo, uint64_t *res_hi)
-// void limb_mul_n_52(uint64_t *a, uint64_t *b, uint64_t *res_lo, uint64_t *res_hi)
-// {
-
-//     // Load the numbers into base
-//     __m512i base_1 = _mm512_loadu_si512(a);
-//     __m512i a_vec_1 = _mm512_permutexvar_epi64(perm_idx_11, base_1);
-//     __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
-
-//     __m512i base_2 = _mm512_loadu_si512(b);
-//     __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
-//     __m512i res_0_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
-//     __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
-//     __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
-//     __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
-//     _mm512_storeu_si512(res_hi, res_0_hi);
-
-//     __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
-//     __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
-//     __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
-//     _mm512_storeu_si512(res_lo, res_0_lo);
-
-//     __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
-//     _mm512_storeu_si512(res_hi + 8, res_1_hi);
-
-//     __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
-//     __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
-//     __m512i res_2_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
-//     __m512i res_2_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_3, res_2_hi);
-//     __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
-//     __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
-//     __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
-//     _mm512_storeu_si512(res_lo + 8, res_1_lo);
-
-//     __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
-//     __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
-//     __m512i res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
-//     _mm512_storeu_si512(res_lo + 16, res_2_lo);
-
-//     __uint128_t prod = (__uint128_t)a[4] * b[4];
-
-//     res_lo[23] += (prod >> 52);
-//     res_lo[0] += res_hi[2];
-//     res_lo[2] += res_hi[5];
-//     res_lo[5] += res_hi[9];
-//     res_lo[9] += res_hi[14];
-
-//     res_hi[9] = prod & 0xFFFFFFFFFFFFF;
-//     res_hi[8] = res_lo[22] + res_lo[23];
-//     uint carry = res_hi[8] >> 52;
-//     res_hi[8] &= 0xFFFFFFFFFFFFF;
-//     res_hi[7] = res_lo[19] + res_lo[20] + res_lo[21] + carry;
-//     carry = res_hi[7] >> 52;
-//     res_hi[7] &= 0xFFFFFFFFFFFFF;
-//     res_hi[6] = res_lo[15] + res_lo[16] + res_lo[17] + res_lo[18] + carry;
-//     carry = res_hi[6] >> 52;
-//     res_hi[6] &= 0xFFFFFFFFFFFFF;
-//     res_hi[5] = res_lo[10] + res_lo[11] + res_lo[12] + res_lo[13] + res_lo[14] + carry;
-//     carry = res_hi[5] >> 52;
-//     res_hi[5] &= 0xFFFFFFFFFFFFF;
-//     res_hi[4] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9] + carry;
-//     carry = res_hi[4] >> 52;
-//     res_hi[4] &= 0xFFFFFFFFFFFFF;
-//     res_hi[3] = res_lo[3] + res_lo[4] + res_lo[5] + carry;
-//     carry = res_hi[3] >> 52;
-//     res_hi[3] &= 0xFFFFFFFFFFFFF;
-//     res_hi[2] = res_lo[1] + res_lo[2] + carry;
-//     carry = res_hi[2] >> 52;
-//     res_hi[2] &= 0xFFFFFFFFFFFFF;
-//     res_hi[1] = res_lo[0] + carry;
-//     carry = res_hi[1] >> 52;
-//     res_hi[1] &= 0xFFFFFFFFFFFFF;
-//     res_hi[0] += carry;
-// }
-
-void limb_mul_n_52(uint64_t *a, uint64_t *b, uint64_t *res_lo, uint64_t *res_hi)
+void vbap_mul_256(limb_t *a, limb_t *b, uint64_t *lo, uint64_t *hi)
 {
 
-    __uint128_t prod = (__uint128_t)a[4] * b[4];
+    const uint64_t *num1 = a->limbs;
+    const uint64_t *num2 = b->limbs;
 
-    // Load the numbers into base
-    __m512i base_1 = _mm512_loadu_si512(a);
-    __m512i a_vec_1 = _mm512_permutexvar_epi64(perm_idx_11, base_1);
-    __m512i a_vec_2 = _mm512_permutexvar_epi64(perm_idx_12, base_1);
+    __m512i base_1 = _mm512_load_si512(num1);
+    __m512i a_vec_0 = _mm512_permutexvar_epi64(a_vec_0_perm_idx, base_1);
+    __m512i base_2 = _mm512_load_si512(num2);
+    __m512i b_vec_0 = _mm512_permutexvar_epi64(b_vec_0_perm_idx, base_2);
 
-    __m512i base_2 = _mm512_loadu_si512(b);
-    __m512i b_vec_1 = _mm512_permutexvar_epi64(perm_idx_21, base_2);
-    __m512i res_0_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_1, b_vec_1);
-    __m512i b_vec_2 = _mm512_permutexvar_epi64(perm_idx_22, base_2);
+    __m512i hi_0 = _mm512_madd52hi_epu64(AVX512_ZEROS, a_vec_0, b_vec_0);
+    __m512i a_vec_1 = _mm512_permutexvar_epi64(a_vec_1_perm_idx, base_1);
+    __m512i b_vec_1 = _mm512_permutexvar_epi64(b_vec_1_perm_idx, base_2);
+    __m512i hi_1 = _mm512_madd52hi_epu64(AVX512_ZEROS, a_vec_1, b_vec_1);
 
-    __m512i res_1_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_2, b_vec_2);
+    __m512i hi_1_perm_0 = _mm512_permutexvar_epi64(hi_1_perm_0_idx, hi_1);
+    __m512i hi_0_perm_0 = _mm512_permutexvar_epi64(hi_0_perm_0_idx, hi_0);
+    __m512i hi_add_lo_0 = _mm512_mask_blend_epi64(0b11100000, hi_0_perm_0, hi_1_perm_0);
+    __m512i lo_0 = _mm512_madd52lo_epu64(hi_add_lo_0, a_vec_0, b_vec_0);
+    _mm512_store_si512(hi, hi_0);
+    _mm512_store_si512(lo, lo_0);
 
-    // permute res_hi_0 and res_hi_1
-    __m512i res_0_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_0, res_0_hi);
-    __m512i res_1_hi_perm_2 = _mm512_permutexvar_epi64(perm_idx_r_hi_1, res_1_hi);
-    // extract first element of res_0_hi
+    __m512i hi_1_perm_1 = _mm512_permutexvar_epi64(hi_1_perm_1_idx, hi_1);
+    _mm512_store_si512(hi + 8, hi_1);
 
-    __m512i res_0_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_0, res_0_hi);
-    __m128i lower = _mm512_extracti64x2_epi64(res_0_hi, 0);
-    res_hi[0] = _mm_extract_epi64(lower, 0);
-    __m512i res_1_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_1, res_1_hi);
-    __m512i X_0 = _mm512_mask_blend_epi64(0b11100000, res_0_hi_perm_0, res_1_hi_perm_0);
-    __m512i res_0_lo = _mm512_madd52lo_epu64(X_0, a_vec_1, b_vec_1);
-    // _mm512_store_si512(res_lo, res_0_lo);
+    __m512i a_vec_2 = _mm512_permutexvar_epi64(a_vec_2_perm_idx, base_1);
+    __m512i b_vec_2 = _mm512_permutexvar_epi64(b_vec_2_perm_idx, base_2);
+    __m512i hi_2 = _mm512_madd52hi_epu64(AVX512_ZEROS, a_vec_2, b_vec_2);
+    __m512i hi_2_perm_0 = _mm512_permutexvar_epi64(hi_2_perm_0_idx, hi_2);
+    __m512i hi_add_lo_1 = _mm512_mask_blend_epi64(0b10111000, hi_1_perm_1, hi_2_perm_0);
+    hi_add_lo_1 = _mm512_mask_blend_epi64(0b01000000, hi_add_lo_1, AVX512_ZEROS);
+    __m512i lo_1 = _mm512_madd52lo_epu64(hi_add_lo_1, a_vec_1, b_vec_1);
+    _mm512_store_si512(lo + 8, lo_1);
 
-    __m512i res_1_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_2, res_1_hi);
-    // _mm512_store_si512(res_hi + 8, res_1_hi);
+    __m512i hi_2_perm_1 = _mm512_permutexvar_epi64(hi_2_perm_1_idx, hi_2);
+    __m512i hi_add_lo_2 = _mm512_mask_blend_epi64(0b11100100, hi_2_perm_1, AVX512_ZEROS);
+    __m512i lo_2 = _mm512_madd52lo_epu64(hi_add_lo_2, a_vec_2, b_vec_2);
+    _mm512_store_si512(lo + 16, lo_2);
 
-    __m512i a_vec_3 = _mm512_permutexvar_epi64(perm_idx_13, base_1);
-    __m512i b_vec_3 = _mm512_permutexvar_epi64(perm_idx_23, base_2);
-    __m512i res_2_hi = _mm512_madd52hi_epu64(ZEROS, a_vec_3, b_vec_3);
-    __m512i res_2_hi_perm_0 = _mm512_permutexvar_epi64(perm_idx_3, res_2_hi);
-    __m512i temp_x = _mm512_mask_blend_epi64(0b10111000, res_1_hi_perm_1, res_2_hi_perm_0);
-    __m512i X_1 = _mm512_mask_blend_epi64(0b01000000, temp_x, ZEROS);
-    __m512i res_1_lo = _mm512_madd52lo_epu64(X_1, a_vec_2, b_vec_2);
-    // _mm512_store_si512(res_lo + 8, res_1_lo);
-    __m512i res_hi_0_1 = _mm512_mask_blend_epi64(0b00001100, res_0_hi_perm_2, res_1_hi_perm_2);
-    __m512i X_2 = _mm512_mask_blend_epi64(0b00001111, ZEROS, res_hi_0_1);
+    __uint128_t prod = (__uint128_t)num1[4] * num2[4];
 
-    __m512i res_0_X_2_lo = _mm512_permutexvar_epi64(perm_idx_res_0_X_2_lo, X_2);
-    res_0_lo = _mm512_add_epi64(res_0_lo, res_0_X_2_lo);
-    _mm512_storeu_si512(res_lo, res_0_lo);
+    lo[23] += (prod >> 52);
+    hi[8] = lo[22] + lo[23];
 
-    __m512i res_1_X_2_lo = _mm512_permutexvar_epi64(perm_idx_res_1_X_2_lo, X_2);
-    res_1_lo = _mm512_add_epi64(res_1_lo, res_1_X_2_lo);
+    lo[0] += hi[2];
+    lo[2] += hi[5];
+    lo[5] += hi[9];
+    lo[9] += hi[14];
 
-    __m512i res_2_hi_perm_1 = _mm512_permutexvar_epi64(perm_idx_4, res_2_hi);
-    __m512i y = _mm512_mask_blend_epi64(0b11100100, res_2_hi_perm_1, ZEROS);
-    __m512i res_2_lo = _mm512_madd52lo_epu64(y, a_vec_3, b_vec_3);
-    _mm512_storeu_si512(res_lo + 16, res_2_lo);
+    hi[9] = (uint64_t)prod;
+    uint32_t carry = hi[8] >> 52;
 
-    // store the results
-
-    _mm512_storeu_si512(res_lo + 8, res_1_lo);
-
-    res_lo[23] += (prod >> 52);
-    res_hi[9] = prod & 0xFFFFFFFFFFFFF;
-
-    res_hi[8] = res_lo[22] + res_lo[23];
-    uint carry = res_hi[8] >> 52;
-    res_hi[8] &= 0xFFFFFFFFFFFFF;
-    res_hi[7] = res_lo[19] + res_lo[20] + res_lo[21] + carry;
-    carry = res_hi[7] >> 52;
-    res_hi[7] &= 0xFFFFFFFFFFFFF;
-    res_hi[6] = res_lo[15] + res_lo[16] + res_lo[17] + res_lo[18] + carry;
-    carry = res_hi[6] >> 52;
-    res_hi[6] &= 0xFFFFFFFFFFFFF;
-    res_hi[5] = res_lo[10] + res_lo[11] + res_lo[12] + res_lo[13] + res_lo[14] + carry;
-    carry = res_hi[5] >> 52;
-    res_hi[5] &= 0xFFFFFFFFFFFFF;
-    res_hi[4] = res_lo[6] + res_lo[7] + res_lo[8] + res_lo[9] + carry;
-    carry = res_hi[4] >> 52;
-    res_hi[4] &= 0xFFFFFFFFFFFFF;
-    res_hi[3] = res_lo[3] + res_lo[4] + res_lo[5] + carry;
-    carry = res_hi[3] >> 52;
-    res_hi[3] &= 0xFFFFFFFFFFFFF;
-    res_hi[2] = res_lo[1] + res_lo[2] + carry;
-    carry = res_hi[2] >> 52;
-    res_hi[2] &= 0xFFFFFFFFFFFFF;
-    res_hi[1] = res_lo[0] + carry;
-    carry = res_hi[1] >> 52;
-    res_hi[1] &= 0xFFFFFFFFFFFFF;
-    res_hi[0] += carry;
-}
-
-/*
- * @brief Subtracts two single limb numbers
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @param borrow The borrow generated from the subtraction
- * @return none
- */
-#define __SUB_N_1(result, a, b, borrow) \
-    do                                  \
-    {                                   \
-        *(result) = *(a) - *(b);        \
-        *(borrow) = *(a) < *(b);        \
-        *(result) &= 0xFFFFFFFFFFFFF;   \
-    } while (0)
-
-/*
- * @brief Subtracts two two-limbed numbers, using 128-bit vectors
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @param borrow The borrow generated from the subtraction
- * @return none
- */
-#define __SUB_N_2(result, a, b, borrow)                                             \
-    do                                                                              \
-    {                                                                               \
-        __m128i a_vec = _mm_loadu_si128((__m128i *)(a));                            \
-        __m128i b_vec = _mm_loadu_si128((__m128i *)(b));                            \
-        __m128i result_vec = _mm_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm_cmpgt_epi64_mask(b_vec, a_vec);                  \
-        borrow_mask |= ((*borrow) << 2);                                            \
-        (*borrow) = borrow_mask & 0x01;                                             \
-        bool borrow_detect = !!borrow_mask;                                         \
-        borrow_mask >>= 1;                                                          \
-        if (borrow_detect)                                                          \
-        {                                                                           \
-            __m128i borrow_vec = _mm_mask_set1_epi64(AVX128_ZEROS, borrow_mask, 1); \
-            result_vec = _mm_sub_epi64(result_vec, borrow_vec);                     \
-            result_vec = _mm_and_si128(result_vec, AVX128_52_MASK);                 \
-        }                                                                           \
-        _mm_storeu_si128((__m128i *)result, result_vec);                            \
-    } while (0)
-
-/*
- * @brief Subtracts two four-limbed numbers, using 256-bit vectors
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @param b_in The borrow-in generated from the previous subtraction
- * @param b_out The borrow-out generated from the subtraction
- * @return none
- */
-#define __SUB_N_4(result, a, b, b_in, b_out)                                           \
-    do                                                                                 \
-    {                                                                                  \
-        __m256i a_vec = _mm256_loadu_si256((__m256i *)(a));                            \
-        __m256i b_vec = _mm256_loadu_si256((__m256i *)(b));                            \
-        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm256_cmpgt_epi64_mask(b_vec, a_vec);                  \
-        borrow_mask |= ((*b_in) << 4);                                                 \
-        bool borrow_detect = !!borrow_mask;                                            \
-        borrow_mask >>= 1;                                                             \
-        if (borrow_detect)                                                             \
-        {                                                                              \
-            __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
-            result_vec = _mm256_sub_epi64(result_vec, borrow_vec);                     \
-            __mmask8 mask_1 = _mm256_cmpgt_epi64_mask(borrow_vec, result_vec);         \
-            *(b_out) = mask_1 & 0x01;                                                  \
-            result_vec = _mm256_and_si256(result_vec, AVX256_52_MASK);                 \
-        }                                                                              \
-        else                                                                           \
-        {                                                                              \
-            *(b_out) = 0;                                                              \
-        }                                                                              \
-        _mm256_storeu_si256((__m256i *)(result), result_vec);                          \
-    } while (0)
-
-/*
- * @brief Subtracts two eight-limbed numbers, using 512-bit vectors
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @param b_in The borrow-in generated from the previous subtraction
- * @param b_out The borrow-out generated from the subtraction
- * @return none
- */
-#define __SUB_N_8(result, a, b, b_in, b_out)                                           \
-    do                                                                                 \
-    {                                                                                  \
-        __m512i a_vec = _mm512_loadu_si512((__m512i *)(a));                            \
-        __m512i b_vec = _mm512_loadu_si512((__m512i *)(b));                            \
-        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm512_cmpgt_epi64_mask(b_vec, a_vec);                  \
-        (*b_out) = borrow_mask & 0x01;                                                 \
-        borrow_mask >>= 1;                                                             \
-        borrow_mask |= ((*b_in) << 7);                                                 \
-        bool borrow_detect = !!borrow_mask;                                            \
-        if (borrow_detect)                                                             \
-        {                                                                              \
-            __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
-            result_vec = _mm512_sub_epi64(result_vec, borrow_vec);                     \
-            __mmask8 mask_1 = _mm512_cmpgt_epi64_mask(borrow_vec, result_vec);         \
-            *(b_out) = mask_1 & 0x01;                                                  \
-            result_vec = _mm512_and_si512(result_vec, AVX512_52_MASK);                 \
-        }                                                                              \
-        _mm512_storeu_si512((__m512i *)(result), result_vec);                          \
-    } while (0)
-/**
- * @brief Subtracts two numbers represented as limb_t, and stores the sum in result.
- * @brief Subtracts from the least significant limb to the most significant limb.
- * @brief Being 52-bit format, total 5 limbs are required to store 256-bit number.
- * @brief Handles the last limb first, then the remaining limbs at once.
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @return none
- */
-void limb_t_sub_n_256(uint64_t *result, uint64_t *a, uint64_t *b)
-{
-    int b_in = 0, b_out = 0;
-
-    __SUB_N_1((result + 4), (a + 4), (b + 4), &b_in);
-    __SUB_N_4((result), (a), (b), &b_in, &b_out);
-}
-
-/**
- * @brief Subtracts two numbers represented as limb_t, and stores the sum in result.
- * @brief Subtracts from the least significant limb to the most significant limb.
- * @brief Being 52-bit format, total 10 limbs are required to store 512-bit number.
- * @brief Handles the last 2 limbs first, then the remaining limbs at once.
- * @param result The result of the subtraction
- * @param a The first number to subtract
- * @param b The second number to subtract
- * @return none
- */
-void limb_t_sub_n_512(uint64_t *result, uint64_t *a, uint64_t *b)
-{
-    int b_in = 0, b_out = 0;
-
-    __SUB_N_2((result + 8), (a + 8), (b + 8), &b_in);
-    __SUB_N_8((result), (a), (b), &b_in, &b_out);
-}
-
-#define __ADD_N_2(result, a, b, carry)                                            \
-    do                                                                            \
-    {                                                                             \
-        __m128i result_vec = _mm_add_epi64(                                       \
-            _mm_loadu_si128((__m128i *)a),                                        \
-            _mm_loadu_si128((__m128i *)b));                                       \
-        __mmask8 carry_mask = _mm_cmpgt_epu64_mask(result_vec, AVX128_52_MASK);   \
-        carry_mask |= ((*carry) << 2);                                            \
-        (*carry) = carry_mask & 0x01;                                             \
-        bool carry_detect = !!carry_mask;                                         \
-        carry_mask >>= 1;                                                         \
-        if (carry_detect)                                                         \
-        {                                                                         \
-            __m128i carry_vec = _mm_mask_set1_epi64(AVX128_ZEROS, carry_mask, 1); \
-            result_vec = _mm_add_epi64(result_vec, carry_vec);                    \
-            result_vec = _mm_and_si128(result_vec, AVX128_52_MASK);               \
-        }                                                                         \
-        _mm_storeu_si128((__m128i *)result, result_vec);                          \
-    } while (0)
-
-#define __ADD_N_8(result, a, b, c_in, c_out)                                         \
-    do                                                                               \
-    {                                                                                \
-        __m512i a_vec = _mm512_loadu_si512((__m512i *)(a));                          \
-        __m512i b_vec = _mm512_loadu_si512((__m512i *)(b));                          \
-        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                         \
-        __mmask8 carry_mask = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);   \
-        *(c_out) = carry_mask & 0x01;                                                \
-        carry_mask >>= 1;                                                            \
-        carry_mask |= (*(c_in) << 7);                                                \
-        bool carry_detect = !!carry_mask;                                            \
-        if (carry_detect)                                                            \
-        {                                                                            \
-            __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1); \
-            result_vec = _mm512_add_epi64(result_vec, carry_vec);                    \
-            __mmask8 mask_1 = _mm512_cmpgt_epu64_mask(result_vec, AVX512_52_MASK);   \
-            *(c_out) = mask_1 & 0x01;                                                \
-            result_vec = _mm512_and_si512(result_vec, AVX512_52_MASK);               \
-        }                                                                            \
-        _mm512_storeu_si512((__m512i *)(result), result_vec);                        \
-    } while (0)
-
-#define __ADD_N_1(result, a, b, carry) \
-    do                                 \
-    {                                  \
-        *(result) = *(a) + *(b);       \
-        *(carry) = *(result) >> 52;    \
-        *(result) &= 0xFFFFFFFFFFFFF;  \
-    } while (0)
-
-#define __ADD_N_4(result, a, b, c_in, c_out)                                                    \
-    do                                                                                          \
-    {                                                                                           \
-        __m256i result_vec = _mm256_add_epi64(                                                  \
-            _mm256_loadu_si256((__m256i *)(a)),                                                 \
-            _mm256_loadu_si256((__m256i *)(b)));                                                \
-        __mmask8 carry_mask = _mm256_cmpgt_epu64_mask(result_vec, AVX256_52_MASK);              \
-        carry_mask |= (*(c_in) << 4);                                                           \
-        bool carry_detect = !!carry_mask;                                                       \
-        carry_mask >>= 1;                                                                       \
-        if (carry_detect)                                                                       \
-        {                                                                                       \
-            result_vec = _mm256_add_epi64(result_vec,                                           \
-                                          _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1)); \
-            __mmask8 mask_1 = _mm256_cmpgt_epu64_mask(result_vec, AVX256_52_MASK);              \
-            *(c_out) = mask_1 & 0x01;                                                           \
-            result_vec = _mm256_and_si256(result_vec, AVX256_52_MASK);                          \
-        }                                                                                       \
-        else                                                                                    \
-        {                                                                                       \
-            *(c_out) = 0;                                                                       \
-        }                                                                                       \
-        _mm256_storeu_si256((__m256i *)(result), result_vec);                                   \
-    } while (0)
-
-void limb_t_add_n_256(uint64_t *result, uint64_t *a, uint64_t *b)
-{
-    int c_in = 0, c_out = 0;
-    __ADD_N_1((result + 4), (a + 4), (b + 4), &c_in);
-    __ADD_N_4((result), (a), (b), &c_in, &c_out);
-}
-void limb_t_add_n_512(uint64_t *result, uint64_t *a, uint64_t *b)
-{
-    int c_in = 0, c_out = 0;
-
-    __ADD_N_2((result + 8), (a + 8), (b + 8), &c_in);
-    __ADD_N_8((result), (a), (b), &c_in, &c_out);
-}
-
-// void limb_mul_512_bit(limb_t *a, limb_t *b, limb_t *res_lo, limb_t *res_hi)
-// {
-
-//     // a: AB
-//     // b: CD
-
-//     // B-A
-//     limb_t_sub_n_256(res_lo->limbs, a->limbs + 5, a->limbs);
-
-//     // D-C
-//     limb_t_sub_n_256(res_lo->limbs + 16, b->limbs + 5, b->limbs);
-
-//     // B*D
-//     limb_mul_n_52(a->limbs + 5, b->limbs + 5, res_lo->limbs + 72, res_hi->limbs + 10);
-
-//     // A*C
-//     limb_mul_n_52(a->limbs, b->limbs, res_lo->limbs + 112, res_hi->limbs);
-
-//     // M = (B-A)*(D-C)
-//     limb_mul_n_52(res_lo->limbs, res_lo->limbs + 16, res_lo->limbs + 152, res_lo->limbs + 32);
-
-//     // AC - M --> X
-//     limb_t_sub_n_512(res_lo->limbs + 64, res_hi->limbs, res_lo->limbs + 32);
-
-//     // X + BD --> Y
-//     limb_t_add_n_512(res_lo->limbs + 168, res_lo->limbs + 64, res_hi->limbs + 10);
-
-//     // AC[5..9]BD[10..14] + Y --> AC[5..9]BD[10..14]
-//     limb_t_add_n_512(res_hi->limbs + 5, res_hi->limbs + 5, res_lo->limbs + 168);
-// }
-
-void limb_mul_512_bit(limb_t *a, limb_t *b, limb_t *res_lo, limb_t *res_hi)
-{
-
-    // a: AB
-    // b: CD
-
-    // A*C
-    limb_mul_n_52(a->limbs, b->limbs, res_lo->limbs + 112, res_hi->limbs);
-
-    // // B*D
-    // limb_mul_n_52(a->limbs + 5, b->limbs + 5, res_lo->limbs + 72, res_hi->limbs + 10);
-
-    // // A*D
-    // limb_mul_n_52(a->limbs, b->limbs + 5, res_lo->limbs + 32, res_hi->limbs + 5);
-
-    // // B*C
-    // limb_mul_n_52(a->limbs + 5, b->limbs, res_lo->limbs + 152, res_hi->limbs + 15);
-
-    // // AD + BC
-    // limb_t_add_n_512(res_lo->limbs + 32, res_lo->limbs + 32, res_lo->limbs + 152);
+    hi[7] = lo[19] + lo[20] + lo[21] + carry;
+    carry = hi[7] >> 52;
+    hi[6] = lo[15] + lo[16] + lo[17] + lo[18] + carry;
+    carry = hi[6] >> 52;
+    hi[5] = lo[10] + lo[11] + lo[12] + lo[13] + lo[14] + carry;
+    carry = hi[5] >> 52;
+    hi[4] = lo[6] + lo[7] + lo[8] + lo[9] + carry;
+    carry = hi[4] >> 52;
+    hi[3] = lo[3] + lo[4] + lo[5] + carry;
+    carry = hi[3] >> 52;
+    hi[2] = lo[1] + lo[2] + carry;
+    carry = hi[2] >> 52;
+    hi[1] = lo[0] + carry;
+    carry = hi[1] >> 52;
+    hi[0] += carry;
 }
 
 // main function with cmd arguments
 int main(int argc, char *argv[])
 {
-    if (argc != 5)
+    if (argc != 3)
     {
-        printf("Usage: %s <number of bits> <core number> <test-case number> <measure_type>\n", argv[0]);
-        printf("test-case number: 0 --> Random numbers\n");
-        printf("test-case number: 1 --> Random numbers with a < b\n");
-        printf("test-case number: 2 --> Random numbers with a > b\n");
-        printf("test-case number: 3 --> Random numbers with a = b\n");
+        printf("Usage: %s <test_type?>  <measure_type>\n", argv[0]);
+        printf("test_type: 0 --> correctness test\n");
+        printf("test_type: 1 --> benchmarking test\n");
         printf("measure_type: 0 --> RDTSC\n");
         printf("measure_type: 1 --> Timespec\n");
         printf("measure_type: 2 --> RUSAGE\n");
         return 1;
     }
+    NUM_BITS = 256;
+    int test_type = atoi(argv[1]);
+    assert(test_type >= 0 && test_type < 2);
 
-    assert(atoi(argv[1]) > 0);
-    NUM_BITS = atoi(argv[1]);
+    assert(atoi(argv[2]) >= 0 && atoi(argv[2]) < 3);
+    int measure_type = atoi(argv[2]);
 
-    assert(atoi(argv[2]) >= 0 && atoi(argv[2]) < sysconf(_SC_NPROCESSORS_ONLN));
-    CORE_NO = atoi(argv[2]);
+    init_utils();
+    if (test_type == 0)
+    {
+        printf("Running correctness test...\n");
+        run_correctness_test(0);
+    }
+    else
+    {
+        printf("Running benchmarking test...\n");
+        run_benchmarking_test(0, measure_type);
+    }
 
-    assert(atoi(argv[3]) >= 0 && atoi(argv[3]) < 4);
-    int test_case = atoi(argv[3]);
-
-    assert(atoi(argv[4]) >= 0 && atoi(argv[4]) < 3);
-    int measure_type = atoi(argv[4]);
-
-    perm_idx_11 = _mm512_set_epi64(1, 0, 2, 1, 0, 1, 0, 0);
-    // 1,4,3,2,1,0,3,2
-    perm_idx_12 = _mm512_set_epi64(1, 4, 3, 2, 1, 0, 3, 2);
-
-    // 4,0,1,2,3,4,0,1
-    perm_idx_22 = _mm512_set_epi64(4, 0, 1, 2, 3, 4, 0, 1);
-
-    // 2,3,0,1,2,0,1,0
-    perm_idx_21 = _mm512_set_epi64(2, 3, 0, 1, 2, 0, 1, 0);
-
-    // 4,3,4,3,2,4,3,2
-    perm_idx_13 = _mm512_set_epi64(4, 3, 4, 3, 2, 4, 3, 2);
-
-    // 3,4,2,3,4,1,2,3
-    perm_idx_23 = _mm512_set_epi64(3, 4, 2, 3, 4, 1, 2, 3);
-
-    // extra permutation indices
-    perm_idx_0 = _mm512_set_epi64(0, 0, 0, 7, 6, 4, 3, 1);
-
-    perm_idx_1 = _mm512_set_epi64(3, 2, 0, 0, 0, 0, 0, 0);
-
-    perm_idx_2 = _mm512_set_epi64(0, 0, 0, 0, 0, 7, 5, 4);
-
-    perm_idx_3 = _mm512_set_epi64(3, 0, 2, 1, 0, 0, 0, 0);
-    perm_idx_4 = _mm512_set_epi64(0, 0, 0, 7, 6, 0, 5, 4);
-
-    perm_idx_r_hi_0 = _mm512_set_epi64(0, 0, 0, 0, 0, 0, 5, 2);
-    perm_idx_r_hi_1 = _mm512_set_epi64(0, 0, 0, 0, 6, 1, 0, 0);
-    perm_idx_res_0_X_2_lo = _mm512_set_epi64(4, 4, 2, 4, 4, 1, 4, 0);
-    perm_idx_res_1_X_2_lo = _mm512_set_epi64(4, 4, 4, 4, 4, 4, 3, 4);
-
-    AVX512_ZEROS = _mm512_setzero_si512();
-    AVX256_ZEROS = _mm256_setzero_si256();
-    AVX128_ZEROS = _mm_setzero_si128();
-
-    AVX512_52_MASK = _mm512_set1_epi64(0xFFFFFFFFFFFFF);
-    AVX256_52_MASK = _mm256_set1_epi64x(0xFFFFFFFFFFFFF);
-    AVX128_52_MASK = _mm_set1_epi64x(0xFFFFFFFFFFFFF);
-
-    init_memory_pool();
-
-    run_correctness_test(test_case);
-    // run_benchmarking_test(test_case, measure_type);
-
-    destroy_memory_pool();
+    clear_utils();
 
     return 0;
 }
@@ -643,19 +179,19 @@ void run_correctness_test(int test_case)
     switch (test_case)
     {
     case 0:
-        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        printf("Running random test cases for bit-size %d\n", NUM_BITS);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
         break;
     case 1:
-        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        printf("Running equal test cases for bit-size %d\n", NUM_BITS);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
         break;
     case 2:
-        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        printf("Running greater test cases for bit-size %d\n", NUM_BITS);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
         break;
     case 3:
-        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        printf("Running smaller test cases for bit-size %d\n", NUM_BITS);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
         break;
     default:
@@ -710,461 +246,266 @@ void run_correctness_test(int test_case)
 
         // Get the number of limbs
         int n = a->size;
-        ZEROS = _mm512_setzero_si512();
+        AVX512_ZEROS = _mm512_setzero_si512();
 
-        limb_t *res_lo = limb_t_alloc(2 * n * n * sizeof(uint64_t));
-        limb_t *res_hi = limb_t_alloc(2 * n * n * sizeof(uint64_t));
+        limb_t *lo = limb_t_alloc(n * n * sizeof(uint64_t));
+        limb_t *hi = limb_t_alloc(n * n * sizeof(uint64_t));
 
-        // limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
-        limb_mul_512_bit(a, b, res_lo, res_hi);
-
-        double t;
-        TIME_RUSAGE(t, limb_mul_512_bit(a, b, res_lo, res_hi));
-        printf("Time taken: %f\n", t);
+        vbap_mul_256(a, b, lo->limbs, hi->limbs);
 
         // print the results
-        res_hi->size = 2 * n;
-        char *res_lo_str = limb_get_str(res_hi);
-        int str_len = strlen(res_lo_str);
+        hi->size = 2 * n;
+        char *lo_str = limb_get_str(hi);
+        int str_len = strlen(lo_str);
         // check with the result
         // verify the converted string with result
-        if (!check_result(res_lo_str, result_str, str_len))
+        if (!check_result(lo_str, result_str, str_len))
         {
             printf("Test case failed, at iteration %d\n", i);
-            // exit(EXIT_FAILURE);
+            exit(EXIT_FAILURE);
         }
         // printf("Test case passed: %d\n", i);
-
-        destroy_memory_pool();
-        init_memory_pool();
     }
-    printf("All test cases passed\n");
+    printf("**** All %d test cases passed ****\n", ITERATIONS);
+    // close the test file
+    gzclose(test_file);
 }
 
-// /*
-//   Does the following for measuring the time taken for multiplication:
-//     1. read the test cases from the file
-//     2. path: ../test/cases/<num_bits>/<test_case>.csv.gz
-//     3. starts measuring the time wtih one of the three methods: RDTSC, timespec, rusage
-//        a. measure_type = 0: RDTSC
-//        b. measure_type = 1: timespec
-//        c. measure_type = 2: rusage
-//     4. writes the time taken to the file: experiments/results/<measure_type>/<test_case>_<num_bits>_<core_no>.csv.gz
-// */
-// void run_benchmarking_test(int test_case, int measure_type)
-// {
-//     printf("Trying to run benchmarking test\n");
-//     // Create directories for the results
-//     create_directory("experiments/results");
-//     // open the perf file
-//     gzFile timespec_file, rdtsc_file, cputime_file;
-//     switch (measure_type)
-//     {
-//     case 0: // RDTSC
-//         printf("Running the tests with RDTSC measurements\n");
-//         create_directory("experiments/results/rdtsc_measurements");
-//         break;
-//     case 1: // Timespec gettime()
-//         printf("Running the tests with timespec measurements\n");
-//         create_directory("experiments/results/timespec_measurements");
-//         break;
-//     case 2: // CPU time, rusage
-//         printf("Running the tests with rusage measurements\n");
-//         create_directory("experiments/results/cputime_measurements");
-//         break;
-//     default:
-//         printf("Invalid measure type\n");
-//         exit(EXIT_FAILURE);
-//     }
+/*
+  Does the following for measuring the time taken for multiplication:
+    1. read the test cases from the file
+    2. path: ../test/cases/<num_bits>/<test_case>.csv.gz
+    3. starts measuring the time wtih one of the three methods: RDTSC, timespec, rusage
+       a. measure_type = 0: RDTSC
+       b. measure_type = 1: timespec
+       c. measure_type = 2: rusage
+    4. writes the time taken to the file: experiments/results/<measure_type>/<test_case>_<num_bits>_<core_no>.csv.gz
+*/
+void run_benchmarking_test(int test_case, int measure_type)
+{
 
-//     char rdtsc_filename[100];
-//     char test_filename[100];
-//     char timespec_filename[100];
-//     char cputime_filename[100];
+    char test_filename[100];
+    switch (test_case)
+    {
+    case 0:
+        printf("Running random test cases for bit-size %d\n", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+        break;
+    case 1:
+        printf("Running equal test cases for bit-size %d\n", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
+        break;
+    case 2:
+        printf("Running greater test cases for bit-size %d\n", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
+        break;
+    case 3:
+        printf("Running smaller test cases for bit-size %d\n", NUM_BITS);
+        snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
+        break;
+    default:
+        printf("Invalid test case\n");
+        exit(EXIT_FAILURE);
+    }
 
-//     switch (test_case)
-//     {
-//     case 0: // Random test cases
-//         printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
-//         if (measure_type == 0) // RDTSC
-//         {
-//             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-//             if (rdtsc_file == NULL)
-//             {
-//                 perror("Error opening rdtsc file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         else if (measure_type == 1) // Timespec
-//         {
-//             snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             timespec_file = open_gzfile(timespec_filename, "wb");
-//             if (timespec_file == NULL)
-//             {
-//                 perror("Error opening timespec file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         else if (measure_type == 2) // rusage
-//         {
-//             snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             cputime_file = open_gzfile(cputime_filename, "wb");
-//             if (cputime_file == NULL)
-//             {
-//                 perror("Error opening cputime file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         break;
-//     case 1: // Equal test cases
-//         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
-//         if (measure_type == 0) // RDTSC
-//         {
-//             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-//             if (rdtsc_file == NULL)
-//             {
-//                 perror("Error opening rdtsc file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         else if (measure_type == 1) // Timespec
-//         {
-//             snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             timespec_file = open_gzfile(timespec_filename, "wb");
-//             if (timespec_file == NULL)
-//             {
-//                 perror("Error opening timespec file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         else if (measure_type == 2) // rusage
-//         {
-//             snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             cputime_file = open_gzfile(cputime_filename, "wb");
-//             if (cputime_file == NULL)
-//             {
-//                 perror("Error opening cputime file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         break;
-//     case 2: // Greater test cases
-//         printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
-//         if (measure_type == 0) // RDTSC
-//         {
-//             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-//             if (rdtsc_file == NULL)
-//             {
-//                 perror("Error opening rdtsc file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         else if (measure_type == 1) // Timespec
-//         {
-//             snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             timespec_file = open_gzfile(timespec_filename, "wb");
-//             if (timespec_file == NULL)
-//             {
-//                 perror("Error opening timespec file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         else if (measure_type == 2) // rusage
-//         {
-//             snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             cputime_file = open_gzfile(cputime_filename, "wb");
-//             if (cputime_file == NULL)
-//             {
-//                 perror("Error opening cputime file");
-//                 exit(EXIT_FAILURE);
-//             }
-//             break;
-//         }
-//         break;
-//     case 3: // Smaller test cases
-//         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
-//         if (measure_type == 0) // RDTSC
-//         {
-//             snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-//             if (rdtsc_file == NULL)
-//             {
-//                 perror("Error opening rdtsc file");
-//                 exit(EXIT_FAILURE);
-//             }
-//         }
-//         else if (measure_type == 1) // Timespec
-//         {
-//             snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             timespec_file = open_gzfile(timespec_filename, "wb");
-//             if (timespec_file == NULL)
-//             {
-//                 perror("Error opening timespec file");
-//                 exit(EXIT_FAILURE);
-//             }
-//         }
-//         else if (measure_type == 2) // rusage
-//         {
-//             snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-//             cputime_file = open_gzfile(cputime_filename, "wb");
-//             if (cputime_file == NULL)
-//             {
-//                 perror("Error opening cputime file");
-//                 exit(EXIT_FAILURE);
-//             }
-//         }
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
 
-//         break;
-//     default:
-//         printf("Invalid test case\n");
-//         exit(EXIT_FAILURE);
-//     }
+    // skip the first line, header
+    skip_first_line(test_file);
 
-//     // open the test file
-//     gzFile test_file = open_gzfile(test_filename, "rb");
+    // pick a random i from 0 to ITERATIONS-1; keep it as random as possible
+    unsigned long seed = generate_seed();
+    srand(seed);
 
-//     // skip the first line, header
-//     skip_first_line(test_file);
+    int i = rand() % ITERATIONS;
+    printf("Reading test case %d\n", i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
 
-//     // pick a random i from 0 to ITERATIONS-1; keep it as random as possible
-//     unsigned long seed = generate_seed();
-//     srand(seed);
-//     int iter_count = 0;
-//     printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
-//     for (int iter_count = 0; iter_count < 10; ++iter_count)
-//     {
-//         int i = rand() % ITERATIONS;
-//         printf("Iteration %d, reading test case %d\n", iter_count, i);
-//         // buffer to read the test case
-//         char buffer[CHUNK];
-//         // reset the file pointer to the beginning of the file
-//         gzrewind(test_file);
-//         // skip the first line, header
-//         skip_first_line(test_file);
-//         // read ith line from the test_file
-//         for (int j = 0; j < i; j++)
-//         {
-//             // flush the buffer
-//             memset(buffer, 0, CHUNK);
-//             if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
-//             {
-//                 if (gzeof(test_file))
-//                 {
-//                     return; // End of file reached
-//                 }
-//                 else
-//                 {
-//                     perror("Error reading line");
-//                     gzclose(test_file);
-//                     exit(EXIT_FAILURE);
-//                 }
-//             }
-//         }
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
 
-//         // Parse the test case
-//         char *a_str = strtok(buffer, ",");
-//         char *b_str = strtok(NULL, ",");
-//         char *result_str = strtok(NULL, ",");
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
 
-//         if (a_str == NULL || b_str == NULL || result_str == NULL)
-//         {
-//             fprintf(stderr, "Error parsing line: %s\n", buffer);
-//             gzclose(test_file);
-//             exit(EXIT_FAILURE);
-//         }
+    int n_1 = strlen(a_str);
+    int n_2 = strlen(b_str);
 
-//         int n_1 = strlen(a_str);
-//         int n_2 = strlen(b_str);
+    // convert a and b into limbs
+    limb_t *a, *b;
+    a = limb_set_str(a_str);
+    b = limb_set_str(b_str);
 
-//         // convert a and b into limbs
-//         limb_t *a, *b;
-//         a = limb_set_str(a_str);
-//         b = limb_set_str(b_str);
+    // Adjust the sizes of the two numbers
+    limb_t_adjust_limb_sizes(a, b);
 
-//         // Adjust the sizes of the two numbers
-//         limb_t_adjust_limb_sizes(a, b);
+    // Get the number of limbs
+    int n = a->size;
 
-//         // Get the number of limbs
-//         int n = a->size;
-//         ZEROS = _mm512_setzero_si512();
+    limb_t *lo = limb_t_alloc(n * n * sizeof(uint64_t));
+    limb_t *hi = limb_t_alloc(n * n * sizeof(uint64_t));
 
-//         limb_t *res_lo = limb_t_alloc(n * n * sizeof(uint64_t));
-//         limb_t *res_hi = limb_t_alloc(n * n * sizeof(uint64_t));
+    printf("Starting multiplication\n");
+    int cpu_info[4], decimals;
+    unsigned long long int t0, t1;
+    int niter;
+    double f, ops_per_sec, time_taken_ms, time_taken;
 
-//         printf("Starting multiplication\n");
-//         int cpu_info[4], decimals;
-//         unsigned long long int t0, t1;
-//         int niter;
-//         double f, ops_per_sec, time_taken_ms, time_taken;
-//         // clear cache content for a_limbs, b_limbs
-//         for (int i = 0; i < n; i += 64)
-//         {
-//             _mm_clflush((char *)a + i);
-//             _mm_clflush((char *)b + i);
-//         }
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
 
-//         // Ensure that the cache flush operations are completed
-//         _mm_mfence();
+    switch (measure_type)
+    {
+    case 0:             // RDTSC
+        time_taken = 0; // initialize time taken
+        printf("Calibrating CPU speed using RDTSC...\n");
+        fflush(stdout);
+        // interrupt
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-//         // // prefetch the data
-//         // for (int i = 0; i < n; i += 64)
-//         // {
-//         //     _mm_prefetch((char *)a + i, _MM_HINT_T0);
-//         //     _mm_prefetch((char *)b + i, _MM_HINT_T0);
-//         // }
+        TIME_RDTSC(time_taken, vbap_mul_256(a, b, lo->limbs, hi->limbs));
+        printf("done\n");
+        printf("Avg. Execution time: %f microseconds\n", time_taken);
 
-//         switch (measure_type)
-//         {
-//         case 0:             // RDTSC
-//             time_taken = 0; // initialize time taken
-//             printf("Calibrating CPU speed using RDTSC...\n");
-//             fflush(stdout);
-//             // interrupt
-//             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
+        niter = 1 + (unsigned long)(1e7 / time_taken);
+        printf("Multiplying %d times\n", niter);
+        fflush(stdout);
 
-//             TIME_RDTSC(time_taken, limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs));
-//             printf("done\n");
-//             printf("Calibrated time: %f microseconds\n", time_taken);
+        t0 = measure_rdtsc_start();
+        for (int i = 0; i < niter; i++)
+        {
+            vbap_mul_256(a, b, lo->limbs, hi->limbs);
+        }
+        t1 = measure_rdtscp_end();
+        t1 = t1 - t0;
 
-//             niter = 1 + (unsigned long)(1e7 / time_taken);
-//             printf("multiplying %d times\n", niter);
-//             fflush(stdout);
+        // coverting ticks to microsecond: 1 tick = 1/2.8 GHz = 0.357 ns = 0.000357 us
+        time_taken = t1 * 0.000357;
+        ops_per_sec = (1e6 * niter) / time_taken;
+        f = 100.0;
 
-//             t0 = measure_rdtsc_start();
-//             for (int i = 0; i < niter; i++)
-//             {
-//                 limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
-//             }
-//             t1 = measure_rdtscp_end();
-//             t1 = t1 - t0;
+        for (decimals = 0;; decimals++)
+        {
+            if (ops_per_sec > f)
+                break;
+            f = f * 0.1;
+        }
 
-//             // coverting ticks to microsecond: 1 tick = 1/2.8 GHz = 0.357 ns = 0.000357 us
-//             time_taken = t1 * 0.000357;
-//             ops_per_sec = (1e6 * niter) / time_taken;
-//             f = 100.0;
+        printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
 
-//             for (decimals = 0;; decimals++)
-//             {
-//                 if (ops_per_sec > f)
-//                     break;
-//                 f = f * 0.1;
-//             }
+        break;
+    case 1:             // Timespec
+        time_taken = 0; // initialize time taken
+        printf("Calibrating CPU speed using timespec...\n");
+        fflush(stdout);
+        // interrupt
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-//             printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+        TIME_TIMESPEC(time_taken, vbap_mul_256(a, b, lo->limbs, hi->limbs));
 
-//             break;
-//         case 1:             // Timespec
-//             time_taken = 0; // initialize time taken
-//             printf("Calibrating CPU speed using timespec...\n");
-//             fflush(stdout);
-//             // interrupt
-//             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
+        printf("done\n");
+        printf("Avg. Execution time: %f microseconds\n", time_taken);
 
-//             TIME_TIMESPEC(time_taken, limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs));
+        niter = 1 + (unsigned long)(1e7 / time_taken);
+        printf("Multiplying %d times\n", niter);
+        fflush(stdout);
 
-//             printf("done\n");
-//             printf("Calibrated time: %f microseconds\n", time_taken);
+        struct timespec ts_0, ts_1;
+        ts_0 = get_timespec();
+        for (int i = 0; i < niter; i++)
+        {
+            vbap_mul_256(a, b, lo->limbs, hi->limbs);
+        }
+        ts_1 = get_timespec();
+        t1 = diff_timespec_us(ts_0, ts_1);
 
-//             niter = 1 + (unsigned long)(1e7 / time_taken);
-//             printf("multiplying %d times\n", niter);
-//             fflush(stdout);
+        // Convert t1 from microseconds to seconds for the ops_per_sec calculation
+        ops_per_sec = (1e6 * niter) / t1;
+        f = 100.0;
 
-//             struct timespec ts_0, ts_1;
-//             ts_0 = get_timespec();
-//             for (int i = 0; i < niter; i++)
-//             {
-//                 limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
-//             }
-//             ts_1 = get_timespec();
-//             t1 = diff_timespec_us(ts_0, ts_1);
+        for (decimals = 0;; decimals++)
+        {
+            if (ops_per_sec > f)
+                break;
+            f = f * 0.1;
+        }
 
-//             // Convert t1 from microseconds to seconds for the ops_per_sec calculation
-//             ops_per_sec = (1e6 * niter) / t1;
-//             f = 100.0;
+        printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+        break;
+    case 2:             // Rusage
+        time_taken = 0; // initialize time taken
+        printf("Calibrating CPU speed using rusage...\n");
+        fflush(stdout);
 
-//             for (decimals = 0;; decimals++)
-//             {
-//                 if (ops_per_sec > f)
-//                     break;
-//                 f = f * 0.1;
-//             }
+        // interrupt
+        __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-//             printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-//             break;
-//         case 2:             // Rusage
-//             time_taken = 0; // initialize time taken
-//             printf("Calibrating CPU speed using rusage...\n");
-//             fflush(stdout);
+        // calibrate the time
+        TIME_RUSAGE(time_taken, vbap_mul_256(a, b, lo->limbs, hi->limbs));
 
-//             // interrupt
-//             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
+        printf("done\n");
 
-//             // calibrate the time
-//             TIME_RUSAGE(time_taken, limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs));
+        printf("Avg. Execution time: %f microseconds\n", time_taken);
 
-//             printf("done\n");
+        niter = 1 + (unsigned long)(1e7 / time_taken);
+        printf("Multiplying %d times\n", niter);
+        fflush(stdout);
 
-//             printf("Calibrated time: %f microseconds\n", time_taken);
+        t0 = cputime();
+        for (int i = 0; i < niter; ++i)
+        {
+            vbap_mul_256(a, b, lo->limbs, hi->limbs);
+        }
+        t1 = cputime() - t0;
+        printf("done!\n");
 
-//             niter = 1 + (unsigned long)(1e7 / time_taken);
-//             printf("multiplying %d times\n", niter);
-//             fflush(stdout);
+        // Convert t1 from microseconds to seconds for the ops_per_sec calculation
+        ops_per_sec = (1e6 * niter) / t1;
+        f = 100.0;
 
-//             t0 = cputime();
-//             for (int i = 0; i < niter; i++)
-//             {
-//                 limb_mul_n_52(a, b, res_lo->limbs, res_hi->limbs);
-//             }
-//             t1 = cputime() - t0;
-//             printf("done!\n");
+        for (decimals = 0;; decimals++)
+        {
+            if (ops_per_sec > f)
+                break;
+            f = f * 0.1;
+        }
 
-//             // Convert t1 from microseconds to seconds for the ops_per_sec calculation
-//             ops_per_sec = (1e6 * niter) / t1;
-//             f = 100.0;
-
-//             for (decimals = 0;; decimals++)
-//             {
-//                 if (ops_per_sec > f)
-//                     break;
-//                 f = f * 0.1;
-//             }
-
-//             printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
-//             break;
-//         default:
-//             printf("Invalid measure type\n");
-//             exit(EXIT_FAILURE);
-//         }
-//     }
-//     // close the test file
-//     gzclose(test_file);
-
-//     // close the benchmarking file
-//     if (measure_type == 0)
-//     {
-//         gzclose(rdtsc_file);
-//     }
-//     else if (measure_type == 1)
-//     {
-//         gzclose(timespec_file);
-//     }
-//     else if (measure_type == 2)
-//     {
-//         gzclose(cputime_file);
-//     }
-// }
+        printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+        break;
+    default:
+        printf("Invalid measure type\n");
+        exit(EXIT_FAILURE);
+    }
+    // close the test file
+    gzclose(test_file);
+}
