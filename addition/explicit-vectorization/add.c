@@ -86,7 +86,21 @@ void run_correctness_test(int);
                                                   _mm256_mask_set1_epi64(AVX256_ZEROS, carry_mask, 1)); \
         result_vec = result_vec_new;                                                                    \
         _mm256_store_si256((__m256i *)(result), result_vec);                                            \
+        __mmask8 mask_1 = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                          \
+        if (unlikely(_mm512_mask2int(mask_1)))                                                          \
+        {                                                                                               \
+            mask_1 >>= 1;                                                                               \
+            uint32_t c = 0;                                                                             \
+            for (int i = 6; i >= 0; --i)                                                                \
+            {                                                                                           \
+                uint64_t temp = result[i];                                                              \
+                result[i] = result[i] + (mask_1 >> i) + c;                                              \
+                c = (temp > result[i]);                                                                 \
+            }                                                                                           \
+            c_out |= c;                                                                                 \
+        }                                                                                               \
     } while (0)
+
 /*                                                                                      \
  * @brief Adds two eight-limbed numbers, using 512-bit vectors                          \
  * @param result The result of the addition                                             \
@@ -109,17 +123,29 @@ void run_correctness_test(int);
         carry_mask = _mm512_kor(carry_mask, c_in);                               \
         __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, carry_mask, 1); \
         __m512i result_vec_new = _mm512_add_epi64(result_vec, carry_vec);        \
-        __mmask16 mask_1 = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);  \
         result_vec = result_vec_new;                                             \
+        __mmask16 mask_1 = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);  \
         _mm512_store_si512((__m512i *)(result), result_vec);                     \
+        if (unlikely(_mm512_mask2int(mask_1)))                                   \
+        {                                                                        \
+            mask_1 >>= 1;                                                        \
+            uint32_t c = 0;                                                      \
+            for (int i = 6; i >= 0; --i)                                         \
+            {                                                                    \
+                uint64_t temp = result[i];                                       \
+                result[i] = result[i] + (mask_1 >> i) + c;                       \
+                c = (temp > result[i]);                                          \
+            }                                                                    \
+            c_out |= c;                                                          \
+        }                                                                        \
     } while (0)
 
-void limb_t_add_n_256(limb_t *result, limb_t *a, limb_t *b)
+void ___add_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
     __mmask16 c_out = 0;
 
     __ADD_N_4((result->limbs), (a->limbs), (b->limbs), c_out);
-    if (_mm512_kand(c_out, 1))
+    if (unlikely(_mm512_kand(c_out, 1)))
     {
         // shift the result by one digit to the right, before reallocate the memory
         int n = a->size;
@@ -143,7 +169,7 @@ void __add_n(limb_t *result, limb_t *a, limb_t *b)
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), c_in, c_out);
         c_in = c_out;
     }
-    if (_mm512_kand(c_out, 1))
+    if (unlikely(_mm512_kand(c_out, 1)))
     {
         // shift the result by one digit to the right, before reallocate the memory
         limb_t_realloc(result, n + 1);
@@ -153,12 +179,12 @@ void __add_n(limb_t *result, limb_t *a, limb_t *b)
     }
 }
 
-void limb_t_add_n(limb_t *result, limb_t *a, limb_t *b)
+void pml_add_n(limb_t *result, limb_t *a, limb_t *b)
 {
     int n = a->size;
     if (n <= 4)
     {
-        limb_t_add_n_256(result, a, b);
+        ___add_n_256(result, a, b);
     }
     else
     {
@@ -283,7 +309,7 @@ void run_perf_test()
     int n = a->size;
     printf("n = %d\n", n);
     limb_t *s = limb_t_alloc(n);
-    limb_t_add_n(s, a, b);
+    pml_add_n(s, a, b);
     // perf variables
     initialize_perf();
 
@@ -310,7 +336,7 @@ void run_perf_test()
     printf("Starting perf test\n");
     start_perf();
     // Start the perf test
-    limb_t_add_n(s, a, b);
+    pml_add_n(s, a, b);
     stop_perf();
     long long values[MAX_EVENTS];
     read_perf(values);
@@ -325,7 +351,7 @@ void run_perf_test()
 
     // start measuring RDTSC Ticks
     double t;
-    RECORD_RDTSC(t, limb_t_add_n(s, a, b));
+    RECORD_RDTSC(t, pml_add_n(s, a, b));
 
     printf("Avg. RDTSC Ticks: %f\n", t);
 
@@ -429,7 +455,7 @@ void run_correctness_test(int test_case)
 
         /***** Start of addition *****/
 
-        limb_t_add_n(s, a, b);
+        pml_add_n(s, a, b);
 
         /***** End of addition *****/
 
@@ -747,7 +773,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_add_n(s, a, b));
+            TIME_RDTSC(time_taken, pml_add_n(s, a, b));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -758,7 +784,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(s, a, b);
+                pml_add_n(s, a, b);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -785,7 +811,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_add_n(s, a, b));
+            TIME_TIMESPEC(time_taken, pml_add_n(s, a, b));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -798,7 +824,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(s, a, b);
+                pml_add_n(s, a, b);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -825,7 +851,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_add_n(s, a, b));
+            TIME_RUSAGE(time_taken, pml_add_n(s, a, b));
 
             printf("done\n");
 
@@ -838,7 +864,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_add_n(s, a, b);
+                pml_add_n(s, a, b);
             }
             t1 = cputime() - t0;
             printf("done!\n");

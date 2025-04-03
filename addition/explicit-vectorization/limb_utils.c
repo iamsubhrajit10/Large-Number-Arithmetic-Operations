@@ -31,9 +31,6 @@ __m512i AVX512_MASK;  // AVX512 vector of 52-bit mask
 __m256i AVX256_MASK;  // AVX256 vector of 52-bit mask
 __m128i AVX128_MASK;  // AVX128 vector of 52-bit mask
 
-#define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
-#define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
-
 // Memory pool variables
 static uint8_t *memory_pool = NULL;
 static size_t memory_pool_offset = 0;
