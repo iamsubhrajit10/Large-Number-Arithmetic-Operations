@@ -33,7 +33,7 @@ extern __m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
 extern __m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
 extern __m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
 
-#define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
+#define unlikely(expr) __builtin_expect((!!expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
 
 // Memory pool functions

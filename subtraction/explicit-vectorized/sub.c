@@ -85,7 +85,20 @@ void run_correctness_test(int);
         __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
         __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
         result_vec = result_vec_new;                                               \
-        _mm256_store_si256((__m256i *)(result), result_vec);                       \
+        __mmask8 mask_1 = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);     \
+        _mm256_store_epi64((__m256i *)(result), result_vec);                       \
+        if (unlikely(_mm512_mask2int(mask_1)))                                     \
+        {                                                                          \
+            mask_1 >>= 1;                                                          \
+            uint32_t br = 0;                                                       \
+            for (int i = 6; i >= 0; --i)                                           \
+            {                                                                      \
+                uint64_t temp = result[i];                                         \
+                result[i] = result[i] - (mask_1 >> i) - br;                        \
+                br = (temp < result[i]);                                           \
+            }                                                                      \
+            b_out |= br;                                                           \
+        }                                                                          \
     } while (0)
 
 /*
@@ -113,6 +126,18 @@ void run_correctness_test(int);
         __mmask16 mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);    \
         result_vec = result_vec_new;                                               \
         _mm512_store_si512((__m512i *)(result), result_vec);                       \
+        if (unlikely(_mm512_mask2int(mask_1)))                                     \
+        {                                                                          \
+            mask_1 >>= 1;                                                          \
+            uint32_t br = 0;                                                       \
+            for (int i = 6; i >= 0; --i)                                           \
+            {                                                                      \
+                uint64_t temp = result[i];                                         \
+                result[i] = result[i] - (mask_1 >> i) - br;                        \
+                br = (temp < result[i]);                                           \
+            }                                                                      \
+            b_out |= br;                                                           \
+        }                                                                          \
     } while (0)
 
 /**
