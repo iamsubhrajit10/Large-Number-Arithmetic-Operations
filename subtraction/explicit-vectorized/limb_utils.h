@@ -11,7 +11,7 @@
 #include <errno.h>
 
 #define LIMB_SIZE 18             // Number of digits in each limb
-#define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
+#define MEMORY_POOL_SIZE 1 << 25 // 1 GB memory pool
 
 // Define the aligned data types
 typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
@@ -33,7 +33,7 @@ extern __m512i AVX512_ZEROS;       // 0 as chunk of 8 64-bit integers
 extern __m512i AVX512_ONES;        // 1 as chunk of 8 64-bit integers
 extern __m512i AVX512_LIMB_DIGITS; // 10^18 as chunk of 8 64-bit integers
 
-#define unlikely(expr) __builtin_expect((!!expr), 0) // unlikely branch
+#define unlikely(expr) __builtin_expect(!!(expr), 0) // unlikely branch
 #define likely(expr) __builtin_expect(!!(expr), 1)   // likely branch
 
 // Memory pool functions

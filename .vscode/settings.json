@@ -62,6 +62,7 @@
     "memory": "c",
     "cstdlib": "c",
     "limb_utils.h": "c",
-    "functional": "c"
+    "functional": "c",
+    "unistd.h": "c"
   }
 }
