@@ -195,6 +195,14 @@ void __get_str(const limb_t *num, char *str)
     unsigned char mask = 0xF; // Assuming 4 bits per digit (hex)
     bool leading_zeros = true;
 
+    // If there's a carry, prepend it as the most significant digit
+    if (num->carry)
+    {
+
+        *sp++ = digits[1];     // Prepend '1' for the carry
+        leading_zeros = false; // Since we added a non-zero digit
+    }
+
     // Start from the most significant limb (highest index)
     for (int i = num_limbs - 1; i >= 0; i--)
     {
@@ -209,7 +217,7 @@ void __get_str(const limb_t *num, char *str)
             }
         }
     }
-    // If all digits were zero, output a single '0'
+    // If all digits were zero (and no carry), output a single '0'
     if (leading_zeros)
     {
         *sp++ = '0';

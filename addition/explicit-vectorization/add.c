@@ -135,16 +135,11 @@ void run_correctness_test(int);
         }                                                                                    \
     } while (0)
 
-void ___add_n_256(limb_t *result, limb_t *a, limb_t *b)
+void __add_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
     __mmask16 c_out = 0;
     __ADD_N_4((result->limbs), (a->limbs), (b->limbs), c_out);
-    if (unlikely(_mm512_kand(c_out, 1)))
-    {
-        result = limb_t_realloc(result, 5);
-        result->limbs[4] = 1;
-        result->size = 5;
-    }
+    result->carry = c_out;
 }
 
 void __add_n(limb_t *result, limb_t *a, limb_t *b)
@@ -159,26 +154,19 @@ void __add_n(limb_t *result, limb_t *a, limb_t *b)
         __ADD_N_8((res_ptr + i), (a_ptr + i), (b_ptr + i), c_in, c_out);
         c_in = c_out;
     }
-    if (unlikely(_mm512_kand(c_out, 1)))
-    {
-        result = limb_t_realloc(result, n + 1);
-        result->limbs[n] = 1;
-        result->size = n + 1;
-    }
+    result->carry = c_out;
 }
 
 void pml_add_n(limb_t *result, limb_t *a, limb_t *b)
 {
     int n = a->size;
-    if (n == 0)
-        return;
-    if (unlikely(n <= 4))
+    if (likely(n > 4))
     {
-        ___add_n_256(result, a, b);
+        __add_n(result, a, b);
     }
     else
     {
-        __add_n(result, a, b);
+        __add_n_256(result, a, b);
     }
 }
 

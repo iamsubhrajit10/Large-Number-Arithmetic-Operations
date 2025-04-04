@@ -26,6 +26,7 @@ typedef struct
     aligned_uint64_ptr limbs; // Pointer to the limbs
     bool sign;                // Sign of the number
     size_t size;              // Size of the limbs
+    bool carry;               // Carry flag
 } limb_t;
 
 // Declare the SIMD constants
