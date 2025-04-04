@@ -17,7 +17,7 @@
 
 #define LIMB_BITS 64             // Number of hex digits in each limb
 #define bits 4                   // Number of bits in each hex digit
-#define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
+#define MEMORY_POOL_SIZE 1 << 25 // 1 GB memory pool
 
 // Define the aligned data types
 typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
@@ -124,11 +124,18 @@ limb_t *limb_t_alloc(size_t size)
 
 limb_t *limb_t_realloc(limb_t *limb, size_t new_size)
 {
+    // Check if the limb is NULL
+    if (limb == NULL)
+    {
+        return NULL;
+    }
+
     // Check if the size is the same
     if (limb->size == new_size)
     {
         return limb;
     }
+
     // Check if the new size is 0
     if (new_size == 0)
     {
@@ -145,12 +152,18 @@ limb_t *limb_t_realloc(limb_t *limb, size_t new_size)
         return NULL;
     }
 
-    // Copy old data to new memory, while prepending zeros
+    // Copy old data to new memory, preserving least significant digits at lower indices
     size_t copy_size = limb->size < new_size ? limb->size : new_size;
-    memcpy(new_limbs + (new_size - copy_size), limb->limbs, copy_size * sizeof(uint64_t));
-    memset(new_limbs, 0, (new_size - copy_size) * sizeof(uint64_t));
+    memcpy(new_limbs, limb->limbs, copy_size * sizeof(uint64_t));
 
-    // Update limb structure
+    // If growing, append zeros at the end (higher indices)
+    if (new_size > limb->size)
+    {
+        memset(new_limbs + copy_size, 0, (new_size - copy_size) * sizeof(uint64_t));
+    }
+
+    // Free the old memory and update limb structure
+    memory_pool_free(limb->limbs);
     limb->limbs = new_limbs;
     limb->size = new_size;
 
@@ -179,40 +192,51 @@ void __get_str(const limb_t *num, char *str)
         *sp++ = '-';
     }
     size_t num_limbs = num->size;
+    unsigned char mask = 0xF; // Assuming 4 bits per digit (hex)
+    bool leading_zeros = true;
 
-    // unsigned char mask = (1U << bits) - 1; // 0xF
-    unsigned char mask = 0xF;
-    signed shift = 0;
-    for (int i = 0; i < num_limbs; i++)
+    // Start from the most significant limb (highest index)
+    for (int i = num_limbs - 1; i >= 0; i--)
     {
-        for (shift = LIMB_BITS - bits; shift >= 0; shift -= bits)
+        for (int shift = LIMB_BITS - bits; shift >= 0; shift -= bits)
         {
             unsigned char digit = (num->limbs[i] >> shift) & mask;
-            *sp++ = digits[digit];
+            // Skip leading zeros until we find a non-zero digit
+            if (digit != 0 || !leading_zeros)
+            {
+                *sp++ = digits[digit];
+                leading_zeros = false;
+            }
         }
+    }
+    // If all digits were zero, output a single '0'
+    if (leading_zeros)
+    {
+        *sp++ = '0';
     }
     *sp = '\0';
 }
 
 char *limb_get_str(const limb_t *num)
 {
-
-    size_t num_limbs = num->size;
-    if (num_limbs == 0)
-    {
-        return NULL;
-    }
-    if (num->limbs == NULL || num->size == 0)
+    if (num == NULL || num->size == 0 || num->limbs == NULL)
     {
         return NULL;
     }
 
     if (num->size == 1 && num->limbs[0] == 0)
     {
-        return "0";
+        char *zero = (char *)memory_pool_alloc(2); // Allocate for "0\0"
+        if (zero == NULL)
+        {
+            perror("Memory allocation failed for string\n");
+            exit(EXIT_FAILURE);
+        }
+        strcpy(zero, "0");
+        return zero;
     }
-
-    size_t hex_len = (num_limbs * LIMB_BITS + bits - 1) / bits + 1; // ceil(num_limbs * LIMB_BITS / bits) + 1
+    // Calculate string length: each limb produces LIMB_BITS/bits digits, plus sign and null terminator
+    size_t hex_len = (num->size * LIMB_BITS + bits - 1) / bits + 2; // +2 for sign and '\0'
 
     char *str = (char *)memory_pool_alloc(hex_len);
     if (str == NULL)
@@ -220,55 +244,56 @@ char *limb_get_str(const limb_t *num)
         perror("Memory allocation failed for string\n");
         exit(EXIT_FAILURE);
     }
+
     __get_str(num, str);
 
-    // remove leading zeros before returning
-    while (*str == '0' && *(str + 1) != '\0')
+    // If the string is just a negative sign, add a zero
+    if (str[0] == '-' && str[1] == '\0')
     {
-        str++;
+        str[1] = '0';
+        str[2] = '\0';
     }
+
     return str;
 }
 
 void __set_str(aligned_uint64_ptr digits, size_t n, limb_t *num)
 {
-    // Convert the digits to limbs
+    // Convert the digits to limbs, working from least significant to most significant
     size_t num_limbs = num->size;
     aligned_uint64 limb = 0;
     unsigned shift = 0;
-    int limb_index = num_limbs - 1;
-    for (int i = n - 1; i >= 0;)
+    int limb_index = 0; // Start from index 0 instead of num_limbs-1
+
+    // Iterate from start (least significant digit) to end
+    for (size_t i = 0; i < n;)
     {
-        for (shift = 0; shift < LIMB_BITS; shift += bits)
+        for (shift = 0; shift < LIMB_BITS && i < n; shift += bits)
         {
-            if (i < 0)
-            {
-                break;
-            }
-            limb |= digits[i] << shift;
-            i--;
+            limb |= (aligned_uint64)digits[i] << shift;
+            i++;
         }
-        num->limbs[limb_index--] = limb;
+        num->limbs[limb_index++] = limb;
         limb = 0;
     }
-    if (limb != 0)
+    // Fill remaining limbs with zero if any
+    while (limb_index < num_limbs)
     {
-        num->limbs[limb_index--] = limb;
+        num->limbs[limb_index++] = 0;
     }
     num->size = num_limbs;
 }
 
 limb_t *limb_set_str(const char *str)
 {
-    // check if the string is NULL or empty
+    // Check if the string is NULL or empty
     if (str == NULL || strlen(str) == 0)
     {
         return NULL;
     }
 
-    // allocate temporary memory for hex-string to digit conversion
+    // Allocate temporary memory for hex-string to digit conversion
     size_t hex_len = strlen(str);
-
     aligned_uint64_ptr digits = (uint64_t *)memory_pool_alloc(hex_len * sizeof(uint64_t));
     if (digits == NULL)
     {
@@ -276,7 +301,7 @@ limb_t *limb_set_str(const char *str)
         exit(EXIT_FAILURE);
     }
 
-    // extract sign and omit any whitespace
+    // Extract sign and omit any whitespace
     bool sign = false;
     if (str[0] == '-')
     {
@@ -289,23 +314,27 @@ limb_t *limb_set_str(const char *str)
         sp++;
     }
 
-    // Convert the hex-string to digits
-    for (size_t i = 0; i < hex_len; i++)
+    // Calculate actual length after skipping sign and whitespace
+    size_t actual_len = strlen(sp);
+
+    // Convert the hex-string to digits in reverse order
+    for (size_t i = 0; i < actual_len; i++)
     {
-        // if the character is between 0-9
-        if (sp[i] >= '0' && sp[i] <= '9')
+        char c = sp[actual_len - 1 - i]; // Read characters from end to start
+        // If the character is between 0-9
+        if (c >= '0' && c <= '9')
         {
-            digits[i] = sp[i] - '0';
+            digits[i] = c - '0';
         }
-        // if the character is between A-F
-        else if (sp[i] >= 'A' && sp[i] <= 'F')
+        // If the character is between A-F
+        else if (c >= 'A' && c <= 'F')
         {
-            digits[i] = sp[i] - 'A' + 10;
+            digits[i] = c - 'A' + 10;
         }
-        // if the character is between a-f
-        else if (sp[i] >= 'a' && sp[i] <= 'f')
+        // If the character is between a-f
+        else if (c >= 'a' && c <= 'f')
         {
-            digits[i] = sp[i] - 'a' + 10;
+            digits[i] = c - 'a' + 10;
         }
         else
         {
@@ -313,7 +342,8 @@ limb_t *limb_set_str(const char *str)
             exit(EXIT_FAILURE);
         }
     }
-    size_t num_limbs = (hex_len * bits + LIMB_BITS - 1) / LIMB_BITS; // ceil(hex_len * bits / LIMB_BITS)
+
+    size_t num_limbs = (actual_len * bits + LIMB_BITS - 1) / LIMB_BITS; // ceil(actual_len * bits / LIMB_BITS)
     limb_t *num = limb_t_alloc(num_limbs);
     if (num == NULL)
     {
@@ -323,10 +353,10 @@ limb_t *limb_set_str(const char *str)
     num->size = num_limbs;
     num->sign = sign;
 
-    __set_str(digits, hex_len, num);
+    __set_str(digits, actual_len, num);
+    memory_pool_free(digits); // Free the temporary digits array
     return num;
 }
-
 void limb_t_adjust_limb_sizes(limb_t *num1, limb_t *num2)
 {
     if (num1->size == num2->size)

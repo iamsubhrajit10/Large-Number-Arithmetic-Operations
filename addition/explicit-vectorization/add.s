@@ -655,139 +655,73 @@ skip_first_line.cold:
 ___add_n_256:
 .LFB6832:
 	.cfi_startproc
+	movq	(%rsi), %rax
+	movq	(%rdx), %rdx
+	movl	$1, %esi
+	vmovdqa	AVX256_ZEROS(%rip), %ymm2
+	movq	(%rdi), %r9
+	vmovdqa	(%rax), %ymm0
+	vpaddq	(%rdx), %ymm0, %ymm1
+	vpcmpuq	$1, %ymm0, %ymm1, %k3
+	kmovw	%k3, %eax
+	movl	%eax, %ecx
+	addl	%eax, %eax
+	kmovw	%eax, %k1
+	vpbroadcastq	%rsi, %ymm2{%k1}
+	shrb	$3, %cl
+	vpaddq	%ymm1, %ymm2, %ymm3
+	movzbl	%cl, %r10d
+	vpcmpuq	$1, %ymm1, %ymm3, %k4
+	vmovdqa	%ymm3, (%r9)
+	kmovw	%r10d, %k0
+	kmovw	%k4, %r8d
+	testb	%r8b, %r8b
+	jne	.L154
+.L139:
+	movl	$1, %r9d
+	kmovw	%r9d, %k3
+	kandw	%k3, %k0, %k1
+	kortestw	%k1, %k1
+	jne	.L155
+	vzeroupper
+	ret
+	.p2align 4,,10
+	.p2align 3
+.L154:
+	vmovdqa	AVX256_MASK(%rip), %ymm4
+	movzbl	%cl, %ecx
+	kmovw	%ecx, %k7
+	vpcmpeqq	%ymm4, %ymm3, %k6
+	kmovw	%k6, %r11d
+	leal	(%r11,%r8,2), %edx
+	movq	(%rdi), %r8
+	movl	%edx, %eax
+	kmovw	%edx, %k5
+	vpsubq	%ymm4, %ymm3, %ymm3{%k5}
+	shrb	$4, %al
+	vmovdqa	%ymm3, (%r8)
+	movzbl	%al, %esi
+	kmovw	%esi, %k2
+	korw	%k2, %k7, %k0
+	jmp	.L139
+	.p2align 4,,10
+	.p2align 3
+.L155:
 	pushq	%rbp
 	.cfi_def_cfa_offset 16
 	.cfi_offset 6, -16
+	movl	$5, %esi
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
-	pushq	%r13
-	pushq	%r12
-	.cfi_offset 13, -24
-	.cfi_offset 12, -32
-	movq	%rsi, %r12
-	pushq	%rbx
-	movq	(%rsi), %rax
-	movl	$1, %esi
-	.cfi_offset 3, -40
-	movq	%rdi, %rbx
-	movq	(%rdx), %rdx
-	movq	(%rdi), %rdi
-	vmovdqa	AVX256_ZEROS(%rip), %ymm2
-	vmovdqa	(%rax), %ymm0
-	vpaddq	(%rdx), %ymm0, %ymm1
 	andq	$-32, %rsp
-	vpcmpuq	$1, %ymm0, %ymm1, %k0
-	kmovw	%k0, %ecx
-	shrb	%cl
-	kmovw	%ecx, %k1
-	vpbroadcastq	%rsi, %ymm2{%k1}
-	vpaddq	%ymm1, %ymm2, %ymm3
-	vpcmpuq	$1, %ymm3, %ymm3, %k2
-	vmovdqa	%ymm3, (%rdi)
-	kmovw	%k2, %r11d
-	testb	%r11b, %r11b
-	jne	.L150
-.L139:
-	movl	$1, %esi
-	kmovw	%esi, %k3
-	kandw	%k3, %k0, %k5
-	kortestw	%k5, %k5
-	jne	.L151
 	vzeroupper
-	leaq	-24(%rbp), %rsp
-	popq	%rbx
-	popq	%r12
-	popq	%r13
-	popq	%rbp
-	.cfi_remember_state
-	.cfi_def_cfa 7, 8
-	ret
-	.p2align 4,,10
-	.p2align 3
-.L151:
-	.cfi_restore_state
-	movl	16(%r12), %r9d
-	movq	%rbx, %rdi
-	vzeroupper
-	leal	1(%r9), %r10d
-	movslq	%r10d, %r13
-	movq	%r13, %rsi
 	call	limb_t_realloc
-	movq	(%rbx), %rax
-	movzbl	8(%r12), %r12d
-	movq	$1, (%rax)
-	movq	%r13, 16(%rbx)
-	movb	%r12b, 8(%rbx)
-	leaq	-24(%rbp), %rsp
-	popq	%rbx
-	popq	%r12
-	popq	%r13
-	popq	%rbp
-	.cfi_remember_state
+	movq	(%rax), %rdi
+	movq	$1, 32(%rdi)
+	movq	$5, 16(%rax)
+	leave
 	.cfi_def_cfa 7, 8
 	ret
-	.p2align 4,,10
-	.p2align 3
-.L150:
-	.cfi_restore_state
-	shrb	%r11b
-	movq	(%rbx), %r13
-	xorl	%r10d, %r10d
-	movzbl	%r11b, %eax
-	movzbl	%r11b, %r11d
-	movl	%eax, %r8d
-	movl	%eax, %ecx
-	movq	40(%r13), %rdx
-	movl	%eax, %edi
-	sarl	$6, %r8d
-	movslq	%r8d, %r9
-	addq	48(%r13), %r9
-	movq	32(%r13), %r8
-	setc	%r10b
-	sarl	$5, %ecx
-	movq	%r9, 48(%r13)
-	movslq	%ecx, %rsi
-	addb	$-1, %r10b
-	movl	%eax, %ecx
-	movq	8(%r13), %r10
-	adcq	%rdx, %rsi
-	sarl	$4, %edi
-	movslq	%edi, %r9
-	cmpq	%rdx, %rsi
-	movq	24(%r13), %rdx
-	movq	%rsi, 40(%r13)
-	adcq	%r8, %r9
-	sarl	$3, %ecx
-	movl	%eax, %esi
-	cmpq	%r8, %r9
-	movslq	%ecx, %rdi
-	movq	16(%r13), %r8
-	movq	%r9, 32(%r13)
-	adcq	%rdx, %rdi
-	sarl	$2, %esi
-	movslq	%esi, %r9
-	cmpq	%rdx, %rdi
-	movq	0(%r13), %rdx
-	movq	%rdi, 24(%r13)
-	adcq	%r8, %r9
-	sarl	%eax
-	cltq
-	cmpq	%r8, %r9
-	movq	%r9, 16(%r13)
-	adcq	%r10, %rax
-	cmpq	%r10, %rax
-	movq	%rax, 8(%r13)
-	setb	%cl
-	addq	%rdx, %r11
-	movzbl	%cl, %edi
-	addq	%rdi, %r11
-	cmpq	%rdx, %r11
-	movq	%r11, 0(%r13)
-	setb	%r13b
-	movzbl	%r13b, %r8d
-	kmovw	%r8d, %k4
-	korw	%k4, %k0, %k0
-	jmp	.L139
 	.cfi_endproc
 .LFE6832:
 	.size	___add_n_256, .-___add_n_256
@@ -800,342 +734,329 @@ __add_n:
 	pushq	%rbp
 	.cfi_def_cfa_offset 16
 	.cfi_offset 6, -16
+	movq	%rdi, %r11
 	movq	%rsp, %rbp
 	.cfi_def_cfa_register 6
-	pushq	%r15
-	pushq	%r14
 	pushq	%r13
 	pushq	%r12
-	.cfi_offset 15, -24
-	.cfi_offset 14, -32
-	.cfi_offset 13, -40
-	.cfi_offset 12, -48
-	movq	%rdi, %r12
 	pushq	%rbx
-	.cfi_offset 3, -56
-	movq	%rsi, %rbx
+	.cfi_offset 13, -24
+	.cfi_offset 12, -32
+	.cfi_offset 3, -40
+	movq	16(%rsi), %rbx
+	movq	(%rdi), %rdi
+	movq	(%rsi), %r8
+	movq	(%rdx), %r9
 	andq	$-64, %rsp
-	subq	$64, %rsp
-	movq	(%rsi), %r9
-	movq	16(%rsi), %rsi
-	movq	(%rdx), %r10
-	movq	(%rdi), %r8
-	movl	%esi, %edx
-	subl	$8, %edx
-	js	.L157
-	movslq	%edx, %rax
-	xorl	%ecx, %ecx
-	andl	$8, %edx
-	movl	$1, %r11d
-	je	.L155
-	vmovdqa64	(%r9,%rax,8), %zmm0
-	vpaddq	(%r10,%rax,8), %zmm0, %zmm1
-	kmovw	%ecx, %k6
+	testl	%ebx, %ebx
+	jle	.L161
+	leal	-1(%rbx), %edx
+	movl	%ebx, %ecx
+	xorl	%eax, %eax
+	xorl	%esi, %esi
+	shrl	$3, %edx
+	movl	$1, %r10d
+	andl	$3, %edx
+	je	.L159
+	vmovdqa64	(%r8), %zmm0
+	vpaddq	(%r9), %zmm0, %zmm1
+	kmovw	%esi, %k6
 	vmovdqa64	AVX512_ZEROS(%rip), %zmm2
-	vpcmpuq	$1, %zmm0, %zmm1, %k0
-	kmovw	%k0, %edi
-	movl	%edi, %edx
-	shrb	%dl
-	movzbl	%dl, %r13d
-	kmovw	%r13d, %k1
-	korw	%k6, %k1, %k2
-	vpbroadcastq	%r11, %zmm2{%k2}
+	vpcmpuq	$1, %zmm0, %zmm1, %k2
+	kmovw	%k2, %eax
+	movl	%eax, %r12d
+	addl	%eax, %eax
+	movzbl	%al, %eax
+	shrb	$7, %r12b
+	kmovw	%eax, %k5
+	korw	%k6, %k5, %k1
+	vpbroadcastq	%r10, %zmm2{%k1}
+	movzbl	%r12b, %r13d
 	vpaddq	%zmm1, %zmm2, %zmm3
-	vpcmpuq	$1, %zmm3, %zmm3, %k7
-	vmovdqa64	%zmm3, (%r8,%rax,8)
-	kmovw	%k7, %ecx
-	testb	%cl, %cl
-	jne	.L178
-.L163:
-	subq	$8, %rax
-	movl	%edi, %ecx
-	testl	%eax, %eax
-	jns	.L155
-	.p2align 4
-	.p2align 3
-.L175:
-	movzwl	%di, %edi
-	vzeroupper
-.L153:
-	movl	$1, %eax
-	kmovw	%edi, %k6
-	kmovw	%eax, %k2
-	kandw	%k2, %k6, %k7
-	kortestw	%k7, %k7
-	jne	.L179
-	leaq	-40(%rbp), %rsp
-	popq	%rbx
-	popq	%r12
-	popq	%r13
-	popq	%r14
-	popq	%r15
-	popq	%rbp
-	.cfi_remember_state
-	.cfi_def_cfa 7, 8
-	ret
-	.p2align 4,,10
-	.p2align 3
-.L158:
-	.cfi_restore_state
-	vmovdqa64	(%r9,%rcx,8), %zmm8
-	vpaddq	(%r10,%rcx,8), %zmm8, %zmm9
-	sall	$7, %edi
-	vmovdqa64	AVX512_ZEROS(%rip), %zmm10
-	kmovw	%edi, %k4
-	vpcmpuq	$1, %zmm8, %zmm9, %k3
-	kmovw	%k3, %edx
-	movl	%edx, %eax
-	shrb	%al
-	movzbl	%al, %r13d
-	kmovw	%r13d, %k5
-	korw	%k4, %k5, %k1
-	vpbroadcastq	%r11, %zmm10{%k1}
-	vpaddq	%zmm9, %zmm10, %zmm11
-	vpcmpuq	$1, %zmm11, %zmm11, %k0
-	vmovdqa64	%zmm11, (%r8,%rcx,8)
-	kmovw	%k0, %edi
-	testb	%dil, %dil
-	jne	.L180
-.L166:
-	leaq	-8(%rcx), %rax
-	movl	%edx, %ecx
-.L155:
-	vmovdqa64	(%r9,%rax,8), %zmm4
-	vpaddq	(%r10,%rax,8), %zmm4, %zmm5
-	sall	$7, %ecx
-	vmovdqa64	AVX512_ZEROS(%rip), %zmm6
-	kmovw	%ecx, %k4
-	vpcmpuq	$1, %zmm4, %zmm5, %k3
-	kmovw	%k3, %edi
-	movl	%edi, %edx
-	shrb	%dl
-	movzbl	%dl, %r15d
-	kmovw	%r15d, %k5
-	korw	%k4, %k5, %k1
-	vpbroadcastq	%r11, %zmm6{%k1}
-	vpaddq	%zmm5, %zmm6, %zmm7
-	vpcmpuq	$1, %zmm7, %zmm7, %k0
-	vmovdqa64	%zmm7, (%r8,%rax,8)
+	vpcmpuq	$1, %zmm1, %zmm3, %k0
+	vmovdqa64	%zmm3, (%rdi)
+	kmovw	%k0, %eax
+	testb	%al, %al
+	je	.L190
+.L165:
+	movl	$8, %eax
+	cmpl	$8, %ecx
+	jle	.L187
+	movl	%r13d, %esi
+	cmpl	$1, %edx
+	je	.L159
+	cmpl	$2, %edx
+	je	.L180
+	vmovdqa64	(%r8,%rax,8), %zmm5
+	vpaddq	(%r9,%rax,8), %zmm5, %zmm6
+	kmovw	%r13d, %k6
+	vmovdqa64	AVX512_ZEROS(%rip), %zmm7
+	vpcmpuq	$1, %zmm5, %zmm6, %k5
+	kmovw	%k5, %edx
+	movl	%edx, %r12d
+	addl	%edx, %edx
+	movzbl	%dl, %edx
+	shrb	$7, %r12b
+	kmovw	%edx, %k1
+	korw	%k1, %k6, %k4
+	vpbroadcastq	%r10, %zmm7{%k4}
+	movzbl	%r12b, %esi
+	vpaddq	%zmm6, %zmm7, %zmm8
+	vpcmpuq	$1, %zmm6, %zmm8, %k0
+	vmovdqa64	%zmm8, (%rdi,%rax,8)
 	kmovw	%k0, %r13d
 	testb	%r13b, %r13b
-	jne	.L181
-.L154:
-	leaq	-8(%rax), %rcx
-	subl	$8, %eax
-	jns	.L158
-	jmp	.L175
-	.p2align 4,,10
-	.p2align 3
-.L181:
-	movzbl	%r13b, %ecx
-	xorl	%r15d, %r15d
-	shrw	%cx
-	movw	%cx, 62(%rsp)
-	movzwl	%cx, %ecx
-	movl	%ecx, %r14d
-	movl	%ecx, %r13d
-	sarl	$6, %r14d
-	movslq	%r14d, %rdx
-	addq	96(%r8), %rdx
-	setc	%r15b
-	movq	%rdx, 96(%r8)
-	sarl	$5, %r13d
-	movq	80(%r8), %rdx
-	movslq	%r13d, %r14
-	addb	$-1, %r15b
-	movl	%ecx, %r13d
-	movq	64(%r8), %r15
-	adcq	%rdx, %r14
-	sarl	$4, %r13d
-	movq	%r14, 80(%r8)
-	cmpq	%rdx, %r14
-	movslq	%r13d, %r13
-	movl	%ecx, %r14d
-	adcq	%r15, %r13
-	movq	48(%r8), %rdx
-	sarl	$3, %r14d
-	movq	%r13, 64(%r8)
-	cmpq	%r15, %r13
-	movslq	%r14d, %r14
-	movl	%ecx, %r13d
-	adcq	%rdx, %r14
-	movq	32(%r8), %r15
-	sarl	$2, %r13d
-	movslq	%r13d, %r13
-	cmpq	%rdx, %r14
-	movq	16(%r8), %rdx
-	movq	%r14, 48(%r8)
-	adcq	%r15, %r13
-	sarl	%ecx
-	movq	(%r8), %r14
-	cmpq	%r15, %r13
-	movslq	%ecx, %rcx
-	movq	%r13, 32(%r8)
-	adcq	%rdx, %rcx
-	cmpq	%rdx, %rcx
-	movzwl	62(%rsp), %edx
-	movq	%rcx, 16(%r8)
-	setb	%r15b
-	movzbl	%r15b, %r13d
-	addq	%r14, %rdx
-	addq	%r13, %rdx
-	cmpq	%r14, %rdx
-	movq	%rdx, (%r8)
-	setb	%cl
-	movzbl	%cl, %r14d
-	orl	%r14d, %edi
-	jmp	.L154
-	.p2align 4,,10
-	.p2align 3
+	je	.L191
+.L167:
+	addq	$8, %rax
 .L180:
-	movzbl	%dil, %r14d
-	shrw	%r14w
-	movzwl	%r14w, %edi
-	movw	%r14w, 62(%rsp)
-	xorl	%r14d, %r14d
-	movl	%edi, %r15d
-	movl	%edi, %r13d
-	sarl	$6, %r15d
-	movslq	%r15d, %rax
-	addq	96(%r8), %rax
-	setc	%r14b
-	sarl	$5, %r13d
-	movq	%rax, 96(%r8)
-	movq	80(%r8), %rax
-	movslq	%r13d, %r15
-	addb	$-1, %r14b
-	movl	%edi, %r13d
-	movq	%r15, %r14
-	movq	64(%r8), %r15
-	adcq	%rax, %r14
-	sarl	$4, %r13d
-	movq	%r14, 80(%r8)
-	cmpq	%rax, %r14
-	movslq	%r13d, %r13
-	movl	%edi, %r14d
-	adcq	%r15, %r13
-	movq	48(%r8), %rax
-	sarl	$3, %r14d
-	movq	%r13, 64(%r8)
-	cmpq	%r15, %r13
-	movslq	%r14d, %r14
-	movl	%edi, %r13d
-	adcq	%rax, %r14
-	movq	32(%r8), %r15
-	sarl	$2, %r13d
-	movslq	%r13d, %r13
-	cmpq	%rax, %r14
-	movq	16(%r8), %rax
-	movq	%r14, 48(%r8)
-	adcq	%r15, %r13
-	sarl	%edi
-	movq	(%r8), %r14
-	cmpq	%r15, %r13
-	movslq	%edi, %rdi
-	movq	%r13, 32(%r8)
-	adcq	%rax, %rdi
-	cmpq	%rax, %rdi
-	movzwl	62(%rsp), %eax
-	movq	%rdi, 16(%r8)
-	setb	%r15b
-	movzbl	%r15b, %r13d
-	addq	%r14, %rax
-	addq	%r13, %rax
-	cmpq	%r14, %rax
-	movq	%rax, (%r8)
-	setb	%dil
-	movzbl	%dil, %r14d
-	orl	%r14d, %edx
-	jmp	.L166
+	vmovdqa64	(%r8,%rax,8), %zmm10
+	vpaddq	(%r9,%rax,8), %zmm10, %zmm11
+	kmovw	%esi, %k4
+	vmovdqa64	AVX512_ZEROS(%rip), %zmm12
+	vpcmpuq	$1, %zmm10, %zmm11, %k6
+	kmovw	%k6, %edx
+	movl	%edx, %r12d
+	addl	%edx, %edx
+	movzbl	%dl, %edx
+	shrb	$7, %r12b
+	kmovw	%edx, %k1
+	korw	%k4, %k1, %k3
+	vpbroadcastq	%r10, %zmm12{%k3}
+	movzbl	%r12b, %r13d
+	vpaddq	%zmm11, %zmm12, %zmm13
+	vpcmpuq	$1, %zmm11, %zmm13, %k0
+	vmovdqa64	%zmm13, (%rdi,%rax,8)
+	kmovw	%k0, %esi
+	testb	%sil, %sil
+	je	.L192
+.L170:
+	addq	$8, %rax
+	movl	%r13d, %esi
+	jmp	.L159
 	.p2align 4,,10
 	.p2align 3
-.L179:
-	addl	$1, %esi
-	movq	%r12, %rdi
-	movslq	%esi, %r15
-	movq	%r15, %rsi
-	call	limb_t_realloc
-	movq	(%r12), %r8
-	movzbl	8(%rbx), %ebx
-	movq	$1, (%r8)
-	movq	%r15, 16(%r12)
-	movb	%bl, 8(%r12)
-	leaq	-40(%rbp), %rsp
+.L162:
+	vmovdqa64	(%r8,%rax,8), %zmm4
+	vpaddq	(%r9,%rax,8), %zmm4, %zmm5
+	kmovw	%r13d, %k7
+	vmovdqa64	AVX512_ZEROS(%rip), %zmm6
+	vpcmpuq	$1, %zmm4, %zmm5, %k0
+	kmovw	%k0, %edx
+	movl	%edx, %esi
+	addl	%edx, %edx
+	movzbl	%dl, %edx
+	shrb	$7, %sil
+	kmovw	%edx, %k6
+	korw	%k6, %k7, %k5
+	vpbroadcastq	%r10, %zmm6{%k5}
+	movzbl	%sil, %r12d
+	vpaddq	%zmm5, %zmm6, %zmm7
+	kmovw	%r12d, %k2
+	vpcmpuq	$1, %zmm5, %zmm7, %k1
+	vmovdqa64	%zmm7, (%rdi,%rax,8)
+	kmovw	%k1, %r13d
+	testb	%r13b, %r13b
+	je	.L193
+.L174:
+	vmovdqa64	AVX512_ZEROS(%rip), %zmm11
+	leaq	8(%rax), %r12
+	vmovdqa64	(%r8,%r12,8), %zmm9
+	vpaddq	(%r9,%r12,8), %zmm9, %zmm10
+	vpcmpuq	$1, %zmm9, %zmm10, %k0
+	kmovw	%k0, %edx
+	movl	%edx, %esi
+	addl	%edx, %edx
+	movzbl	%dl, %edx
+	shrb	$7, %sil
+	kmovw	%edx, %k7
+	korw	%k7, %k2, %k6
+	vpbroadcastq	%r10, %zmm11{%k6}
+	movzbl	%sil, %r13d
+	vpaddq	%zmm10, %zmm11, %zmm12
+	kmovw	%r13d, %k0
+	vpcmpuq	$1, %zmm10, %zmm12, %k5
+	vmovdqa64	%zmm12, (%rdi,%r12,8)
+	kmovw	%k5, %r13d
+	testb	%r13b, %r13b
+	je	.L194
+.L176:
+	vmovdqa64	AVX512_ZEROS(%rip), %zmm1
+	leaq	16(%rax), %r13
+	vmovdqa64	(%r8,%r13,8), %zmm14
+	vpaddq	(%r9,%r13,8), %zmm14, %zmm15
+	vpcmpuq	$1, %zmm14, %zmm15, %k2
+	kmovw	%k2, %edx
+	movl	%edx, %r12d
+	addl	%edx, %edx
+	movzbl	%dl, %edx
+	shrb	$7, %r12b
+	kmovw	%edx, %k7
+	korw	%k7, %k0, %k6
+	vpbroadcastq	%r10, %zmm1{%k6}
+	movzbl	%r12b, %esi
+	vpaddq	%zmm15, %zmm1, %zmm0
+	vpcmpuq	$1, %zmm15, %zmm0, %k5
+	vmovdqa64	%zmm0, (%rdi,%r13,8)
+	kmovw	%k5, %edx
+	testb	%dl, %dl
+	je	.L195
+.L178:
+	addq	$24, %rax
+.L159:
+	vmovdqa64	(%r8,%rax,8), %zmm15
+	vpaddq	(%r9,%rax,8), %zmm15, %zmm1
+	kmovw	%esi, %k3
+	vmovdqa64	AVX512_ZEROS(%rip), %zmm0
+	vpcmpuq	$1, %zmm15, %zmm1, %k1
+	kmovw	%k1, %edx
+	movl	%edx, %r12d
+	addl	%edx, %edx
+	movzbl	%dl, %edx
+	shrb	$7, %r12b
+	kmovw	%edx, %k4
+	korw	%k3, %k4, %k2
+	vpbroadcastq	%r10, %zmm0{%k2}
+	movzbl	%r12b, %r13d
+	vpaddq	%zmm1, %zmm0, %zmm2
+	vpcmpuq	$1, %zmm1, %zmm2, %k0
+	vmovdqa64	%zmm2, (%rdi,%rax,8)
+	kmovw	%k0, %esi
+	testb	%sil, %sil
+	je	.L196
+.L158:
+	addq	$8, %rax
+	cmpl	%eax, %ecx
+	jg	.L162
+.L187:
+	vzeroupper
+.L157:
+	movl	$1, %edi
+	kmovw	%r13d, %k4
+	kmovw	%edi, %k3
+	kandw	%k3, %k4, %k2
+	kortestw	%k2, %k2
+	jne	.L197
+	leaq	-24(%rbp), %rsp
 	popq	%rbx
 	popq	%r12
 	popq	%r13
-	popq	%r14
-	popq	%r15
 	popq	%rbp
 	.cfi_remember_state
 	.cfi_def_cfa 7, 8
 	ret
 	.p2align 4,,10
 	.p2align 3
-.L157:
+.L196:
 	.cfi_restore_state
-	xorl	%edi, %edi
-	jmp	.L153
-.L178:
-	movzbl	%cl, %r14d
-	shrw	%r14w
-	movzwl	%r14w, %ecx
-	movw	%r14w, 62(%rsp)
-	xorl	%r14d, %r14d
-	movl	%ecx, %r15d
-	movl	%ecx, %r13d
-	sarl	$6, %r15d
-	movslq	%r15d, %rdx
-	addq	96(%r8), %rdx
-	setc	%r14b
-	sarl	$5, %r13d
-	movq	%rdx, 96(%r8)
-	movq	80(%r8), %rdx
-	movslq	%r13d, %r15
-	addb	$-1, %r14b
-	movl	%ecx, %r13d
-	movq	%r15, %r14
-	movq	64(%r8), %r15
-	adcq	%rdx, %r14
-	sarl	$4, %r13d
-	movq	%r14, 80(%r8)
-	cmpq	%rdx, %r14
-	movslq	%r13d, %r13
-	movl	%ecx, %r14d
-	adcq	%r15, %r13
-	movq	48(%r8), %rdx
-	sarl	$3, %r14d
-	movq	%r13, 64(%r8)
-	cmpq	%r15, %r13
-	movslq	%r14d, %r14
-	movl	%ecx, %r13d
-	adcq	%rdx, %r14
-	movq	32(%r8), %r15
-	sarl	$2, %r13d
-	movslq	%r13d, %r13
-	cmpq	%rdx, %r14
-	movq	16(%r8), %rdx
-	movq	%r14, 48(%r8)
-	adcq	%r15, %r13
-	sarl	%ecx
-	movq	(%r8), %r14
-	cmpq	%r15, %r13
-	movslq	%ecx, %rcx
-	movq	%r13, 32(%r8)
-	adcq	%rdx, %rcx
-	cmpq	%rdx, %rcx
-	movzwl	62(%rsp), %edx
-	movq	%rcx, 16(%r8)
-	setb	%r15b
-	movzbl	%r15b, %r13d
-	addq	%r14, %rdx
-	addq	%r13, %rdx
-	cmpq	%r14, %rdx
-	movq	%rdx, (%r8)
-	setb	%cl
-	movzbl	%cl, %r14d
-	orl	%r14d, %edi
-	jmp	.L163
+	vmovdqa64	AVX512_MASK(%rip), %zmm3
+	movzbl	%r12b, %r13d
+	kxorw	%k6, %k6, %k6
+	kmovw	%r13d, %k5
+	korw	%k6, %k5, %k1
+	kmovw	%k1, %r13d
+	vpcmpeqq	%zmm3, %zmm2, %k7
+	vpsubq	%zmm3, %zmm2, %zmm2{%k7}
+	vmovdqa64	%zmm2, (%rdi,%rax,8)
+	jmp	.L158
+	.p2align 4,,10
+	.p2align 3
+.L193:
+	vmovdqa64	AVX512_MASK(%rip), %zmm8
+	movzbl	%sil, %esi
+	kxorw	%k2, %k2, %k2
+	kmovw	%esi, %k4
+	korw	%k2, %k4, %k2
+	vpcmpeqq	%zmm8, %zmm7, %k3
+	vpsubq	%zmm8, %zmm7, %zmm7{%k3}
+	vmovdqa64	%zmm7, (%rdi,%rax,8)
+	jmp	.L174
+	.p2align 4,,10
+	.p2align 3
+.L194:
+	vmovdqa64	AVX512_MASK(%rip), %zmm13
+	movzbl	%sil, %esi
+	kxorw	%k3, %k3, %k3
+	kmovw	%esi, %k4
+	korw	%k3, %k4, %k0
+	vpcmpeqq	%zmm13, %zmm12, %k1
+	vpsubq	%zmm13, %zmm12, %zmm12{%k1}
+	vmovdqa64	%zmm12, (%rdi,%r12,8)
+	jmp	.L176
+	.p2align 4,,10
+	.p2align 3
+.L195:
+	vmovdqa64	AVX512_MASK(%rip), %zmm2
+	xorl	%esi, %esi
+	movzbl	%r12b, %r12d
+	kmovw	%esi, %k4
+	kmovw	%r12d, %k3
+	korw	%k4, %k3, %k0
+	kmovw	%k0, %esi
+	vpcmpeqq	%zmm2, %zmm0, %k1
+	vpsubq	%zmm2, %zmm0, %zmm0{%k1}
+	vmovdqa64	%zmm0, (%rdi,%r13,8)
+	jmp	.L178
+	.p2align 4,,10
+	.p2align 3
+.L161:
+	xorl	%r13d, %r13d
+	jmp	.L157
+	.p2align 4,,10
+	.p2align 3
+.L197:
+	leal	1(%rbx), %r8d
+	movq	%r11, %rdi
+	movslq	%r8d, %r12
+	movq	%r12, %rsi
+	call	limb_t_realloc
+	movslq	%ebx, %r11
+	movq	(%rax), %r9
+	movq	$1, (%r9,%r11,8)
+	movq	%r12, 16(%rax)
+	leaq	-24(%rbp), %rsp
+	popq	%rbx
+	popq	%r12
+	popq	%r13
+	popq	%rbp
+	.cfi_remember_state
+	.cfi_def_cfa 7, 8
+	ret
+.L190:
+	.cfi_restore_state
+	vmovdqa64	AVX512_MASK(%rip), %zmm4
+	movzbl	%r12b, %r13d
+	kmovw	%r13d, %k7
+	korw	%k6, %k7, %k2
+	kmovw	%k2, %r13d
+	vpcmpeqq	%zmm4, %zmm3, %k4
+	vpsubq	%zmm4, %zmm3, %zmm3{%k4}
+	vmovdqa64	%zmm3, (%rdi)
+	jmp	.L165
+.L192:
+	vmovdqa64	AVX512_MASK(%rip), %zmm14
+	xorl	%r13d, %r13d
+	movzbl	%r12b, %r12d
+	kmovw	%r13d, %k5
+	kmovw	%r12d, %k7
+	korw	%k5, %k7, %k6
+	kmovw	%k6, %r13d
+	vpcmpeqq	%zmm14, %zmm13, %k2
+	vpsubq	%zmm14, %zmm13, %zmm13{%k2}
+	vmovdqa64	%zmm13, (%rdi,%rax,8)
+	jmp	.L170
+.L191:
+	vmovdqa64	AVX512_MASK(%rip), %zmm9
+	xorl	%esi, %esi
+	movzbl	%r12b, %r12d
+	kmovw	%esi, %k2
+	kmovw	%r12d, %k7
+	korw	%k2, %k7, %k5
+	kmovw	%k5, %esi
+	vpcmpeqq	%zmm9, %zmm8, %k3
+	vpsubq	%zmm9, %zmm8, %zmm8{%k3}
+	vmovdqa64	%zmm8, (%rdi,%rax,8)
+	jmp	.L167
 	.cfi_endproc
 .LFE6833:
 	.size	__add_n, .-__add_n
@@ -1145,13 +1066,20 @@ __add_n:
 pml_add_n:
 .LFB6834:
 	.cfi_startproc
-	cmpl	$4, 16(%rsi)
-	jg	.L183
-	jmp	___add_n_256
+	movq	16(%rsi), %rax
+	testl	%eax, %eax
+	je	.L201
+	cmpl	$4, %eax
+	jle	.L202
+	jmp	__add_n
 	.p2align 4,,10
 	.p2align 3
-.L183:
-	jmp	__add_n
+.L201:
+	ret
+	.p2align 4,,10
+	.p2align 3
+.L202:
+	jmp	___add_n_256
 	.cfi_endproc
 .LFE6834:
 	.size	pml_add_n, .-pml_add_n
@@ -1262,16 +1190,16 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	skip_first_line
 	testl	%ebp, %ebp
-	jle	.L185
+	jle	.L204
 	movl	%ebp, %edi
 	xorl	%r12d, %r12d
 	leaq	224(%rsp), %r13
 	andl	$3, %edi
-	je	.L188
+	je	.L207
 	cmpl	$1, %edi
-	je	.L259
+	je	.L278
 	cmpl	$2, %edi
-	je	.L260
+	je	.L279
 	movl	$655360, %edx
 	xorl	%esi, %esi
 	movq	%r13, %rdi
@@ -1282,8 +1210,8 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
-.L260:
+	je	.L312
+.L279:
 	movl	$655360, %edx
 	xorl	%esi, %esi
 	movq	%r13, %rdi
@@ -1294,8 +1222,8 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
-.L259:
+	je	.L312
+.L278:
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%r13, %rdi
@@ -1305,11 +1233,11 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
+	je	.L312
 	addl	$1, %r12d
 	cmpl	%r12d, %ebp
-	je	.L185
-.L188:
+	je	.L204
+.L207:
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%r13, %rdi
@@ -1319,7 +1247,7 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
+	je	.L312
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%r13, %rdi
@@ -1329,7 +1257,7 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
+	je	.L312
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%r13, %rdi
@@ -1339,7 +1267,7 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
+	je	.L312
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%r13, %rdi
@@ -1349,11 +1277,11 @@ run_perf_test:
 	movq	%r15, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L293
+	je	.L312
 	addl	$4, %r12d
 	cmpl	%r12d, %ebp
-	jne	.L188
-.L185:
+	jne	.L207
+.L204:
 	movl	$.LC21, %esi
 	movq	%r13, %rdi
 	call	strtok
@@ -1370,9 +1298,9 @@ run_perf_test:
 	testq	%rbx, %rbx
 	sete	%r9b
 	orb	%r9b, %r8b
-	jne	.L196
+	jne	.L215
 	testq	%rax, %rax
-	je	.L196
+	je	.L215
 	movq	%r14, %rdi
 	leaq	16(%rsp), %r14
 	call	limb_set_str
@@ -1409,7 +1337,7 @@ run_perf_test:
 	movq	%r14, %rsi
 	call	write_perf
 	testl	%ebx, %ebx
-	jle	.L191
+	jle	.L210
 	leal	-1(%rbx), %r10d
 	movq	%rbp, %rdx
 	movq	%r12, %rcx
@@ -1419,56 +1347,56 @@ run_perf_test:
 	shrq	$6, %r10
 	addq	$1, %r10
 	andl	$7, %r10d
-	je	.L192
+	je	.L211
 	cmpq	$1, %r10
-	je	.L261
+	je	.L280
 	cmpq	$2, %r10
-	je	.L262
+	je	.L281
 	cmpq	$3, %r10
-	je	.L263
+	je	.L282
 	cmpq	$4, %r10
-	je	.L264
+	je	.L283
 	cmpq	$5, %r10
-	je	.L265
+	je	.L284
 	cmpq	$6, %r10
-	je	.L266
+	je	.L285
 	clflush	0(%rbp)
 	clflush	(%r12)
 	leaq	64(%rbp), %rdx
 	leaq	64(%r12), %rcx
-.L266:
+.L285:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	addq	$64, %rdx
 	addq	$64, %rcx
-.L265:
+.L284:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	addq	$64, %rdx
 	addq	$64, %rcx
-.L264:
+.L283:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	addq	$64, %rdx
 	addq	$64, %rcx
-.L263:
+.L282:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	addq	$64, %rdx
 	addq	$64, %rcx
-.L262:
+.L281:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	addq	$64, %rdx
 	addq	$64, %rcx
-.L261:
+.L280:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	addq	$64, %rdx
 	addq	$64, %rcx
 	cmpq	%rdx, %r11
-	je	.L191
-.L192:
+	je	.L210
+.L211:
 	clflush	(%rdx)
 	clflush	(%rcx)
 	leaq	64(%rcx), %rax
@@ -1495,8 +1423,8 @@ run_perf_test:
 	addq	$512, %rdx
 	addq	$512, %rcx
 	cmpq	%rdx, %r11
-	jne	.L192
-.L191:
+	jne	.L211
+.L210:
 	mfence
 	movl	$.LC25, %edi
 	leaq	64(%rsp), %rbx
@@ -1548,7 +1476,7 @@ run_perf_test:
 	call	pml_add_n
 	.p2align 4
 	.p2align 3
-.L195:
+.L214:
 	addq	%r14, %r14
 #APP
 # 232 "../myutils.h" 1
@@ -1564,67 +1492,67 @@ run_perf_test:
 	orq	%rdx, %rdi
 	movq	%rdi, 8(%rsp)
 	testq	%r14, %r14
-	jle	.L193
+	jle	.L212
 	movq	%r14, %rcx
 	xorl	%ebx, %ebx
 	andl	$6, %ecx
-	je	.L194
+	je	.L213
 	cmpq	$1, %rcx
-	je	.L267
+	je	.L286
 	cmpq	$2, %rcx
-	je	.L268
+	je	.L287
 	cmpq	$3, %rcx
-	je	.L269
+	je	.L288
 	cmpq	$4, %rcx
-	je	.L270
+	je	.L289
 	cmpq	$5, %rcx
-	je	.L271
+	je	.L290
 	cmpq	$6, %rcx
-	je	.L272
+	je	.L291
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %ebx
 	call	pml_add_n
-.L272:
+.L291:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L271:
+.L290:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L270:
+.L289:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L269:
+.L288:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L268:
+.L287:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L267:
+.L286:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
 	cmpq	%rbx, %r14
-	je	.L193
-.L194:
+	je	.L212
+.L213:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -1659,8 +1587,8 @@ run_perf_test:
 	movq	%r13, %rdi
 	call	pml_add_n
 	cmpq	%rbx, %r14
-	jne	.L194
-.L193:
+	jne	.L213
+.L212:
 #APP
 # 245 "../myutils.h" 1
 	RDTSCP
@@ -1677,7 +1605,7 @@ run_perf_test:
 	orq	%r10, %rax
 	subq	%r11, %rax
 	cmpq	$699999999, %rax
-	jle	.L195
+	jle	.L214
 	vxorpd	%xmm4, %xmm4, %xmm4
 	movl	$.LC31, %edi
 	vcvtsi2sdq	%rax, %xmm4, %xmm5
@@ -1687,7 +1615,7 @@ run_perf_test:
 	call	printf
 	movq	%r15, %rdi
 	call	gzclose
-.L296:
+.L315:
 	addq	$655592, %rsp
 	.cfi_remember_state
 	.cfi_def_cfa_offset 56
@@ -1706,14 +1634,14 @@ run_perf_test:
 	ret
 	.p2align 4,,10
 	.p2align 3
-.L293:
+.L312:
 	.cfi_restore_state
 	movq	%r15, %rdi
 	call	gzeof
 	testl	%eax, %eax
-	jne	.L296
-	jmp	.L290
-.L196:
+	jne	.L315
+	jmp	.L309
+.L215:
 	movq	stderr(%rip), %rdi
 	movq	%r13, %rdx
 	movl	$.LC22, %esi
@@ -1729,7 +1657,7 @@ run_perf_test:
 	.type	run_perf_test.cold, @function
 run_perf_test.cold:
 .LFSB6836:
-.L290:
+.L309:
 	.cfi_def_cfa_offset 655648
 	.cfi_offset 3, -56
 	.cfi_offset 6, -48
@@ -1837,12 +1765,12 @@ run_correctness_test:
 	movl	$.LC34, %edi
 	call	create_directory
 	cmpl	$2, %r14d
-	je	.L299
-	jg	.L300
+	je	.L318
+	jg	.L319
 	testl	%r14d, %r14d
-	je	.L301
+	je	.L320
 	cmpl	$1, %r14d
-	jne	.L303
+	jne	.L322
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC36, %edi
@@ -1855,10 +1783,10 @@ run_correctness_test:
 	movl	$.LC37, %edx
 	movl	$100, %esi
 	call	snprintf
-	jmp	.L305
+	jmp	.L324
 	.p2align 4,,10
 	.p2align 3
-.L301:
+.L320:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC35, %edi
@@ -1871,7 +1799,7 @@ run_correctness_test:
 	movl	$.LC17, %edx
 	movl	$100, %esi
 	call	snprintf
-.L305:
+.L324:
 	movl	$.LC18, %esi
 	movq	%rbx, %rdi
 	call	open_gzfile
@@ -1880,13 +1808,15 @@ run_correctness_test:
 	call	skip_first_line
 	movl	$0, 12(%rsp)
 	movl	%r14d, 28(%rsp)
-.L322:
+.L341:
+	xorl	%eax, %eax
+	call	init_memory_pool
 	movq	(%rsp), %rdi
 	movl	$655360, %edx
 	leaq	144(%rsp), %rsi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L421
+	je	.L440
 	movl	$.LC21, %esi
 	leaq	144(%rsp), %rdi
 	call	strtok
@@ -1904,9 +1834,9 @@ run_correctness_test:
 	testq	%rbp, %rbp
 	sete	%dl
 	orb	%dl, %al
-	jne	.L329
+	jne	.L348
 	testq	%r15, %r15
-	je	.L329
+	je	.L348
 	movq	%r12, %rdi
 	call	limb_set_str
 	movq	%rbp, %rdi
@@ -1951,16 +1881,16 @@ run_correctness_test:
 	movq	%rbp, %rdi
 	call	trim_trailing_newline
 	testl	%ebx, %ebx
-	jle	.L316
+	jle	.L335
 	call	__ctype_tolower_loc
 	xorl	%r8d, %r8d
 	leal	-1(%rbx), %r10d
 	andl	$3, %ebx
-	je	.L315
+	je	.L334
 	cmpq	$1, %rbx
-	je	.L378
+	je	.L397
 	cmpq	$2, %rbx
-	je	.L379
+	je	.L398
 	movsbq	(%r15), %r11
 	movq	(%rax), %rdx
 	movl	$1, %r8d
@@ -1970,7 +1900,7 @@ run_correctness_test:
 	movq	(%rax), %rcx
 	movl	(%rcx,%rsi,4), %edi
 	movb	%dil, 0(%rbp)
-.L379:
+.L398:
 	movsbq	(%r15,%r8), %r9
 	movq	(%rax), %r11
 	movl	(%r11,%r9,4), %edx
@@ -1980,7 +1910,7 @@ run_correctness_test:
 	movl	(%rsi,%rbx,4), %ecx
 	movb	%cl, 0(%rbp,%r8)
 	addq	$1, %r8
-.L378:
+.L397:
 	movsbq	(%r15,%r8), %rdi
 	movq	(%rax), %r9
 	movq	%r8, %rcx
@@ -1992,8 +1922,8 @@ run_correctness_test:
 	movb	%sil, 0(%rbp,%r8)
 	addq	$1, %r8
 	cmpq	%rcx, %r10
-	je	.L316
-.L315:
+	je	.L335
+.L334:
 	movq	(%rax), %r9
 	movsbq	(%r15,%r8), %rdi
 	movl	(%r9,%rdi,4), %r11d
@@ -2029,8 +1959,8 @@ run_correctness_test:
 	movb	%dl, 3(%rbp,%r8)
 	addq	$4, %r8
 	cmpq	%rbx, %r10
-	jne	.L315
-.L316:
+	jne	.L334
+.L335:
 	movq	%r15, %rdi
 	call	strlen
 	movq	%rbp, %rdi
@@ -2038,127 +1968,129 @@ run_correctness_test:
 	call	strlen
 	movq	16(%rsp), %r10
 	cmpq	%rax, %r10
-	jne	.L422
+	jne	.L441
 	xorl	%ebx, %ebx
 	testq	%r10, %r10
-	je	.L318
+	je	.L337
 	movq	%r10, %r8
 	andl	$7, %r8d
-	je	.L317
+	je	.L336
 	cmpq	$1, %r8
-	je	.L381
+	je	.L400
 	cmpq	$2, %r8
-	je	.L382
+	je	.L401
 	cmpq	$3, %r8
-	je	.L383
+	je	.L402
 	cmpq	$4, %r8
-	je	.L384
+	je	.L403
 	cmpq	$5, %r8
-	je	.L385
+	je	.L404
 	cmpq	$6, %r8
-	je	.L386
+	je	.L405
 	movzbl	0(%rbp), %edi
 	cmpb	%dil, (%r15)
-	jne	.L417
+	jne	.L436
 	movl	$1, %ebx
-.L386:
+.L405:
 	movzbl	0(%rbp,%rbx), %esi
 	cmpb	%sil, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
-.L385:
+.L404:
 	movzbl	0(%rbp,%rbx), %ecx
 	cmpb	%cl, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
-.L384:
+.L403:
 	movzbl	0(%rbp,%rbx), %r9d
 	cmpb	%r9b, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
-.L383:
+.L402:
 	movzbl	0(%rbp,%rbx), %r11d
 	cmpb	%r11b, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
-.L382:
+.L401:
 	movzbl	0(%rbp,%rbx), %edx
 	cmpb	%dl, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
-.L381:
+.L400:
 	movzbl	0(%rbp,%rbx), %eax
 	cmpb	%al, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
 	cmpq	%rbx, %r10
-	je	.L318
-.L317:
+	je	.L337
+.L336:
 	movzbl	0(%rbp,%rbx), %r8d
 	cmpb	%r8b, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	leaq	1(%rbx), %rsi
 	movzbl	0(%rbp,%rsi), %edi
 	movq	%rsi, %rbx
 	cmpb	%dil, (%r15,%rsi)
-	jne	.L417
+	jne	.L436
 	addq	$1, %rbx
 	movzbl	0(%rbp,%rbx), %ecx
 	cmpb	%cl, (%r15,%rbx)
-	jne	.L417
+	jne	.L436
 	movzbl	2(%rbp,%rsi), %r9d
 	leaq	2(%rsi), %rbx
 	cmpb	%r9b, 2(%r15,%rsi)
-	jne	.L417
+	jne	.L436
 	movzbl	3(%rbp,%rsi), %r11d
 	leaq	3(%rsi), %rbx
 	cmpb	%r11b, 3(%r15,%rsi)
-	jne	.L417
+	jne	.L436
 	movzbl	4(%rbp,%rsi), %edx
 	leaq	4(%rsi), %rbx
 	cmpb	%dl, 4(%r15,%rsi)
-	jne	.L417
+	jne	.L436
 	movzbl	5(%rbp,%rsi), %eax
 	leaq	5(%rsi), %rbx
 	cmpb	%al, 5(%r15,%rsi)
-	jne	.L417
+	jne	.L436
 	movzbl	6(%rbp,%rsi), %r8d
 	leaq	6(%rsi), %rbx
 	cmpb	%r8b, 6(%r15,%rsi)
-	jne	.L417
+	jne	.L436
 	leaq	7(%rsi), %rbx
 	cmpq	%rbx, %r10
-	jne	.L317
-.L318:
+	jne	.L336
+.L337:
 	cmpb	$45, 26(%rsp)
 	sete	%r15b
 	cmpb	$45, 27(%rsp)
 	sete	%bpl
 	cmpb	%bpl, %r15b
-	jne	.L423
+	jne	.L442
 	movq	%r13, %rdi
 	call	limb_t_free
 	movq	%r14, %rdi
 	call	limb_t_free
 	movq	%r12, %rdi
 	call	limb_t_free
+	xorl	%eax, %eax
+	call	destroy_memory_pool
 	addl	$1, 12(%rsp)
 	movl	12(%rsp), %r13d
 	cmpl	$100000, %r13d
-	jne	.L322
+	jne	.L341
 	movl	28(%rsp), %r14d
-.L323:
+.L342:
 	movl	NUM_BITS(%rip), %esi
 	cmpl	$2, %r14d
-	je	.L324
+	je	.L343
 	cmpl	$3, %r14d
-	je	.L325
+	je	.L344
 	cmpl	$1, %r14d
-	je	.L326
+	je	.L345
 	movl	$.LC44, %edi
 	xorl	%eax, %eax
 	call	printf
-.L327:
+.L346:
 	movq	(%rsp), %rdi
 	call	gzclose
 	addq	$655512, %rsp
@@ -2179,7 +2111,7 @@ run_correctness_test:
 	ret
 	.p2align 4,,10
 	.p2align 3
-.L422:
+.L441:
 	.cfi_restore_state
 	movl	$.LC4, %edi
 	call	puts
@@ -2198,7 +2130,7 @@ run_correctness_test:
 	movl	$.LC6, %edi
 	xorl	%eax, %eax
 	call	printf
-.L320:
+.L339:
 	movl	12(%rsp), %esi
 	movl	$.LC43, %edi
 	xorl	%eax, %eax
@@ -2207,7 +2139,7 @@ run_correctness_test:
 	call	exit
 	.p2align 4,,10
 	.p2align 3
-.L417:
+.L436:
 	movl	$.LC7, %edi
 	call	puts
 	movq	%rbx, %rsi
@@ -2226,12 +2158,12 @@ run_correctness_test:
 	movl	$.LC10, %edi
 	xorl	%eax, %eax
 	call	printf
-	jmp	.L320
+	jmp	.L339
 	.p2align 4,,10
 	.p2align 3
-.L300:
+.L319:
 	cmpl	$3, %r14d
-	jne	.L303
+	jne	.L322
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC40, %edi
@@ -2244,10 +2176,10 @@ run_correctness_test:
 	movl	$.LC41, %edx
 	movl	$100, %esi
 	call	snprintf
-	jmp	.L305
+	jmp	.L324
 	.p2align 4,,10
 	.p2align 3
-.L299:
+.L318:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC38, %edi
@@ -2260,38 +2192,38 @@ run_correctness_test:
 	movl	$.LC39, %edx
 	movl	$100, %esi
 	call	snprintf
-	jmp	.L305
+	jmp	.L324
 	.p2align 4,,10
 	.p2align 3
-.L423:
+.L442:
 	movl	$.LC11, %edi
 	call	puts
-	jmp	.L320
-.L421:
+	jmp	.L339
+.L440:
 	movq	(%rsp), %rdi
 	movl	28(%rsp), %r14d
 	call	gzeof
 	testl	%eax, %eax
-	jne	.L323
-	jmp	.L397
+	jne	.L342
+	jmp	.L416
 	.p2align 4,,10
 	.p2align 3
-.L326:
+.L345:
 	movl	$.LC45, %edi
 	xorl	%eax, %eax
 	call	printf
-	jmp	.L327
-.L325:
+	jmp	.L346
+.L344:
 	movl	$.LC47, %edi
 	xorl	%eax, %eax
 	call	printf
-	jmp	.L327
-.L324:
+	jmp	.L346
+.L343:
 	movl	$.LC46, %edi
 	xorl	%eax, %eax
 	call	printf
-	jmp	.L327
-.L329:
+	jmp	.L346
+.L348:
 	movq	stderr(%rip), %rdi
 	leaq	144(%rsp), %rdx
 	movl	$.LC22, %esi
@@ -2301,7 +2233,7 @@ run_correctness_test:
 	call	gzclose
 	movl	$1, %edi
 	call	exit
-.L303:
+.L322:
 	movl	$.LC42, %edi
 	call	puts
 	movl	$1, %edi
@@ -2312,7 +2244,7 @@ run_correctness_test:
 	.type	run_correctness_test.cold, @function
 run_correctness_test.cold:
 .LFSB6837:
-.L397:
+.L416:
 	.cfi_def_cfa_offset 655568
 	.cfi_offset 3, -56
 	.cfi_offset 6, -48
@@ -2469,22 +2401,22 @@ run_benchmarking_test:
 	movl	$.LC34, %edi
 	call	create_directory
 	cmpl	$1, %ebx
-	je	.L425
+	je	.L444
 	cmpl	$2, %ebx
-	je	.L426
+	je	.L445
 	testl	%ebx, %ebx
-	jne	.L427
+	jne	.L446
 	movl	$.LC50, %edi
 	call	puts
 	movl	$.LC51, %edi
 	call	create_directory
 	cmpl	$2, %ebp
-	je	.L428
-	jg	.L429
+	je	.L447
+	jg	.L448
 	testl	%ebp, %ebp
-	je	.L430
+	je	.L449
 	cmpl	$1, %ebp
-	jne	.L432
+	jne	.L451
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC36, %edi
@@ -2501,7 +2433,7 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC78, %edx
 	movl	CORE_NO(%rip), %r8d
-.L809:
+.L828:
 	movl	$100, %esi
 	movq	%r15, %rdi
 	xorl	%eax, %eax
@@ -2510,7 +2442,7 @@ run_benchmarking_test:
 	movq	%r15, %rdi
 	call	open_gzfile
 	movq	%rax, 16(%rsp)
-.L495:
+.L514:
 	movl	$.LC18, %esi
 	movq	%r14, %rdi
 	xorl	%r13d, %r13d
@@ -2547,14 +2479,14 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	skip_first_line
 	testl	%r12d, %r12d
-	jle	.L450
+	jle	.L469
 	movl	%r12d, %edi
 	andl	$3, %edi
-	je	.L444
+	je	.L463
 	cmpl	$1, %edi
-	je	.L688
+	je	.L707
 	cmpl	$2, %edi
-	je	.L689
+	je	.L708
 	movl	$655360, %edx
 	xorl	%esi, %esi
 	movq	%rbp, %rdi
@@ -2565,8 +2497,8 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
-.L689:
+	je	.L811
+.L708:
 	movl	$655360, %edx
 	xorl	%esi, %esi
 	movq	%rbp, %rdi
@@ -2577,8 +2509,8 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
-.L688:
+	je	.L811
+.L707:
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%rbp, %rdi
@@ -2588,11 +2520,11 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
+	je	.L811
 	addl	$1, %r13d
 	cmpl	%r13d, %r12d
-	je	.L450
-.L444:
+	je	.L469
+.L463:
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%rbp, %rdi
@@ -2602,7 +2534,7 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
+	je	.L811
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%rbp, %rdi
@@ -2612,7 +2544,7 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
+	je	.L811
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%rbp, %rdi
@@ -2622,7 +2554,7 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
+	je	.L811
 	xorl	%esi, %esi
 	movl	$655360, %edx
 	movq	%rbp, %rdi
@@ -2632,11 +2564,11 @@ run_benchmarking_test:
 	movq	%r14, %rdi
 	call	gzgets
 	testq	%rax, %rax
-	je	.L792
+	je	.L811
 	addl	$4, %r13d
 	cmpl	%r13d, %r12d
-	jne	.L444
-.L450:
+	jne	.L463
+.L469:
 	movl	$.LC21, %esi
 	movq	%rbp, %rdi
 	call	strtok
@@ -2653,9 +2585,9 @@ run_benchmarking_test:
 	testq	%r12, %r12
 	sete	%r9b
 	orb	%r9b, %r8b
-	jne	.L445
+	jne	.L464
 	testq	%rax, %rax
-	je	.L445
+	je	.L464
 	movq	%r15, %rdi
 	call	limb_set_str
 	movq	%r12, %rdi
@@ -2672,7 +2604,7 @@ run_benchmarking_test:
 	movq	%rax, %r13
 	call	puts
 	testl	%r15d, %r15d
-	jle	.L456
+	jle	.L475
 	leal	-1(%r15), %r10d
 	movq	%rbp, %rax
 	movq	%r12, %rcx
@@ -2682,52 +2614,52 @@ run_benchmarking_test:
 	shrq	$6, %r10
 	addq	$1, %r10
 	andl	$7, %r10d
-	je	.L455
+	je	.L474
 	cmpq	$1, %r10
-	je	.L690
+	je	.L709
 	cmpq	$2, %r10
-	je	.L691
+	je	.L710
 	cmpq	$3, %r10
-	je	.L692
+	je	.L711
 	cmpq	$4, %r10
-	je	.L693
+	je	.L712
 	cmpq	$5, %r10
-	je	.L694
+	je	.L713
 	cmpq	$6, %r10
-	jne	.L811
-.L695:
+	jne	.L830
+.L714:
 	clflush	(%rax)
 	clflush	(%rcx)
 	addq	$64, %rax
 	addq	$64, %rcx
-.L694:
+.L713:
 	clflush	(%rax)
 	clflush	(%rcx)
 	addq	$64, %rax
 	addq	$64, %rcx
-.L693:
+.L712:
 	clflush	(%rax)
 	clflush	(%rcx)
 	addq	$64, %rax
 	addq	$64, %rcx
-.L692:
+.L711:
 	clflush	(%rax)
 	clflush	(%rcx)
 	addq	$64, %rax
 	addq	$64, %rcx
-.L691:
+.L710:
 	clflush	(%rax)
 	clflush	(%rcx)
 	addq	$64, %rax
 	addq	$64, %rcx
-.L690:
+.L709:
 	clflush	(%rax)
 	clflush	(%rcx)
 	addq	$64, %rax
 	addq	$64, %rcx
 	cmpq	%r11, %rax
-	je	.L456
-.L455:
+	je	.L475
+.L474:
 	clflush	(%rax)
 	clflush	(%rcx)
 	leaq	64(%rcx), %rdx
@@ -2754,20 +2686,20 @@ run_benchmarking_test:
 	addq	$512, %rax
 	addq	$512, %rcx
 	cmpq	%r11, %rax
-	jne	.L455
-.L456:
+	jne	.L474
+.L475:
 	mfence
 	cmpl	$1, %ebx
-	je	.L452
+	je	.L471
 	cmpl	$2, %ebx
-	je	.L453
+	je	.L472
 	movl	$.LC59, %edi
 	call	puts
 	movq	stdout(%rip), %rdi
 	call	fflush
 	xorl	%eax, %eax
 #APP
-# 774 "add.c" 1
+# 767 "add.c" 1
 	cpuid
 	
 # 0 "" 2
@@ -2779,7 +2711,7 @@ run_benchmarking_test:
 	call	pml_add_n
 	.p2align 4
 	.p2align 3
-.L458:
+.L477:
 	addq	%r15, %r15
 #APP
 # 232 "../myutils.h" 1
@@ -2796,66 +2728,66 @@ run_benchmarking_test:
 	orq	%r9, %r8
 	movq	%r8, 8(%rsp)
 	testq	%r15, %r15
-	jle	.L461
+	jle	.L480
 	movq	%r15, %r10
 	andl	$7, %r10d
-	je	.L460
+	je	.L479
 	cmpq	$1, %r10
-	je	.L697
+	je	.L716
 	cmpq	$2, %r10
-	je	.L698
+	je	.L717
 	cmpq	$3, %r10
-	je	.L699
+	je	.L718
 	cmpq	$4, %r10
-	je	.L700
+	je	.L719
 	cmpq	$5, %r10
-	je	.L701
+	je	.L720
 	cmpq	$6, %r10
-	je	.L702
+	je	.L721
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %ebx
 	call	pml_add_n
-.L702:
+.L721:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L701:
+.L720:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L700:
+.L719:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L699:
+.L718:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L698:
+.L717:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L697:
+.L716:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
 	cmpq	%r15, %rbx
-	je	.L461
-.L460:
+	je	.L480
+.L479:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -2890,8 +2822,8 @@ run_benchmarking_test:
 	movq	%r13, %rdi
 	call	pml_add_n
 	cmpq	%r15, %rbx
-	jne	.L460
-.L461:
+	jne	.L479
+.L480:
 #APP
 # 245 "../myutils.h" 1
 	RDTSCP
@@ -2908,7 +2840,7 @@ run_benchmarking_test:
 	orq	%rcx, %rdx
 	subq	%rax, %rdx
 	cmpq	$699999999, %rdx
-	jle	.L458
+	jle	.L477
 	vxorpd	%xmm10, %xmm10, %xmm10
 	movl	$.LC61, %edi
 	vcvtsi2sdq	%rdx, %xmm10, %xmm11
@@ -2949,58 +2881,58 @@ run_benchmarking_test:
 	orq	%r10, %r9
 	movq	%r9, 48(%rsp)
 	testq	%r15, %r15
-	je	.L465
+	je	.L484
 	movq	%r15, %r11
 	andl	$7, %r11d
-	je	.L462
+	je	.L481
 	cmpq	$1, %r11
-	je	.L704
+	je	.L723
 	cmpq	$2, %r11
-	je	.L705
+	je	.L724
 	cmpq	$3, %r11
-	je	.L706
+	je	.L725
 	cmpq	$4, %r11
-	je	.L707
+	je	.L726
 	cmpq	$5, %r11
-	je	.L708
+	je	.L727
 	cmpq	$6, %r11
-	je	.L709
+	je	.L728
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %ebx
 	call	pml_add_n
-.L709:
+.L728:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L708:
+.L727:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L707:
+.L726:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L706:
+.L725:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L705:
+.L724:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L704:
+.L723:
 	movq	%r13, %rdi
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
@@ -3008,8 +2940,8 @@ run_benchmarking_test:
 	movq	%rbx, %rdi
 	addq	$1, %rbx
 	cmpq	%rdi, 8(%rsp)
-	je	.L465
-.L462:
+	je	.L484
+.L481:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -3047,8 +2979,8 @@ run_benchmarking_test:
 	call	pml_add_n
 	movq	32(%rsp), %rcx
 	cmpq	%rcx, 8(%rsp)
-	jne	.L462
-.L465:
+	jne	.L481
+.L484:
 #APP
 # 245 "../myutils.h" 1
 	RDTSCP
@@ -3071,47 +3003,47 @@ run_benchmarking_test:
 	vmulsd	%xmm0, %xmm2, %xmm3
 	vdivsd	%xmm5, %xmm3, %xmm8
 	vcomisd	.LC29(%rip), %xmm8
-	ja	.L498
+	ja	.L517
 	vmovsd	.LC29(%rip), %xmm6
 	xorl	%esi, %esi
 	vmovsd	.LC66(%rip), %xmm9
-.L464:
+.L483:
 	vmulsd	%xmm9, %xmm6, %xmm10
 	leal	1(%rsi), %r8d
 	movl	%r8d, %esi
 	vcomisd	%xmm10, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm10, %xmm11
 	addl	$1, %esi
 	vcomisd	%xmm11, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm11, %xmm12
 	leal	2(%r8), %esi
 	vcomisd	%xmm12, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm12, %xmm1
 	leal	3(%r8), %esi
 	vcomisd	%xmm1, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm1, %xmm13
 	leal	4(%r8), %esi
 	vcomisd	%xmm13, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm13, %xmm14
 	leal	5(%r8), %esi
 	vcomisd	%xmm14, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm14, %xmm15
 	leal	6(%r8), %esi
 	vcomisd	%xmm15, %xmm8
-	ja	.L463
+	ja	.L482
 	vmulsd	%xmm9, %xmm15, %xmm6
 	leal	7(%r8), %esi
 	vcomisd	%xmm6, %xmm8
-	jbe	.L464
+	jbe	.L483
 	.p2align 4
 	.p2align 3
-.L463:
+.L482:
 	vmovapd	%xmm8, %xmm0
 	movl	$.LC67, %edi
 	movl	$1, %eax
@@ -3120,7 +3052,7 @@ run_benchmarking_test:
 	call	gzclose
 	movq	16(%rsp), %rdi
 	call	gzclose
-.L806:
+.L825:
 	addq	$656024, %rsp
 	.cfi_remember_state
 	.cfi_def_cfa_offset 56
@@ -3139,19 +3071,19 @@ run_benchmarking_test:
 	ret
 	.p2align 4,,10
 	.p2align 3
-.L426:
+.L445:
 	.cfi_restore_state
 	movl	$.LC54, %edi
 	call	puts
 	movl	$.LC55, %edi
 	call	create_directory
 	cmpl	$1, %ebp
-	je	.L439
-	jle	.L812
+	je	.L458
+	jle	.L831
 	cmpl	$2, %ebp
-	je	.L442
+	je	.L461
 	cmpl	$3, %ebp
-	jne	.L432
+	jne	.L451
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC40, %edi
@@ -3168,7 +3100,7 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC81, %edx
 	movl	CORE_NO(%rip), %r8d
-.L808:
+.L827:
 	movl	$100, %esi
 	movq	%r13, %rdi
 	xorl	%eax, %eax
@@ -3177,21 +3109,21 @@ run_benchmarking_test:
 	movq	%r13, %rdi
 	call	open_gzfile
 	movq	%rax, 48(%rsp)
-	jmp	.L495
+	jmp	.L514
 	.p2align 4,,10
 	.p2align 3
-.L425:
+.L444:
 	movl	$.LC52, %edi
 	call	puts
 	movl	$.LC53, %edi
 	call	create_directory
 	cmpl	$2, %ebp
-	je	.L434
-	jg	.L435
+	je	.L453
+	jg	.L454
 	testl	%ebp, %ebp
-	je	.L436
+	je	.L455
 	cmpl	$1, %ebp
-	jne	.L432
+	jne	.L451
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC36, %edi
@@ -3208,7 +3140,7 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC79, %edx
 	movl	CORE_NO(%rip), %r8d
-.L810:
+.L829:
 	movl	$100, %esi
 	movq	%r12, %rdi
 	xorl	%eax, %eax
@@ -3217,12 +3149,12 @@ run_benchmarking_test:
 	movq	%r12, %rdi
 	call	open_gzfile
 	movq	%rax, 32(%rsp)
-	jmp	.L495
+	jmp	.L514
 	.p2align 4,,10
 	.p2align 3
-.L812:
+.L831:
 	testl	%ebp, %ebp
-	jne	.L432
+	jne	.L451
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC35, %edi
@@ -3239,10 +3171,10 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC77, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L808
-.L435:
+	jmp	.L827
+.L454:
 	cmpl	$3, %ebp
-	jne	.L432
+	jne	.L451
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC40, %edi
@@ -3259,10 +3191,10 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC83, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L810
-.L429:
+	jmp	.L829
+.L448:
 	cmpl	$3, %ebp
-	jne	.L432
+	jne	.L451
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC40, %edi
@@ -3279,25 +3211,25 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC82, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L809
+	jmp	.L828
 	.p2align 4,,10
 	.p2align 3
-.L792:
+.L811:
 	movq	%r14, %rdi
 	call	gzeof
 	testl	%eax, %eax
-	jne	.L806
-	jmp	.L448
+	jne	.L825
+	jmp	.L467
 	.p2align 4,,10
 	.p2align 3
-.L453:
+.L472:
 	movl	$.LC69, %edi
 	call	puts
 	movq	stdout(%rip), %rdi
 	call	fflush
 	xorl	%eax, %eax
 #APP
-# 851 "add.c" 1
+# 844 "add.c" 1
 	cpuid
 	
 # 0 "" 2
@@ -3307,12 +3239,12 @@ run_benchmarking_test:
 	movq	%r13, %rdi
 	movl	$1, %ebx
 	call	pml_add_n
-	jmp	.L482
+	jmp	.L501
 	.p2align 4,,10
 	.p2align 3
-.L813:
+.L832:
 	fstp	%st(0)
-.L482:
+.L501:
 	leaq	512(%rsp), %rsi
 	xorl	%edi, %edi
 	addq	%rbx, %rbx
@@ -3324,66 +3256,66 @@ run_benchmarking_test:
 	faddp	%st, %st(1)
 	fisttpq	8(%rsp)
 	testq	%rbx, %rbx
-	jle	.L484
+	jle	.L503
 	movq	%rbx, %rdi
 	andl	$6, %edi
-	je	.L481
+	je	.L500
 	cmpq	$1, %rdi
-	je	.L725
+	je	.L744
 	cmpq	$2, %rdi
-	je	.L726
+	je	.L745
 	cmpq	$3, %rdi
-	je	.L727
+	je	.L746
 	cmpq	$4, %rdi
-	je	.L728
+	je	.L747
 	cmpq	$5, %rdi
-	je	.L729
+	je	.L748
 	cmpq	$6, %rdi
-	je	.L730
+	je	.L749
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %r15d
 	call	pml_add_n
-.L730:
+.L749:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L729:
+.L748:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L728:
+.L747:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L727:
+.L746:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L726:
+.L745:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L725:
+.L744:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
 	cmpq	%r15, %rbx
-	je	.L484
-.L481:
+	je	.L503
+.L500:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -3418,8 +3350,8 @@ run_benchmarking_test:
 	movq	%r13, %rdi
 	call	pml_add_n
 	cmpq	%r15, %rbx
-	jne	.L481
-.L484:
+	jne	.L500
+.L503:
 	leaq	512(%rsp), %rsi
 	xorl	%edi, %edi
 	call	getrusage
@@ -3434,7 +3366,7 @@ run_benchmarking_test:
 	fisttpq	8(%rsp)
 	movq	8(%rsp), %r8
 	cmpq	$249999, %r8
-	jle	.L813
+	jle	.L832
 	vxorpd	%xmm3, %xmm3, %xmm3
 	movl	$.LC61, %edi
 	fstpt	16(%rsp)
@@ -3469,65 +3401,65 @@ run_benchmarking_test:
 	flds	.LC71(%rip)
 	fxch	%st(1)
 	fcomi	%st(1), %st
-	jnb	.L485
+	jnb	.L504
 	fstp	%st(1)
 	fisttpq	16(%rsp)
-.L486:
+.L505:
 	xorl	%ebx, %ebx
 	cmpq	$0, 8(%rsp)
-	je	.L493
+	je	.L512
 	movq	%r15, %r10
 	addq	$1, %r10
 	andl	$7, %r10d
-	je	.L487
+	je	.L506
 	cmpq	$1, %r10
-	je	.L732
+	je	.L751
 	cmpq	$2, %r10
-	je	.L733
+	je	.L752
 	cmpq	$3, %r10
-	je	.L734
+	je	.L753
 	cmpq	$4, %r10
-	je	.L735
+	je	.L754
 	cmpq	$5, %r10
-	je	.L736
+	je	.L755
 	cmpq	$6, %r10
-	je	.L737
+	je	.L756
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %ebx
 	call	pml_add_n
-.L737:
+.L756:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L736:
+.L755:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L735:
+.L754:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L734:
+.L753:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L733:
+.L752:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L732:
+.L751:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -3535,8 +3467,8 @@ run_benchmarking_test:
 	movq	%rbx, %r11
 	addq	$1, %rbx
 	cmpq	%r11, %r15
-	je	.L493
-.L487:
+	je	.L512
+.L506:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -3574,8 +3506,8 @@ run_benchmarking_test:
 	call	pml_add_n
 	movq	32(%rsp), %rax
 	cmpq	%rax, %r15
-	jne	.L487
-.L493:
+	jne	.L506
+.L512:
 	xorl	%edi, %edi
 	leaq	512(%rsp), %rsi
 	call	getrusage
@@ -3595,65 +3527,65 @@ run_benchmarking_test:
 	fildq	8(%rsp)
 	vmulsd	%xmm11, %xmm12, %xmm13
 	fldt	32(%rsp)
-	jns	.L488
+	jns	.L507
 	fxch	%st(1)
 	fadds	.LC73(%rip)
 	fxch	%st(1)
-.L488:
+.L507:
 	fsubp	%st, %st(1)
 	flds	.LC71(%rip)
 	fxch	%st(1)
 	fcomi	%st(1), %st
-	jnb	.L489
+	jnb	.L508
 	fstp	%st(1)
 	fisttpq	8(%rsp)
 	movq	8(%rsp), %r12
-.L490:
+.L509:
 	vxorpd	%xmm14, %xmm14, %xmm14
 	vcvtusi2sdq	%r12, %xmm14, %xmm15
 	vdivsd	%xmm15, %xmm13, %xmm6
 	vcomisd	.LC29(%rip), %xmm6
-	ja	.L503
+	ja	.L522
 	vmovsd	.LC29(%rip), %xmm9
 	xorl	%esi, %esi
 	vmovsd	.LC66(%rip), %xmm7
-.L492:
+.L511:
 	vmulsd	%xmm7, %xmm9, %xmm0
 	leal	1(%rsi), %r13d
 	movl	%r13d, %esi
 	vcomisd	%xmm0, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm0, %xmm2
 	addl	$1, %esi
 	vcomisd	%xmm2, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm2, %xmm3
 	leal	2(%r13), %esi
 	vcomisd	%xmm3, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm3, %xmm1
 	leal	3(%r13), %esi
 	vcomisd	%xmm1, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm1, %xmm4
 	leal	4(%r13), %esi
 	vcomisd	%xmm4, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm4, %xmm5
 	leal	5(%r13), %esi
 	vcomisd	%xmm5, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm5, %xmm8
 	leal	6(%r13), %esi
 	vcomisd	%xmm8, %xmm6
-	ja	.L491
+	ja	.L510
 	vmulsd	%xmm7, %xmm8, %xmm9
 	leal	7(%r13), %esi
 	vcomisd	%xmm9, %xmm6
-	jbe	.L492
+	jbe	.L511
 	.p2align 4
 	.p2align 3
-.L491:
+.L510:
 	vmovapd	%xmm6, %xmm0
 	movl	$.LC67, %edi
 	movl	$1, %eax
@@ -3662,17 +3594,17 @@ run_benchmarking_test:
 	call	gzclose
 	movq	48(%rsp), %rdi
 	call	gzclose
-	jmp	.L806
+	jmp	.L825
 	.p2align 4,,10
 	.p2align 3
-.L452:
+.L471:
 	movl	$.LC68, %edi
 	call	puts
 	movq	stdout(%rip), %rdi
 	call	fflush
 	xorl	%eax, %eax
 #APP
-# 812 "add.c" 1
+# 805 "add.c" 1
 	cpuid
 	
 # 0 "" 2
@@ -3684,7 +3616,7 @@ run_benchmarking_test:
 	call	pml_add_n
 	.p2align 4
 	.p2align 3
-.L473:
+.L492:
 	leaq	512(%rsp), %rsi
 	movl	$4, %edi
 	addq	%rbx, %rbx
@@ -3695,66 +3627,66 @@ run_benchmarking_test:
 	movq	%r11, 48(%rsp)
 	movq	%rcx, 8(%rsp)
 	testq	%rbx, %rbx
-	jle	.L472
+	jle	.L491
 	movq	%rbx, %rdx
 	andl	$7, %edx
-	je	.L471
+	je	.L490
 	cmpq	$1, %rdx
-	je	.L711
+	je	.L730
 	cmpq	$2, %rdx
-	je	.L712
+	je	.L731
 	cmpq	$3, %rdx
-	je	.L713
+	je	.L732
 	cmpq	$4, %rdx
-	je	.L714
+	je	.L733
 	cmpq	$5, %rdx
-	je	.L715
+	je	.L734
 	cmpq	$6, %rdx
-	je	.L716
+	je	.L735
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %r15d
 	call	pml_add_n
-.L716:
+.L735:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L715:
+.L734:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L714:
+.L733:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L713:
+.L732:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L712:
+.L731:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
-.L711:
+.L730:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %r15
 	call	pml_add_n
 	cmpq	%rbx, %r15
-	je	.L472
-.L471:
+	je	.L491
+.L490:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -3789,8 +3721,8 @@ run_benchmarking_test:
 	movq	%r13, %rdi
 	call	pml_add_n
 	cmpq	%rbx, %r15
-	jne	.L471
-.L472:
+	jne	.L490
+.L491:
 	leaq	512(%rsp), %rsi
 	movl	$4, %edi
 	call	clock_gettime
@@ -3801,16 +3733,16 @@ run_benchmarking_test:
 	movq	%rdi, %r10
 	subq	%rsi, %r8
 	subq	%r9, %r10
-	jns	.L470
+	jns	.L489
 	movq	8(%rsp), %rax
 	leaq	1000000000(%rdi), %r10
 	subq	$1, %r8
 	subq	%rax, %r10
-.L470:
+.L489:
 	imulq	$1000000000, %r8, %r11
 	addq	%r11, %r10
 	cmpq	$249999999, %r10
-	jle	.L473
+	jle	.L492
 	movabsq	$2361183241434822607, %rax
 	vxorpd	%xmm6, %xmm6, %xmm6
 	movl	$.LC61, %edi
@@ -3847,58 +3779,58 @@ run_benchmarking_test:
 	movq	%rcx, 16(%rsp)
 	movq	%rdi, 48(%rsp)
 	testq	%r15, %r15
-	je	.L477
+	je	.L496
 	movq	%r15, %r8
 	andl	$7, %r8d
-	je	.L474
+	je	.L493
 	cmpq	$1, %r8
-	je	.L718
+	je	.L737
 	cmpq	$2, %r8
-	je	.L719
+	je	.L738
 	cmpq	$3, %r8
-	je	.L720
+	je	.L739
 	cmpq	$4, %r8
-	je	.L721
+	je	.L740
 	cmpq	$5, %r8
-	je	.L722
+	je	.L741
 	cmpq	$6, %r8
-	je	.L723
+	je	.L742
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	movl	$1, %ebx
 	call	pml_add_n
-.L723:
+.L742:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L722:
+.L741:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L721:
+.L740:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L720:
+.L739:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L719:
+.L738:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
 	addq	$1, %rbx
 	call	pml_add_n
-.L718:
+.L737:
 	movq	%rbp, %rsi
 	movq	%r12, %rdx
 	movq	%r13, %rdi
@@ -3906,8 +3838,8 @@ run_benchmarking_test:
 	movq	%rbx, %rsi
 	addq	$1, %rbx
 	cmpq	%rsi, 8(%rsp)
-	je	.L477
-.L474:
+	je	.L496
+.L493:
 	movq	%r12, %rdx
 	movq	%rbp, %rsi
 	movq	%r13, %rdi
@@ -3945,8 +3877,8 @@ run_benchmarking_test:
 	call	pml_add_n
 	movq	56(%rsp), %r10
 	cmpq	%r10, 8(%rsp)
-	jne	.L474
-.L477:
+	jne	.L493
+.L496:
 	leaq	512(%rsp), %rsi
 	movl	$4, %edi
 	call	clock_gettime
@@ -3957,12 +3889,12 @@ run_benchmarking_test:
 	movq	%rbp, %rcx
 	subq	%r13, %r12
 	subq	%r11, %rcx
-	jns	.L476
+	jns	.L495
 	movq	48(%rsp), %rax
 	leaq	1000000000(%rbp), %rcx
 	subq	$1, %r12
 	subq	%rax, %rcx
-.L476:
+.L495:
 	imulq	$1000000000, %r12, %rdx
 	vxorpd	%xmm4, %xmm4, %xmm4
 	movabsq	$2361183241434822607, %rax
@@ -3977,47 +3909,47 @@ run_benchmarking_test:
 	vcvtusi2sdq	%rdx, %xmm4, %xmm10
 	vdivsd	%xmm10, %xmm9, %xmm11
 	vcomisd	.LC29(%rip), %xmm11
-	ja	.L500
+	ja	.L519
 	vmovsd	.LC29(%rip), %xmm2
 	xorl	%esi, %esi
 	vmovsd	.LC66(%rip), %xmm12
-.L479:
+.L498:
 	vmulsd	%xmm12, %xmm2, %xmm13
 	leal	1(%rsi), %r15d
 	movl	%r15d, %esi
 	vcomisd	%xmm13, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm13, %xmm14
 	addl	$1, %esi
 	vcomisd	%xmm14, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm14, %xmm15
 	leal	2(%r15), %esi
 	vcomisd	%xmm15, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm15, %xmm6
 	leal	3(%r15), %esi
 	vcomisd	%xmm6, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm6, %xmm1
 	leal	4(%r15), %esi
 	vcomisd	%xmm1, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm1, %xmm0
 	leal	5(%r15), %esi
 	vcomisd	%xmm0, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm0, %xmm7
 	leal	6(%r15), %esi
 	vcomisd	%xmm7, %xmm11
-	ja	.L478
+	ja	.L497
 	vmulsd	%xmm12, %xmm7, %xmm2
 	leal	7(%r15), %esi
 	vcomisd	%xmm2, %xmm11
-	jbe	.L479
+	jbe	.L498
 	.p2align 4
 	.p2align 3
-.L478:
+.L497:
 	vmovapd	%xmm11, %xmm0
 	movl	$.LC67, %edi
 	movl	$1, %eax
@@ -4026,8 +3958,8 @@ run_benchmarking_test:
 	call	gzclose
 	movq	32(%rsp), %rdi
 	call	gzclose
-	jmp	.L806
-.L439:
+	jmp	.L825
+.L458:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC36, %edi
@@ -4044,8 +3976,8 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC80, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L808
-.L442:
+	jmp	.L827
+.L461:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC38, %edi
@@ -4062,8 +3994,8 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC85, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L808
-.L428:
+	jmp	.L827
+.L447:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC38, %edi
@@ -4080,8 +4012,8 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC86, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L809
-.L430:
+	jmp	.L828
+.L449:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC35, %edi
@@ -4098,8 +4030,8 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC74, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L809
-.L436:
+	jmp	.L828
+.L455:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC35, %edi
@@ -4116,8 +4048,8 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC76, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L810
-.L434:
+	jmp	.L829
+.L453:
 	movl	CORE_NO(%rip), %edx
 	movl	NUM_BITS(%rip), %esi
 	movl	$.LC38, %edi
@@ -4134,46 +4066,46 @@ run_benchmarking_test:
 	movl	NUM_BITS(%rip), %ecx
 	movl	$.LC84, %edx
 	movl	CORE_NO(%rip), %r8d
-	jmp	.L810
-.L489:
+	jmp	.L829
+.L508:
 	fsubp	%st, %st(1)
 	fisttpq	8(%rsp)
 	movq	8(%rsp), %r12
 	btcq	$63, %r12
-	jmp	.L490
-.L485:
+	jmp	.L509
+.L504:
 	fsubp	%st, %st(1)
 	fisttpq	16(%rsp)
 	movq	16(%rsp), %r9
 	btcq	$63, %r9
 	movq	%r9, 16(%rsp)
-	jmp	.L486
-.L811:
+	jmp	.L505
+.L830:
 	clflush	0(%rbp)
 	clflush	(%r12)
 	leaq	64(%rbp), %rax
 	leaq	64(%r12), %rcx
-	jmp	.L695
-.L503:
+	jmp	.L714
+.L522:
 	xorl	%esi, %esi
-	jmp	.L491
-.L500:
+	jmp	.L510
+.L519:
 	xorl	%esi, %esi
-	jmp	.L478
-.L498:
+	jmp	.L497
+.L517:
 	xorl	%esi, %esi
-	jmp	.L463
-.L427:
+	jmp	.L482
+.L446:
 	movl	$.LC56, %edi
 	call	puts
 	movl	$1, %edi
 	call	exit
-.L432:
+.L451:
 	movl	$.LC42, %edi
 	call	puts
 	movl	$1, %edi
 	call	exit
-.L445:
+.L464:
 	movq	stderr(%rip), %rdi
 	movq	%rbp, %rdx
 	movl	$.LC22, %esi
@@ -4189,7 +4121,7 @@ run_benchmarking_test:
 	.type	run_benchmarking_test.cold, @function
 run_benchmarking_test.cold:
 .LFSB6838:
-.L448:
+.L467:
 	.cfi_def_cfa_offset 656080
 	.cfi_offset 3, -56
 	.cfi_offset 6, -48
@@ -4282,7 +4214,7 @@ main:
 	.cfi_offset 3, -32
 	movq	%rsi, %rbx
 	cmpl	$6, %edi
-	je	.L815
+	je	.L834
 	movq	(%rsi), %rsi
 	movl	$.LC89, %edi
 	xorl	%eax, %eax
@@ -4306,7 +4238,7 @@ main:
 	movl	$.LC98, %edi
 	call	puts
 	movl	$1, %eax
-.L814:
+.L833:
 	popq	%rbx
 	.cfi_remember_state
 	.cfi_def_cfa_offset 24
@@ -4315,14 +4247,14 @@ main:
 	popq	%r12
 	.cfi_def_cfa_offset 8
 	ret
-.L815:
+.L834:
 	.cfi_restore_state
 	movq	8(%rsi), %rdi
 	movl	$10, %edx
 	xorl	%esi, %esi
 	call	strtol
 	testl	%eax, %eax
-	jle	.L831
+	jle	.L850
 	movq	8(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
@@ -4333,7 +4265,7 @@ main:
 	movl	%eax, NUM_BITS(%rip)
 	call	strtol
 	testl	%eax, %eax
-	js	.L819
+	js	.L838
 	movq	16(%rbx), %rdi
 	movl	$10, %edx
 	xorl	%esi, %esi
@@ -4343,7 +4275,7 @@ main:
 	call	sysconf
 	movslq	%ebp, %rdx
 	cmpq	%rax, %rdx
-	jge	.L819
+	jge	.L838
 	movq	16(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
@@ -4354,13 +4286,13 @@ main:
 	movl	%eax, CORE_NO(%rip)
 	call	strtol
 	testl	%eax, %eax
-	js	.L821
+	js	.L840
 	movq	24(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
 	call	strtol
 	cmpl	$3, %eax
-	jg	.L821
+	jg	.L840
 	movq	24(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
@@ -4371,13 +4303,13 @@ main:
 	movl	%eax, %r12d
 	call	strtol
 	testl	%eax, %eax
-	js	.L823
+	js	.L842
 	movq	32(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
 	call	strtol
 	cmpl	$2, %eax
-	jg	.L823
+	jg	.L842
 	movq	32(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
@@ -4388,13 +4320,13 @@ main:
 	movq	%rax, %rbp
 	call	strtol
 	testl	%eax, %eax
-	js	.L825
+	js	.L844
 	movq	40(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
 	call	strtol
 	cmpl	$2, %eax
-	jg	.L825
+	jg	.L844
 	movq	40(%rbx), %rdi
 	xorl	%esi, %esi
 	movl	$10, %edx
@@ -4403,58 +4335,58 @@ main:
 	xorl	%eax, %eax
 	call	init_memory_pool
 	cmpl	$1, %ebx
-	je	.L826
+	je	.L845
 	cmpl	$2, %ebx
-	je	.L827
+	je	.L846
 	testl	%ebx, %ebx
-	jne	.L828
+	jne	.L847
 	movl	%r12d, %edi
 	call	run_correctness_test
-.L829:
+.L848:
 	xorl	%eax, %eax
 	call	destroy_memory_pool
 	xorl	%eax, %eax
-	jmp	.L814
-.L827:
+	jmp	.L833
+.L846:
 	xorl	%eax, %eax
 	call	run_perf_test
-	jmp	.L829
-.L826:
+	jmp	.L848
+.L845:
 	movl	%ebp, %esi
 	movl	%r12d, %edi
 	call	run_benchmarking_test
-	jmp	.L829
-.L831:
+	jmp	.L848
+.L850:
 	movl	$__PRETTY_FUNCTION__.0, %ecx
-	movl	$215, %edx
+	movl	$206, %edx
 	movl	$.LC99, %esi
 	movl	$.LC100, %edi
 	call	__assert_fail
-.L819:
+.L838:
 	movl	$__PRETTY_FUNCTION__.0, %ecx
-	movl	$218, %edx
+	movl	$209, %edx
 	movl	$.LC99, %esi
 	movl	$.LC101, %edi
 	call	__assert_fail
-.L821:
+.L840:
 	movl	$__PRETTY_FUNCTION__.0, %ecx
-	movl	$221, %edx
+	movl	$212, %edx
 	movl	$.LC99, %esi
 	movl	$.LC102, %edi
 	call	__assert_fail
-.L823:
+.L842:
 	movl	$__PRETTY_FUNCTION__.0, %ecx
-	movl	$224, %edx
+	movl	$215, %edx
 	movl	$.LC99, %esi
 	movl	$.LC103, %edi
 	call	__assert_fail
-.L825:
+.L844:
 	movl	$__PRETTY_FUNCTION__.0, %ecx
-	movl	$227, %edx
+	movl	$218, %edx
 	movl	$.LC99, %esi
 	movl	$.LC104, %edi
 	call	__assert_fail
-.L828:
+.L847:
 	movl	$.LC105, %edi
 	call	puts
 	movl	$1, %edi
