@@ -71,15 +71,15 @@ void run_correctness_test(int);
         }                                    \
     } while (0)
 
-#define __SUB_N_8(result, a, b, b_in, b_out)          \
-    do                                                \
-    {                                                 \
-        for (int j = 7; j >= 0; --j)                  \
-        {                                             \
-            result[j] = (uint64_t)a[j] - b[j] - b_in; \
-            b_in = b[j] > a[j];                       \
-        }                                             \
-        b_out = b_in;                                 \
+#define __SUB_N_8(result, a, b, b_in, b_out) \
+    do                                       \
+    {                                        \
+        for (int j = 7; j >= 0; --j)         \
+        {                                    \
+            result[j] = a[j] - b[j] - b_in;  \
+            b_in = (b[j] > a[j]);            \
+        }                                    \
+        b_out = b_in;                        \
     } while (0)
 
 /**
@@ -157,9 +157,9 @@ void __sub_n(limb_t *result, limb_t *x, limb_t *y)
     uint64_t *y_ptr = y->limbs;
 
     __mmask16 b_in = 0, b_out = 0;
-    for (int i = n - 1; i >= 0; i -= 8)
+    for (int i = n - 8; i >= 0; i -= 8)
     {
-        __SUB_N_8((res_ptr + i - 7), (x_ptr + i - 7), (y_ptr + i - 7), b_in, b_out);
+        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), b_in, b_out);
         b_in = b_out;
     }
 }
