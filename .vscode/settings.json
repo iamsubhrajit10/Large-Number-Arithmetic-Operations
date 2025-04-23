@@ -63,6 +63,7 @@
     "cstdlib": "c",
     "limb_utils.h": "c",
     "functional": "c",
-    "unistd.h": "c"
+    "unistd.h": "c",
+    "ctype.h": "c"
   }
 }
