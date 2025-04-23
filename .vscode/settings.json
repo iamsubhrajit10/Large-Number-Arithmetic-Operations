@@ -58,6 +58,12 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
     "*.dump": "asm-intel-x86-generic",
-    "functional": "c"
+    "module.h": "c",
+    "memory": "c",
+    "cstdlib": "c",
+    "limb_utils.h": "c",
+    "functional": "c",
+    "unistd.h": "c",
+    "ctype.h": "c"
   }
 }
