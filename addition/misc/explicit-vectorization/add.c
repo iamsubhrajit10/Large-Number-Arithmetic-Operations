@@ -94,7 +94,7 @@ void run_correctness_test(int);
             c_mask = c_mask + m;                                                                    \
             c_out = _mm512_kor(c_out, (c_mask >> 4));                                               \
             m = _mm512_kxor(c_mask, m);                                                             \
-            result_vec = _mm256_mask_sub_epi64(result_vec, c_mask, result_vec, AVX256_MASK);        \
+            result_vec = _mm256_mask_sub_epi64(result_vec, m, result_vec, AVX256_MASK);             \
             _mm256_store_si256((__m256i *)(result), result_vec);                                    \
         }                                                                                           \
     } while (0)
@@ -108,31 +108,31 @@ void run_correctness_test(int);
  * @param c_out The carry-out generated from the addition                               \
  * @return none                                                                         \
  */
-#define __ADD_N_8(result, a, b, c_in, c_out)                                                 \
-    do                                                                                       \
-    {                                                                                        \
-        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                                   \
-        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                                   \
-        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                                 \
-        __mmask8 c_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);                        \
-        c_out = c_mask >> 7;                                                                 \
-        c_mask <<= 1;                                                                        \
-        c_mask = _mm512_kor(c_mask, c_in);                                                   \
-        __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, c_mask, 1);                 \
-        __m512i result_vec_new = _mm512_add_epi64(result_vec, carry_vec);                    \
-        c_mask = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);                        \
-        result_vec = result_vec_new;                                                         \
-        _mm512_store_si512((__m512i *)(result), result_vec);                                 \
-        if (unlikely(_mm512_mask2int(c_mask)))                                               \
-        {                                                                                    \
-            c_mask <<= 1;                                                                    \
-            __mmask16 m = _mm512_cmpeq_epu64_mask(result_vec, AVX512_MASK);                  \
-            c_mask = c_mask + m;                                                             \
-            c_out = _mm512_kor(c_out, (c_mask >> 8));                                        \
-            m = _mm512_kxor(c_mask, m);                                                      \
-            result_vec = _mm512_mask_sub_epi64(result_vec, c_mask, result_vec, AVX512_MASK); \
-            _mm512_store_si512((__m512i *)(result), result_vec);                             \
-        }                                                                                    \
+#define __ADD_N_8(result, a, b, c_in, c_out)                                            \
+    do                                                                                  \
+    {                                                                                   \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                              \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                              \
+        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                            \
+        __mmask8 c_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);                   \
+        c_out = c_mask >> 7;                                                            \
+        c_mask <<= 1;                                                                   \
+        c_mask = _mm512_kor(c_mask, c_in);                                              \
+        __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, c_mask, 1);            \
+        __m512i result_vec_new = _mm512_add_epi64(result_vec, carry_vec);               \
+        c_mask = _mm512_cmplt_epu64_mask(result_vec_new, result_vec);                   \
+        result_vec = result_vec_new;                                                    \
+        _mm512_store_si512((__m512i *)(result), result_vec);                            \
+        if (unlikely(_mm512_mask2int(c_mask)))                                          \
+        {                                                                               \
+            c_mask <<= 1;                                                               \
+            __mmask16 m = _mm512_cmpeq_epu64_mask(result_vec, AVX512_MASK);             \
+            c_mask = c_mask + m;                                                        \
+            c_out = _mm512_kor(c_out, (c_mask >> 8));                                   \
+            m = _mm512_kxor(c_mask, m);                                                 \
+            result_vec = _mm512_mask_sub_epi64(result_vec, m, result_vec, AVX512_MASK); \
+            _mm512_store_si512((__m512i *)(result), result_vec);                        \
+        }                                                                               \
     } while (0)
 
 void __add_n_256(limb_t *result, limb_t *a, limb_t *b)

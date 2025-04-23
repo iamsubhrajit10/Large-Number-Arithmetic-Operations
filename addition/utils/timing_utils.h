@@ -1,5 +1,5 @@
-#ifndef MYUTILS_H
-#define MYUTILS_H
+#ifndef TIMING_UTILS_H
+#define TIMING_UTILS_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -344,4 +344,4 @@ static inline unsigned long long measure_rdtscp_end()
         (t) = (double)(__tmp) / __times;            \
     } while (0)
 
-#endif // MYUTILS_H
+#endif // TIMING_UTILS_H
