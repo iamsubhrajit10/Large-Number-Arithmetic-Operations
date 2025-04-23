@@ -1,9 +1,8 @@
 /*
  This program computes subtraction of two numbers using our optimized subtraction, with the test cases for the same.
- Also, it writes various data like performance counters, rdtsc values to files, for analysis.
 */
 
-/* This is the baseline version, without explicit SIMD */
+/* This is the AVX512 version*/
 /*
 This code subs two numbers, represented as array of digits.
 a --> array of digits of first number, of length n
@@ -43,7 +42,7 @@ Note: For pre-processing, we can use the realloc function to sub leading AVX512_
 #include <ctype.h>
 #include <cpuid.h>
 #include <sys/resource.h>
-#include "myutils.h"
+#include "timing_utils.h"
 #include "limb_utils.h"
 #include "perf_utils.h"
 
@@ -73,30 +72,30 @@ void run_correctness_test(int);
  * @param b_out The borrow-out generated from the subtraction
  * @return none
  */
-#define __SUB_N_4(result, a, b, b_out)                                                       \
-    do                                                                                       \
-    {                                                                                        \
-        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                                   \
-        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                                   \
-        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                                 \
-        __mmask16 b_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                            \
-        b_out = b_mask >> 3;                                                                 \
-        b_mask <<= 1;                                                                        \
-        __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, b_mask, 1);                \
-        __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);                   \
-        result_vec = result_vec_new;                                                         \
-        b_mask = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                        \
-        _mm256_store_epi64((__m256i *)(result), result_vec);                                 \
-        if (unlikely((_mm512_mask2int(b_mask))))                                             \
-        {                                                                                    \
-            b_mask <<= 1;                                                                    \
-            __mmask16 m = _mm256_cmpeq_epu64_mask(result_vec, AVX256_ZEROS);                 \
-            b_mask = b_mask + m;                                                             \
-            b_out = _mm512_kor(b_out, (b_mask >> 4));                                        \
-            m = _mm512_kxor(b_mask, m);                                                      \
-            result_vec = _mm256_mask_add_epi64(result_vec, b_mask, result_vec, AVX256_MASK); \
-            _mm256_store_si256((__m256i *)(result), result_vec);                             \
-        }                                                                                    \
+#define __SUB_N_4(result, a, b, b_out)                                                  \
+    do                                                                                  \
+    {                                                                                   \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                              \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                              \
+        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                            \
+        __mmask16 b_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                       \
+        b_out = b_mask >> 3;                                                            \
+        b_mask <<= 1;                                                                   \
+        __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, b_mask, 1);           \
+        __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);              \
+        result_vec = result_vec_new;                                                    \
+        b_mask = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                   \
+        _mm256_store_epi64((__m256i *)(result), result_vec);                            \
+        if (unlikely((_mm512_mask2int(b_mask))))                                        \
+        {                                                                               \
+            b_mask <<= 1;                                                               \
+            __mmask16 m = _mm256_cmpeq_epu64_mask(result_vec, AVX256_ZEROS);            \
+            b_mask = b_mask + m;                                                        \
+            b_out = _mm512_kor(b_out, (b_mask >> 4));                                   \
+            m = _mm512_kxor(b_mask, m);                                                 \
+            result_vec = _mm256_mask_add_epi64(result_vec, m, result_vec, AVX256_MASK); \
+            _mm256_store_si256((__m256i *)(result), result_vec);                        \
+        }                                                                               \
     } while (0)
 
 /*
@@ -108,31 +107,31 @@ void run_correctness_test(int);
  * @param b_out The borrow-out generated from the subtraction
  * @return none
 //  */
-#define __SUB_N_8(result, a, b, b_in, b_out)                                                 \
-    do                                                                                       \
-    {                                                                                        \
-        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                                   \
-        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                                   \
-        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                                 \
-        __mmask16 b_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                            \
-        b_out = b_mask >> 7;                                                                 \
-        b_mask <<= 1;                                                                        \
-        b_mask = _mm512_kor(b_mask, b_in);                                                   \
-        __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, b_mask, 1);                \
-        __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);                   \
-        b_mask = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);                        \
-        result_vec = result_vec_new;                                                         \
-        _mm512_store_si512((__m512i *)(result), result_vec);                                 \
-        if (unlikely(_mm512_mask2int(b_mask)))                                               \
-        {                                                                                    \
-            b_mask <<= 1;                                                                    \
-            __mmask16 m = _mm512_cmpeq_epu64_mask(result_vec, AVX512_ZEROS);                 \
-            b_mask = b_mask + m;                                                             \
-            b_out = _mm512_kor(b_out, (b_mask >> 8));                                        \
-            m = _mm512_kxor(b_mask, m);                                                      \
-            result_vec = _mm512_mask_add_epi64(result_vec, b_mask, result_vec, AVX512_MASK); \
-            _mm512_store_si512((__m512i *)(result), result_vec);                             \
-        }                                                                                    \
+#define __SUB_N_8(result, a, b, b_in, b_out)                                            \
+    do                                                                                  \
+    {                                                                                   \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                              \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                              \
+        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                            \
+        __mmask16 b_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                       \
+        b_out = b_mask >> 7;                                                            \
+        b_mask <<= 1;                                                                   \
+        b_mask = _mm512_kor(b_mask, b_in);                                              \
+        __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, b_mask, 1);           \
+        __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);              \
+        b_mask = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);                   \
+        result_vec = result_vec_new;                                                    \
+        _mm512_store_si512((__m512i *)(result), result_vec);                            \
+        if (unlikely(_mm512_mask2int(b_mask)))                                          \
+        {                                                                               \
+            b_mask <<= 1;                                                               \
+            __mmask16 m = _mm512_cmpeq_epu64_mask(result_vec, AVX512_ZEROS);            \
+            b_mask = b_mask + m;                                                        \
+            b_out = _mm512_kor(b_out, (b_mask >> 8));                                   \
+            m = _mm512_kxor(b_mask, m);                                                 \
+            result_vec = _mm512_mask_add_epi64(result_vec, m, result_vec, AVX512_MASK); \
+            _mm512_store_si512((__m512i *)(result), result_vec);                        \
+        }                                                                               \
     } while (0)
 
 /**
@@ -145,7 +144,7 @@ void run_correctness_test(int);
  * @param b The second number to subtract
  * @return none
  */
-void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
+void pml_sub_256(limb_t *result, limb_t *a, limb_t *b)
 {
     // swap a and b if a < b
     int i = 3;
@@ -217,13 +216,13 @@ void __sub_n(limb_t *result, limb_t *x, limb_t *y)
     }
 }
 
-void limb_t_sub_n(limb_t *result, limb_t *a, limb_t *b)
+void pml_sub(limb_t *result, limb_t *a, limb_t *b)
 {
     int n = a->size;
 
     if (n <= 4)
     {
-        limb_t_sub_n_256(result, a, b);
+        pml_sub_256(result, a, b);
     }
     else
     {
@@ -348,7 +347,7 @@ void run_perf_test()
     int n = a->size;
     printf("n = %d\n", n);
     limb_t *s = limb_t_alloc(n);
-    limb_t_sub_n(s, a, b);
+    pml_sub(s, a, b);
     // perf variables
     initialize_perf();
 
@@ -375,7 +374,7 @@ void run_perf_test()
     printf("Starting perf test\n");
     start_perf();
     // Start the perf test
-    limb_t_sub_n(s, a, b);
+    pml_sub(s, a, b);
     stop_perf();
     long long values[MAX_EVENTS];
     read_perf(values);
@@ -390,7 +389,7 @@ void run_perf_test()
 
     // start measuring RDTSC Ticks
     double t;
-    RECORD_RDTSC(t, limb_t_sub_n(a, b, s));
+    RECORD_RDTSC(t, pml_sub(a, b, s));
 
     printf("Avg. RDTSC Ticks: %f\n", t);
 
@@ -495,7 +494,7 @@ void run_correctness_test(int test_case)
 
         /***** Start of subtraction *****/
 
-        limb_t_sub_n(s, a, b);
+        pml_sub(s, a, b);
 
         /***** End of subtraction *****/
 
@@ -814,7 +813,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_RDTSC(time_taken, limb_t_sub_n(a, b, s));
+            TIME_RDTSC(time_taken, pml_sub(a, b, s));
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
 
@@ -825,7 +824,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = measure_rdtsc_start();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, s);
+                pml_sub(a, b, s);
             }
             t1 = measure_rdtscp_end();
             t1 = t1 - t0;
@@ -852,7 +851,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
-            TIME_TIMESPEC(time_taken, limb_t_sub_n(a, b, s));
+            TIME_TIMESPEC(time_taken, pml_sub(a, b, s));
 
             printf("done\n");
             printf("Calibrated time: %f microseconds\n", time_taken);
@@ -865,7 +864,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             ts_0 = get_timespec();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, s);
+                pml_sub(a, b, s);
             }
             ts_1 = get_timespec();
             t1 = diff_timespec_us(ts_0, ts_1);
@@ -892,7 +891,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_sub_n(s, a, b));
+            TIME_RUSAGE(time_taken, pml_sub(s, a, b));
 
             printf("done\n");
 
@@ -905,7 +904,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(s, a, b);
+                pml_sub(s, a, b);
             }
             t1 = cputime() - t0;
             printf("done!\n");

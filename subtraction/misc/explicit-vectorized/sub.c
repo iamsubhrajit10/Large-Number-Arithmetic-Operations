@@ -63,7 +63,6 @@ extern __m128i AVX128_MASK;  // AVX128 vector of 64-bit mask
 // Function prototypes
 void run_benchmarking_test(int, int); // Function to run the benchmarking tests
 void run_correctness_test(int);
-void run_macro_bench_test(int);
 
 /*
  * @brief Subtracts two four-limbed numbers, using 256-bit vectors
@@ -74,45 +73,30 @@ void run_macro_bench_test(int);
  * @param b_out The borrow-out generated from the subtraction
  * @return none
  */
-#define __SUB_N_4(result, a, b, b_in, b_out)                                           \
-    do                                                                                 \
-    {                                                                                  \
-        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                             \
-        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                             \
-        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                  \
-        *(b_out) = borrow_mask & 1;                                                    \
-        borrow_mask |= ((*b_in) << 4);                                                 \
-        bool borrow_detect = !!borrow_mask;                                            \
-        borrow_mask >>= 1;                                                             \
-        __mmask8 mask_1;                                                               \
-        if (borrow_detect)                                                             \
-        {                                                                              \
-            __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, borrow_mask, 1); \
-            __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);         \
-            mask_1 = _mm256_cmpgt_epu64_mask(result_vec_new, result_vec);              \
-            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
-            result_vec = result_vec_new;                                               \
-            if (unlikely(mask_1 & 254))                                                \
-            {                                                                          \
-                printf("mask_1: %d\n", mask_1);                                        \
-                mask_1 >>= 1;                                                          \
-                _mm256_store_si256((__m256i *)(result), result_vec);                   \
-                for (int i = 6; i >= 0; i--)                                           \
-                {                                                                      \
-                    if (mask_1 >> i)                                                   \
-                    {                                                                  \
-                        result[i] -= 1;                                                \
-                        if (result[i] == -1)                                           \
-                        {                                                              \
-                            mask_1 |= (1 << (i - 1));                                  \
-                        }                                                              \
-                    }                                                                  \
-                }                                                                      \
-                break;                                                                 \
-            }                                                                          \
-        }                                                                              \
-        _mm256_store_si256((__m256i *)(result), result_vec);                           \
+#define __SUB_N_4(result, a, b, b_out)                                                       \
+    do                                                                                       \
+    {                                                                                        \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                                   \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                                   \
+        __m256i result_vec = _mm256_sub_epi64(a_vec, b_vec);                                 \
+        __mmask16 b_mask = _mm256_cmpgt_epu64_mask(b_vec, a_vec);                            \
+        b_out = b_mask >> 3;                                                                 \
+        b_mask <<= 1;                                                                        \
+        __m256i borrow_vec = _mm256_mask_set1_epi64(AVX256_ZEROS, b_mask, 1);                \
+        __m256i result_vec_new = _mm256_sub_epi64(result_vec, borrow_vec);                   \
+        result_vec = result_vec_new;                                                         \
+        b_mask = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                        \
+        _mm256_store_epi64((__m256i *)(result), result_vec);                                 \
+        if (unlikely((_mm512_mask2int(b_mask))))                                             \
+        {                                                                                    \
+            b_mask <<= 1;                                                                    \
+            __mmask16 m = _mm256_cmpeq_epu64_mask(result_vec, AVX256_ZEROS);                 \
+            b_mask = b_mask + m;                                                             \
+            b_out = _mm512_kor(b_out, (b_mask >> 4));                                        \
+            m = _mm512_kxor(b_mask, m);                                                      \
+            result_vec = _mm256_mask_add_epi64(result_vec, b_mask, result_vec, AVX256_MASK); \
+            _mm256_store_si256((__m256i *)(result), result_vec);                             \
+        }                                                                                    \
     } while (0)
 
 /*
@@ -123,46 +107,34 @@ void run_macro_bench_test(int);
  * @param b_in The borrow-in generated from the previous subtraction
  * @param b_out The borrow-out generated from the subtraction
  * @return none
- */
-#define __SUB_N_8(result, a, b, b_in, b_out)                                           \
-    do                                                                                 \
-    {                                                                                  \
-        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                             \
-        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                             \
-        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                           \
-        __mmask8 borrow_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                  \
-        (*b_out) = borrow_mask & 1;                                                    \
-        borrow_mask >>= 1;                                                             \
-        borrow_mask |= ((*b_in) << 7);                                                 \
-        bool borrow_detect = !!borrow_mask;                                            \
-        __mmask8 mask_1;                                                               \
-        if (borrow_detect)                                                             \
-        {                                                                              \
-            __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, borrow_mask, 1); \
-            __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);         \
-            mask_1 = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);              \
-            *(b_out) = (mask_1 & 0b1) | *(b_out);                                      \
-            result_vec = result_vec_new;                                               \
-            if (unlikely(mask_1 & 254))                                                \
-            {                                                                          \
-                mask_1 >>= 1;                                                          \
-                _mm512_store_si512((__m512i *)(result), result_vec);                   \
-                for (int i = 6; i >= 0; i--)                                           \
-                {                                                                      \
-                    if (mask_1 >> i)                                                   \
-                    {                                                                  \
-                        result[i] -= 1;                                                \
-                        if (result[i] == -1)                                           \
-                        {                                                              \
-                            mask_1 |= (1 << (i - 1));                                  \
-                        }                                                              \
-                    }                                                                  \
-                }                                                                      \
-                break;                                                                 \
-            }                                                                          \
-        }                                                                              \
-        _mm512_store_si512((__m512i *)(result), result_vec);                           \
+//  */
+#define __SUB_N_8(result, a, b, b_in, b_out)                                            \
+    do                                                                                  \
+    {                                                                                   \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                              \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                              \
+        __m512i result_vec = _mm512_sub_epi64(a_vec, b_vec);                            \
+        __mmask16 b_mask = _mm512_cmpgt_epu64_mask(b_vec, a_vec);                       \
+        b_out = b_mask >> 7;                                                            \
+        b_mask <<= 1;                                                                   \
+        b_mask = _mm512_kor(b_mask, b_in);                                              \
+        __m512i borrow_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, b_mask, 1);           \
+        __m512i result_vec_new = _mm512_sub_epi64(result_vec, borrow_vec);              \
+        b_mask = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);                   \
+        result_vec = result_vec_new;                                                    \
+        _mm512_store_si512((__m512i *)(result), result_vec);                            \
+        if (unlikely(_mm512_mask2int(b_mask)))                                          \
+        {                                                                               \
+            b_mask <<= 1;                                                               \
+            __mmask16 m = _mm512_cmpeq_epu64_mask(result_vec, AVX512_ZEROS);            \
+            b_mask = b_mask + m;                                                        \
+            b_out = _mm512_kor(b_out, (b_mask >> 8));                                   \
+            m = _mm512_kxor(b_mask, m);                                                 \
+            result_vec = _mm512_mask_add_epi64(result_vec, m, result_vec, AVX512_MASK); \
+            _mm512_store_si512((__m512i *)(result), result_vec);                        \
+        }                                                                               \
     } while (0)
+
 /**
  * @brief Subtracts two numbers represented as limb_t, and stores the sum in result.
  * @brief Subtracts from the least significant limb to the most significant limb.
@@ -175,9 +147,8 @@ void run_macro_bench_test(int);
  */
 void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
 {
-    int b_in = 0, b_out = 0;
     // swap a and b if a < b
-    int i = 0;
+    int i = 3;
     do
     {
         if (likely(a->limbs[i] > b->limbs[i]))
@@ -192,8 +163,8 @@ void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
             result->sign = 1;
             break;
         }
-        ++i;
-        if (unlikely(i == 4))
+        --i;
+        if (unlikely(i == 0))
         {
             // a and b are equal
             result->size = 1;
@@ -201,15 +172,15 @@ void limb_t_sub_n_256(limb_t *result, limb_t *a, limb_t *b)
             return;
         }
     } while (i);
-    __SUB_N_4((result->limbs), (a->limbs), (b->limbs), &b_in, &b_out);
+    __mmask16 b_in = 0, b_out = 0;
+    __SUB_N_4((result->limbs), (a->limbs), (b->limbs), b_out);
 }
 
 void __sub_n(limb_t *result, limb_t *x, limb_t *y)
 {
-    int b_in = 0, b_out = 0;
     int n = x->size;
     // swap x and y if x < y
-    int i = 0;
+    int i = n - 1;
     do
     {
         if (likely(x->limbs[i] > y->limbs[i]))
@@ -224,8 +195,8 @@ void __sub_n(limb_t *result, limb_t *x, limb_t *y)
             result->sign = 1;
             break;
         }
-        ++i;
-        if (unlikely(i == n))
+        --i;
+        if (unlikely(i == 0))
         {
             // a and b are equal
             result->size = 1;
@@ -238,9 +209,10 @@ void __sub_n(limb_t *result, limb_t *x, limb_t *y)
     uint64_t *x_ptr = x->limbs;
     uint64_t *y_ptr = y->limbs;
 
-    for (int i = n - 8; i >= 0; i -= 8)
+    __mmask16 b_in = 0, b_out = 0;
+    for (int i = 0; i < n; i += 8)
     {
-        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), &b_in, &b_out);
+        __SUB_N_8((res_ptr + i), (x_ptr + i), (y_ptr + i), b_in, b_out);
         b_in = b_out;
     }
 }
@@ -304,7 +276,7 @@ int main(int argc, char *argv[])
         run_benchmarking_test(test_case, measure_type);
         break;
     case 2:
-        // run_perf_test();
+        run_perf_test();
         break;
     default:
         printf("Invalid type of measure\n");
@@ -316,11 +288,132 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+void run_perf_test()
+{
+    printf("Running perf test\n");
+    char test_filename[100];
+    snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
+    // skip the first line, header
+    skip_first_line(test_file);
+    // Read random test case number
+    // seed the random number generator
+    srand(time(NULL));
+    int i = rand() % ITERATIONS;
+    printf("Iteration %d, reading test case %d\n", 0, i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
+    limb_t *a, *b;
+    a = limb_set_str(a_str);
+    b = limb_set_str(b_str);
+
+    // adjust the sizes of a and b
+    limb_t_adjust_limb_sizes(a, b);
+
+    int n = a->size;
+    printf("n = %d\n", n);
+    limb_t *s = limb_t_alloc(n);
+    limb_t_sub_n(s, a, b);
+    // perf variables
+    initialize_perf();
+
+    // perf overhead
+    start_perf();
+
+    stop_perf();
+    long long values_overhead[MAX_EVENTS];
+    read_perf(values_overhead);
+    printf("Perf overhead: \n");
+    // write the perf values to file
+    write_perf(stdout, values_overhead);
+
+    // clear cache content for a_limbs, b_limbs
+    for (int i = 0; i < n; i += 64)
+    {
+        _mm_clflush((char *)a + i);
+        _mm_clflush((char *)b + i);
+    }
+
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
+    printf("Starting perf test\n");
+    start_perf();
+    // Start the perf test
+    limb_t_sub_n(s, a, b);
+    stop_perf();
+    long long values[MAX_EVENTS];
+    read_perf(values);
+    write_perf(stdout, values);
+    // close the test file
+
+    // print user instructions (values[1] - values_overhead[1]), L1D Cache Miss % (values[4] - values_overhead[4])/(values[5] - values_overhead[5])*100
+    printf("User instructions: %lld\n", values[1] - values_overhead[1]);
+    printf("L1D Cache Reads: %lld\n", (values[4] - values_overhead[4]));
+    printf("L1D Cache Misses: %lld\n", (values[5] - values_overhead[5]));
+    printf("L1D Cache Miss %: %f\n", ((double)(values[5] - values_overhead[5]) / (double)(values[4] - values_overhead[4])) * 100);
+
+    // start measuring RDTSC Ticks
+    double t;
+    RECORD_RDTSC(t, limb_t_sub_n(a, b, s));
+
+    printf("Avg. RDTSC Ticks: %f\n", t);
+
+    // close the test file
+    gzclose(test_file);
+}
+
+/*
+ Does the following for testing correctness:
+    1. read the test cases from the file
+    2. path: ../test/cases/<num_bits>/<test_case>.csv.gz
+    3. there are four test cases: random.csv.gz, equal.csv.gz, greater.csv.gz, smaller.csv.gz
+    4. first line contains a header: a, b, result
+    5. next line onwards contains the test cases, 100000 test cases
+    6. verify the results of the subtraction of a and b with the result
+*/
 void run_correctness_test(int test_case)
 {
     printf("Trying to run correctness test\n");
     // Create directories for the results
     create_directory("experiments/results");
+    // open the perf file
+    gzFile timespec_file, rdtsc_file, cputime_file;
 
     char test_filename[100];
 
@@ -347,35 +440,24 @@ void run_correctness_test(int test_case)
         exit(EXIT_FAILURE);
     }
 
-    // Step 1: Open the test file
+    // open the test file
     gzFile test_file = open_gzfile(test_filename, "rb");
-    if (test_file == NULL)
-    {
-        perror("Error opening test file");
-        exit(EXIT_FAILURE);
-    }
 
-    // Skip the first line (header)
+    // skip the first line, header
     skip_first_line(test_file);
 
-    // Step 2: Allocate arrays to store test cases
-    printf("Loading test cases...\n");
-    limb_t **operands_a = (limb_t **)malloc(ITERATIONS * sizeof(limb_t *));
-    limb_t **operands_b = (limb_t **)malloc(ITERATIONS * sizeof(limb_t *));
-    char **expected_results = (char **)malloc(ITERATIONS * sizeof(char *));
-    int actual_iterations = 0;
-
-    // Step 3: Read all test cases into arrays
-    for (int i = 0; i < 1000; i++)
+    // Read ITERATIONS test cases
+    for (int i = 0; i < ITERATIONS; i++)
     {
+        init_memory_pool();
+        // Read the next line
         char buffer[CHUNK];
-        memset(buffer, 0, CHUNK);
-
+        // Read the next line
         if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
         {
             if (gzeof(test_file))
             {
-                break; // End of file reached
+                break; // EOF
             }
             else
             {
@@ -393,44 +475,61 @@ void run_correctness_test(int test_case)
         if (a_str == NULL || b_str == NULL || result_str == NULL)
         {
             fprintf(stderr, "Error parsing line: %s\n", buffer);
-            continue;
+            gzclose(test_file);
+            exit(EXIT_FAILURE);
         }
 
-        // Store operands and expected result
-        operands_a[i] = limb_set_str(a_str);
-        operands_b[i] = limb_set_str(b_str);
-        expected_results[i] = strdup(result_str);
+        int n_1 = strlen(a_str);
+        int n_2 = strlen(b_str);
 
-        // Adjust sizes of a and b
-        limb_t_adjust_limb_sizes(operands_a[i], operands_b[i]);
+        // convert a and b into limbs
+        limb_t *a, *b;
+        a = limb_set_str(a_str);
+        b = limb_set_str(b_str);
 
-        actual_iterations++;
-    }
+        // adjust the sizes of a and b
+        limb_t_adjust_limb_sizes(a, b);
+        int n = a->size;
 
-    gzclose(test_file);
-    printf("Loaded %d test cases\n", actual_iterations);
+        limb_t *s = limb_t_alloc(n);
 
-    // Step 4: Allocate an array for results
-    limb_t **results = (limb_t **)malloc(actual_iterations * sizeof(limb_t *));
-    for (int i = 0; i < actual_iterations; i++)
-    {
-        results[i] = limb_t_alloc(operands_a[i]->size);
-    }
+        /***** Start of subtraction *****/
 
-    // Step 5: Process all subtractions
-    printf("Performing subtraction operations...\n");
-    fflush(stdout); // Flush stdout to ensure all output is printed
-    _mm_mfence();   // Ensure all previous operations are completed
-    long double t0 = cputime();
-    for (int j = 0; j < 1000; ++j)
-    {
-        for (int i = 0; i < actual_iterations; ++i)
+        limb_t_sub_n(s, a, b);
+
+        /***** End of subtraction *****/
+
+        char *sum_str = limb_get_str(s);
+        int str_len = strlen(sum_str);
+
+        // verify the converted string with result
+        if (!check_result(sum_str, result_str, str_len))
         {
-            limb_t_sub_n(operands_a[i], operands_b[i], results[i]);
+            printf("Test case failed, at iteration %d\n", i);
+            exit(EXIT_FAILURE);
         }
+        limb_t_free(a);
+        limb_t_free(b);
+        limb_t_free(s);
+        destroy_memory_pool();
     }
-    long double t1 = cputime();
-    printf("Time taken for %d subtractions: %.2Lf microseconds\n", actual_iterations, t1 - t0);
+    switch (test_case)
+    {
+    case 0:
+        printf("Random test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    case 1:
+        printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    case 2:
+        printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    case 3:
+        printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
+        break;
+    }
+    // close the test file
+    gzclose(test_file);
 }
 
 /*
@@ -793,7 +892,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             // calibrate the time
-            TIME_RUSAGE(time_taken, limb_t_sub_n(a, b, s));
+            TIME_RUSAGE(time_taken, limb_t_sub_n(s, a, b));
 
             printf("done\n");
 
@@ -806,7 +905,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             t0 = cputime();
             for (int i = 0; i < niter; i++)
             {
-                limb_t_sub_n(a, b, s);
+                limb_t_sub_n(s, a, b);
             }
             t1 = cputime() - t0;
             printf("done!\n");

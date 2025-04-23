@@ -11,7 +11,7 @@
 #include <errno.h>
 
 #define LIMB_SIZE 18             // Number of digits in each limb
-#define MEMORY_POOL_SIZE 1 << 30 // 1 GB memory pool
+#define MEMORY_POOL_SIZE 1 << 25 // 1 GB memory pool
 
 // Define the aligned data types
 typedef uint64_t aligned_uint64 __attribute__((aligned(64)));      // Define an aligned uint64_t
