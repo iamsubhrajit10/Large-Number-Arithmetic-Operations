@@ -58,12 +58,24 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
     "*.dump": "asm-intel-x86-generic",
-    "module.h": "c",
-    "memory": "c",
-    "cstdlib": "c",
-    "limb_utils.h": "c",
+    "numeric": "c",
+    "bit": "c",
+    "*.tcc": "c",
+    "compare": "c",
+    "exception": "c",
+    "algorithm": "c",
     "functional": "c",
-    "unistd.h": "c",
-    "ctype.h": "c"
+    "iterator": "c",
+    "memory": "c",
+    "format": "c",
+    "limits": "c",
+    "streambuf": "c",
+    "tuple": "c",
+    "type_traits": "c",
+    "array": "c",
+    "string_view": "c",
+    "initializer_list": "c",
+    "span": "c",
+    "cstdint": "c"
   }
 }

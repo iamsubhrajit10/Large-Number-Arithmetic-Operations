@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/home/subhrajit/Large-Number-Arithmetic-Operations/subtraction/misc/explicit-vectorized",
-      "program": "/home/subhrajit/Large-Number-Arithmetic-Operations/subtraction/misc/explicit-vectorized/build/Debug/outDebug",
+      "cwd": "/home/subhrajit/Large-Number-Arithmetic-Operations/multiplication/misc/explicit-vectorized",
+      "program": "/home/subhrajit/Large-Number-Arithmetic-Operations/multiplication/misc/explicit-vectorized/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
