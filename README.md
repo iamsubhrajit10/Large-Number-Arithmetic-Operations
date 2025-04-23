@@ -5,6 +5,6 @@ gcc add.c ../utils/perf_utils.c ../utils/limb_utils.c -o add -lz -I../utils -mav
 
 First generate the test cases:
 ```
-$~/test/./run.sh
+$~/test/$ ./run.sh
 ```
 
