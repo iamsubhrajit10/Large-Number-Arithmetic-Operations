@@ -73,18 +73,17 @@ void run_correctness_test(int);
  * @param c_out The carry-out generated from the addition
  * @return none
  */
-#define __ADD_N_4_APPROX(result, a, b, c_out)                                           \
-    do                                                                                  \
-    {                                                                                   \
-        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                              \
-        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                              \
-        __m256i result_vec = _mm256_add_epi64(a_vec, b_vec);                            \
-        __mmask8 c_mask = _mm256_cmplt_epu64_mask(result_vec, a_vec);                   \
-        c_out = c_mask >> 3;                                                            \
-        c_mask <<= 1;                                                                   \
-        result_vec = _mm256_add_epi64(result_vec,                                       \
-                                      _mm256_mask_set1_epi64(AVX256_ZEROS, c_mask, 1)); \
-        _mm256_store_si256((__m256i *)(result), result_vec);                            \
+#define __ADD_N_4_APPROX(result, a, b, c_out)                                            \
+    do                                                                                   \
+    {                                                                                    \
+        __m256i a_vec = _mm256_load_si256((__m256i *)(a));                               \
+        __m256i b_vec = _mm256_load_si256((__m256i *)(b));                               \
+        __m256i result_vec = _mm256_add_epi64(a_vec, b_vec);                             \
+        __mmask8 c_mask = _mm256_cmplt_epu64_mask(result_vec, a_vec);                    \
+        c_out = c_mask >> 3;                                                             \
+        c_mask <<= 1;                                                                    \
+        result_vec = _mm256_mask_sub_epi64(result_vec, c_mask, result_vec, AVX256_MASK); \
+        _mm256_store_si256((__m256i *)(result), result_vec);                             \
     } while (0)
 
 /*                                                                                      \
@@ -96,19 +95,18 @@ void run_correctness_test(int);
  * @param c_out The carry-out generated from the addition                               \
  * @return none                                                                         \
  */
-#define __ADD_N_8_APPROX(result, a, b, c_in, c_out)                          \
-    do                                                                       \
-    {                                                                        \
-        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                   \
-        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                   \
-        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                 \
-        __mmask8 c_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);        \
-        c_out = c_mask >> 7;                                                 \
-        c_mask <<= 1;                                                        \
-        c_mask = _mm512_kor(c_mask, c_in);                                   \
-        __m512i carry_vec = _mm512_mask_set1_epi64(AVX512_ZEROS, c_mask, 1); \
-        result_vec = _mm512_add_epi64(result_vec, carry_vec);                \
-        _mm512_store_si512((__m512i *)(result), result_vec);                 \
+#define __ADD_N_8_APPROX(result, a, b, c_in, c_out)                                      \
+    do                                                                                   \
+    {                                                                                    \
+        __m512i a_vec = _mm512_load_si512((__m512i *)(a));                               \
+        __m512i b_vec = _mm512_load_si512((__m512i *)(b));                               \
+        __m512i result_vec = _mm512_add_epi64(a_vec, b_vec);                             \
+        __mmask8 c_mask = _mm512_cmplt_epu64_mask(result_vec, a_vec);                    \
+        c_out = c_mask >> 7;                                                             \
+        c_mask <<= 1;                                                                    \
+        c_mask = _mm512_kor(c_mask, c_in);                                               \
+        result_vec = _mm512_mask_sub_epi64(result_vec, c_mask, result_vec, AVX512_MASK); \
+        _mm512_store_si512((__m512i *)(result), result_vec);                             \
     } while (0)
 
 void __add_n_256_approx(limb_t *result, limb_t *a, limb_t *b)
@@ -205,7 +203,7 @@ int main(int argc, char *argv[])
 
 void run_perf_test()
 {
-    printf("Running perf test\n");
+    // printf("Running perf test\n");
     char test_filename[100];
     snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
     // open the test file
@@ -216,7 +214,7 @@ void run_perf_test()
     // seed the random number generator
     srand(time(NULL));
     int i = rand() % ITERATIONS;
-    printf("Iteration %d, reading test case %d\n", 0, i);
+    // printf("Iteration %d, reading test case %d\n", 0, i);
     // buffer to read the test case
     char buffer[CHUNK];
     // reset the file pointer to the beginning of the file
@@ -261,7 +259,7 @@ void run_perf_test()
     limb_t_adjust_limb_sizes(a, b);
 
     int n = a->size;
-    printf("n = %d\n", n);
+    // printf("n = %d\n", n);
     limb_t *s = limb_t_alloc(n);
     pml_add_n_approx(s, a, b);
     // perf variables
@@ -273,9 +271,6 @@ void run_perf_test()
     stop_perf();
     long long values_overhead[MAX_EVENTS];
     read_perf(values_overhead);
-    printf("Perf overhead: \n");
-    // write the perf values to file
-    write_perf(stdout, values_overhead);
 
     // clear cache content for a_limbs, b_limbs
     for (int i = 0; i < n; i += 64)
@@ -287,21 +282,17 @@ void run_perf_test()
     // Ensure that the cache flush operations are completed
     _mm_mfence();
 
-    printf("Starting perf test\n");
+    // printf("Starting perf test\n");
     start_perf();
     // Start the perf test
     pml_add_n_approx(s, a, b);
     stop_perf();
     long long values[MAX_EVENTS];
     read_perf(values);
-    write_perf(stdout, values);
+    // write_perf(stdout, values);
     // close the test file
 
-    // print user instructions (values[1] - values_overhead[1]), L1D Cache Miss % (values[4] - values_overhead[4])/(values[5] - values_overhead[5])*100
-    printf("User instructions: %lld\n", values[1] - values_overhead[1]);
-    printf("L1D Cache Reads: %lld\n", (values[4] - values_overhead[4]));
-    printf("L1D Cache Misses: %lld\n", (values[5] - values_overhead[5]));
-    printf("L1D Cache Miss %: %f\n", ((double)(values[5] - values_overhead[5]) / (double)(values[4] - values_overhead[4])) * 100);
+    printf("User instructions: %lld\n", values[0] - values_overhead[0]);
 
     // start measuring RDTSC Ticks
     double t;
@@ -324,9 +315,7 @@ void run_perf_test()
 */
 void run_correctness_test(int test_case)
 {
-    printf("Trying to run correctness test\n");
-    // Create directories for the results
-    create_directory("experiments/results");
+    // printf("Trying to run correctness test\n");
     // open the perf file
     gzFile timespec_file, rdtsc_file, cputime_file;
 
@@ -335,19 +324,19 @@ void run_correctness_test(int test_case)
     switch (test_case)
     {
     case 0:
-        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
         break;
     case 1:
-        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
         break;
     case 2:
-        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
         break;
     case 3:
-        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
         break;
     default:
@@ -428,22 +417,6 @@ void run_correctness_test(int test_case)
         limb_t_free(s);
         destroy_memory_pool();
     }
-    switch (test_case)
-    {
-    case 0:
-        printf("Random test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    case 1:
-        printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    case 2:
-        printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    case 3:
-        printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
-        break;
-    }
-    // close the test file
     gzclose(test_file);
 }
 
@@ -459,29 +432,11 @@ void run_correctness_test(int test_case)
 */
 void run_benchmarking_test(int test_case, int measure_type)
 {
-    printf("Trying to run benchmarking test\n");
+    // printf("Trying to run benchmarking test\n");
     // Create directories for the results
-    create_directory("experiments/results");
+    // create_directory("experiments/results");
     // open the perf file
     gzFile timespec_file, rdtsc_file, cputime_file;
-    switch (measure_type)
-    {
-    case 0: // RDTSC
-        printf("Running the tests with RDTSC measurements\n");
-        create_directory("experiments/results/rdtsc_measurements");
-        break;
-    case 1: // Timespec gettime()
-        printf("Running the tests with timespec measurements\n");
-        create_directory("experiments/results/timespec_measurements");
-        break;
-    case 2: // CPU time, rusage
-        printf("Running the tests with rusage measurements\n");
-        create_directory("experiments/results/cputime_measurements");
-        break;
-    default:
-        printf("Invalid measure type\n");
-        exit(EXIT_FAILURE);
-    }
 
     char rdtsc_filename[100];
     char test_filename[100];
@@ -491,149 +446,22 @@ void run_benchmarking_test(int test_case, int measure_type)
     switch (test_case)
     {
     case 0: // Random test cases
-        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
+
         break;
     case 1: // Equal test cases
-        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
         break;
     case 2: // Greater test cases
-        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
+
         break;
     case 3: // Smaller test cases
-        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-        }
 
         break;
     default:
@@ -651,11 +479,11 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
-    printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
+    // printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
     for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
     {
         int i = rand() % ITERATIONS;
-        printf("Iteration %d, reading test case %d\n", iter_count, i);
+        // printf("Iteration %d, reading test case %d\n", iter_count, i);
         // buffer to read the test case
         char buffer[CHUNK];
         // reset the file pointer to the beginning of the file
@@ -704,7 +532,7 @@ void run_benchmarking_test(int test_case, int measure_type)
 
         limb_t *s = limb_t_alloc(n);
 
-        printf("Starting addition\n");
+        // printf("Starting addition\n");
         int cpu_info[4], decimals;
         unsigned long long int t0, t1;
         unsigned long long niter;
@@ -724,17 +552,17 @@ void run_benchmarking_test(int test_case, int measure_type)
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
 
-            printf("Calibrating CPU speed using RDTSC...\n");
+            // printf("Calibrating CPU speed using RDTSC...\n");
             fflush(stdout);
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             TIME_RDTSC(time_taken, pml_add_n_approx(s, a, b));
-            printf("done\n");
-            printf("Calibrated time: %f microseconds\n", time_taken);
+            // printf("done\n");
+            printf("Execution time: %.1f ns\n", time_taken * 1000);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %lld times\n", niter);
+            // printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = measure_rdtsc_start();
@@ -757,23 +585,23 @@ void run_benchmarking_test(int test_case, int measure_type)
                 f = f * 0.1;
             }
 
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            printf("Throughput: %.*f OP/s\n", decimals, ops_per_sec);
 
             break;
         case 1:             // Timespec
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed using timespec...\n");
+            // printf("Calibrating CPU speed using timespec...\n");
             fflush(stdout);
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             TIME_TIMESPEC(time_taken, pml_add_n_approx(s, a, b));
 
-            printf("done\n");
-            printf("Calibrated time: %f microseconds\n", time_taken);
+            // printf("done\n");
+            printf("Execution time: %.1f ns\n", time_taken * 1000);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %lld times\n", niter);
+            // printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             struct timespec ts_0, ts_1;
@@ -796,11 +624,11 @@ void run_benchmarking_test(int test_case, int measure_type)
                 f = f * 0.1;
             }
 
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            printf("Throughput: %.*f OP/s\n", decimals, ops_per_sec);
             break;
         case 2:             // Rusage
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed using rusage...\n");
+            // printf("Calibrating CPU speed using rusage...\n");
             fflush(stdout);
 
             // interrupt
@@ -809,12 +637,12 @@ void run_benchmarking_test(int test_case, int measure_type)
             // calibrate the time
             TIME_RUSAGE(time_taken, pml_add_n_approx(s, a, b));
 
-            printf("done\n");
+            // printf("done\n");
 
-            printf("Calibrated time: %f microseconds\n", time_taken);
+            printf("Execution time: %.1f ns\n", time_taken * 1000);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("Adding %lld times\n", niter);
+            // printf("Adding %lld times\n", niter);
             fflush(stdout);
 
             t0 = cputime();
@@ -823,7 +651,7 @@ void run_benchmarking_test(int test_case, int measure_type)
                 pml_add_n_approx(s, a, b);
             }
             t1 = cputime() - t0;
-            printf("done!\n");
+            // printf("done!\n");
 
             // Convert t1 from microseconds to seconds for the ops_per_sec calculation
             ops_per_sec = (1e6 * niter) / t1;
@@ -836,7 +664,7 @@ void run_benchmarking_test(int test_case, int measure_type)
                 f = f * 0.1;
             }
 
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            printf("Throughput: %.*f OP/s\n", decimals, ops_per_sec);
             break;
         default:
             printf("Invalid measure type\n");

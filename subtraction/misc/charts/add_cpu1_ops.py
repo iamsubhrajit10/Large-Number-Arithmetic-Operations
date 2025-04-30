@@ -14,20 +14,20 @@ rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitst
 # Updated data with Baseline_ADD and Ops data
 data = {
     "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
-    "GMP_ADD Time (ns)": [8.6, 9.8, 12.2, 18.4, 31.7, 60.9, 151, 335, 665.1, 917],
-    "PML_ADD Time (ns)": [2.8, 4.3, 5.8, 9.6, 18.4, 35.8, 76.2, 158.8, 313.7, 629.2],
-    "PML_ADD (Worst Case) Time (ns)": [4.3, 5.0, 7.8, 14.0, 26.3, 51.3, 124.0, 256.9, 510.7, 1018.3],
-    "Baseline_ADD Time (ns)": [6.5, 7.4, 14.7, 25.1, 40.7, 90.2, 191.9, 383.3, 776.6, 1563],
-    "Speedup (PML_ADD vs GMP) Time": [3.07, 2.28, 2.10, 1.92, 1.72, 1.70, 1.98, 2.11, 2.12, 1.46],
-    "Speedup (PML_ADD vs Baseline) Time": [2.32, 1.72, 2.53, 2.61, 2.21, 2.52, 2.52, 2.41, 2.48, 2.48],
-    "Speedup (PML_ADD Phase-4 vs GMP) Time": [2.00, 1.96, 1.56, 1.31, 1.21, 1.19, 1.22, 1.30, 1.30, 0.90],
-    "GMP_ADD Ops": [115621209, 100961962, 81627840, 54157396, 31536684, 16481172, 6630445, 2985090, 1504493, 1090682],
-    "PML_ADD Ops": [326750410, 228606237, 164320986, 102267366, 53881075, 27869415, 13111981, 6293498, 3186806, 1588567],
-    "PML_ADD (Worst Case) Ops": [230440418, 194434540, 128821596, 72139024, 37826906, 19477626, 8060899, 3892216, 1957854, 981990],
-    "Baseline_ADD Ops": [152949897, 133061478, 67850597, 39685176, 24558590, 11082917, 5210652, 2607131, 1288031, 639874],
-    "Speedup (PML_ADD vs GMP) Ops": [2.83, 2.26, 2.01, 1.89, 1.71, 1.69, 1.98, 2.11, 2.12, 1.46],
-    "Speedup (PML_ADD vs Baseline) Ops": [2.14, 1.72, 2.42, 2.58, 2.19, 2.51, 2.52, 2.41, 2.47, 2.48],
-    "Speedup (PML_ADD Phase-4 vs GMP) Ops": [1.99, 1.93, 1.58, 1.33, 1.20, 1.18, 1.22, 1.30, 1.30, 0.90]
+    "GMP_ADD Time (ns)": [8.3, 9.7, 12.1, 17.9, 31.0, 60.6, 150.9, 335.1, 664.9, 904.8],
+    "PML_ADD Time (ns)": [3.3, 3.9, 5.7, 9.1, 17.2, 32.6, 78.1, 153.6, 296.6, 589.6],
+    "PML_ADD (Worst Case) Time (ns)": [4.7, 4.6, 7.5, 14.0, 27.2, 58.8, 125.6, 244.2, 478.6, 955.2],
+    "Baseline_ADD Time (ns)": [9.0, 11.1, 21.0, 46.8, 104.1, 218.7, 454.9, 913.9, 1832.8, 3680.8],
+    "Speedup (PML_ADD vs GMP) Time": [2.52, 2.49, 2.12, 1.97, 1.80, 1.86, 1.93, 2.18, 2.24, 1.53],
+    "Speedup (PML_ADD vs Baseline) Time": [2.73, 2.85, 3.68, 5.14, 6.05, 6.71, 5.82, 5.95, 6.18, 6.24],
+    "Speedup (PML_ADD Worst Case vs GMP) Time": [1.77, 2.11, 1.61, 1.28, 1.14, 1.03, 1.20, 1.37, 1.39, 0.95],
+    "GMP_ADD Ops": [120037374, 102675970, 82231297, 55730331, 32212907, 16483525, 6622571, 2981604, 1501359, 1104400],
+    "PML_ADD Ops": [253970455, 232799164, 174548545, 108662757, 58054446, 30598996, 12786763, 6496197, 3362922, 1692575],
+    "PML_ADD (Worst Case) Ops": [213307432, 206545754, 121531111, 70908270, 36574396, 16685293, 7932657, 4089501, 2085634, 1046229],
+    "Baseline_ADD Ops": [110803944, 90457876, 47488506, 21299563, 9603193, 4571277, 2196299, 1093490, 544969, 271301],
+    "Speedup (PML_ADD vs GMP) Ops": [2.12, 2.27, 2.12, 1.95, 1.80, 1.86, 1.93, 2.18, 2.24, 1.53],
+    "Speedup (PML_ADD vs Baseline) Ops": [2.29, 2.57, 3.68, 5.10, 6.05, 6.69, 5.82, 5.94, 6.17, 6.24],
+    "Speedup (PML_ADD Worst Case vs GMP) Ops": [1.78, 2.01, 1.48, 1.27, 1.14, 1.01, 1.20, 1.37, 1.39, 0.95]
 }
 
 df = pd.DataFrame(data)
@@ -66,7 +66,7 @@ pml_line = ax1.plot(df["Bit Size"], df["PML_ADD Ops"],
                    label="PML_ADD Ops/s", color=pml_color, markeredgecolor='white', 
                    markeredgewidth=1, zorder=3)
 
-# Add the new PML Phase-4 line
+# Add the new PML Worst Case line
 pml_phase4_line = ax1.plot(df["Bit Size"], df["PML_ADD (Worst Case) Ops"], 
                           marker='d', linestyle=':', linewidth=3, markersize=9,
                           label="PML_ADD (Worst Case) Ops/s", color=pml_phase4_color, markeredgecolor='white', 
@@ -78,7 +78,7 @@ baseline_line = ax1.plot(df["Bit Size"], df["Baseline_ADD Ops"],
                        markeredgewidth=1, zorder=3)
 
 # Place callout boxes ABOVE data points at strategic points
-selected_indices = [0, 3, 6, 9]  # First, middle, and last points
+selected_indices = [0, 2, 5, 8]  # First, middle, and last points
 
 for i in selected_indices:
     bit_size = df["Bit Size"][i]
@@ -135,7 +135,7 @@ for i in range(0, len(df["Bit Size"]), 1):  # Annotate every other point
              bbox=dict(facecolor='white', alpha=0.85, edgecolor=pml_color, 
                       boxstyle='round,pad=0.2'))
     
-    # PML Phase-4 ops annotation
+    # PML Worst Case ops annotation
     ax1.text(bit_size * 0.85, df["PML_ADD (Worst Case) Ops"][i] * 0.95,  
              pml_phase4_ops_fmt, 
              fontsize=9, ha='center', color=pml_phase4_color, fontweight="bold", 
@@ -175,34 +175,34 @@ plt.setp(title, bbox=dict(facecolor=bg_color, edgecolor=None, alpha=0.8,
 legend = ax1.legend(loc='upper right', fontsize=12, frameon=True, 
                    edgecolor='gray', fancybox=True, framealpha=0.9)
 
-# Create a table-format string with the speedup data for all bit sizes
-table_text = "Speedup Factors by Bit Size:\n"
-table_text += "┌────────┬───────────┬────────────┬─────────────┐\n"
-table_text += "│Bit Size│ PML vs GMP│ PML vs Base│ Phase-4 vs GMP │\n"
-table_text += "├────────┼───────────┼────────────┼─────────────┤\n"
+# # Create a table-format string with the speedup data for all bit sizes
+# table_text = "Speedup Factors by Bit Size:\n"
+# table_text += "┌────────┬───────────┬────────────┬─────────────┐\n"
+# table_text += "│Bit Size│ PML vs GMP│ PML vs Base│ Worst Case vs GMP │\n"
+# table_text += "├────────┼───────────┼────────────┼─────────────┤\n"
 
-# Add each row of data
-for i, bit_size in enumerate(df["Bit Size"]):
-    gmp_speedup = df["Speedup (PML_ADD vs GMP) Ops"][i]
-    baseline_speedup = df["Speedup (PML_ADD vs Baseline) Ops"][i]
-    phase4_speedup = df["Speedup (PML_ADD Phase-4 vs GMP) Ops"][i]
+# # Add each row of data
+# for i, bit_size in enumerate(df["Bit Size"]):
+#     gmp_speedup = df["Speedup (PML_ADD vs GMP) Ops"][i]
+#     baseline_speedup = df["Speedup (PML_ADD vs Baseline) Ops"][i]
+#     phase4_speedup = df["Speedup (PML_ADD Worst Case vs GMP) Ops"][i]
     
-    # Format each row with proper alignment
-    bit_size_str = f"{bit_size:6d}"
-    gmp_speedup_str = f"{gmp_speedup:.2f}×"
-    baseline_speedup_str = f"{baseline_speedup:.2f}×"
-    phase4_speedup_str = f"{phase4_speedup:.2f}×"
+#     # Format each row with proper alignment
+#     bit_size_str = f"{bit_size:6d}"
+#     gmp_speedup_str = f"{gmp_speedup:.2f}×"
+#     baseline_speedup_str = f"{baseline_speedup:.2f}×"
+#     phase4_speedup_str = f"{phase4_speedup:.2f}×"
     
-    table_text += f"│ {bit_size_str} │ {gmp_speedup_str:9} │ {baseline_speedup_str:10} │ {phase4_speedup_str:11} │\n"
+#     table_text += f"│ {bit_size_str} │ {gmp_speedup_str:9} │ {baseline_speedup_str:10} │ {phase4_speedup_str:11} │\n"
 
-# Close the table
-table_text += "└────────┴───────────┴────────────┴─────────────┘"
+# # Close the table
+# table_text += "└────────┴───────────┴────────────┴─────────────┘"
 
-# Add explanation box with the data table - NOW AT LEFT BOTTOM
-ax1.text(0.03, 0.05, table_text, 
-         transform=ax1.transAxes, fontsize=9, fontfamily='monospace',
-         bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.5'),
-         ha='left', va='bottom')
+# # Add explanation box with the data table - NOW AT LEFT BOTTOM
+# ax1.text(0.03, 0.05, table_text, 
+#          transform=ax1.transAxes, fontsize=9, fontfamily='monospace',
+#          bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.5'),
+#          ha='left', va='bottom')
 
 # Add a subtle border to the figure
 for spine in ax1.spines.values():

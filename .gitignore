@@ -25,7 +25,7 @@
 !**/*.h
 
 # Allow text files in any directory except experiments
-!**/*.txt
+# !**/*.txt
 
 # Allow assembly source files in any directory except experiments
 !**/*.s
@@ -39,7 +39,7 @@
 !**/*.md
 
 # allow all files in the misc directory
-!**/misc/**
+!**/misc/
 
 # Allow directories
 !*/

@@ -7,19 +7,19 @@ struct perf_event_attr pe[MAX_EVENTS];
 int fd[MAX_EVENTS];
 long long count;
 const char *event_names[MAX_EVENTS] = {
-    "CPU_CYCLES",  // CPU Cycles
-    "USER_INSNS",  // User Instructions
-    "KERN_INSNS",  // Kernel Instructions
-    "PAGE_FAULTS", // Page Faults
-    "L1D_READS",   // L1D Cache Reads
-    "L1D_MISSES"   // L1D Cache Read Misses
+    // "CPU_CYCLES",  // CPU Cycles
+    "USER_INSNS", // User Instructions
+    // "KERN_INSNS",  // Kernel Instructions
+    // "PAGE_FAULTS", // Page Faults
+    // "L1D_READS",   // L1D Cache Reads
+    // "L1D_MISSES"   // L1D Cache Read Misses
 };
 
 void initialize_perf()
 {
     // Define the events to monitor
     memset(pe, 0, sizeof(struct perf_event_attr) * MAX_EVENTS);
-    printf("Initializing perf events on Core %d\n", CORE_NO);
+    // printf("Initializing perf events on Core %d\n", CORE_NO);
     for (int i = 0; i < MAX_EVENTS; i++)
     {
         pe[i].size = sizeof(struct perf_event_attr);
@@ -31,33 +31,33 @@ void initialize_perf()
         pe[i].pinned = 1;       // Ensure counter stays on the specific CPU
     }
 
-    // CPU cycles
-    pe[0].type = PERF_TYPE_HARDWARE;
-    pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
+    // // CPU cycles
+    // pe[0].type = PERF_TYPE_HARDWARE;
+    // pe[0].config = PERF_COUNT_HW_CPU_CYCLES;
 
     // User-level instructions
-    pe[1].type = PERF_TYPE_HARDWARE;
-    pe[1].config = PERF_COUNT_HW_INSTRUCTIONS;
-    pe[1].exclude_kernel = 1;
-    pe[1].exclude_user = 0;
+    pe[0].type = PERF_TYPE_HARDWARE;
+    pe[0].config = PERF_COUNT_HW_INSTRUCTIONS;
+    pe[0].exclude_kernel = 1;
+    pe[0].exclude_user = 0;
 
-    // Kernel-level instructions
-    pe[2].type = PERF_TYPE_HARDWARE;
-    pe[2].config = PERF_COUNT_HW_INSTRUCTIONS;
-    pe[2].exclude_kernel = 0;
-    pe[2].exclude_user = 1;
+    // // Kernel-level instructions
+    // pe[2].type = PERF_TYPE_HARDWARE;
+    // pe[2].config = PERF_COUNT_HW_INSTRUCTIONS;
+    // pe[2].exclude_kernel = 0;
+    // pe[2].exclude_user = 1;
 
-    // Page faults
-    pe[3].type = PERF_TYPE_SOFTWARE;
-    pe[3].config = PERF_COUNT_SW_PAGE_FAULTS;
+    // // Page faults
+    // pe[3].type = PERF_TYPE_SOFTWARE;
+    // pe[3].config = PERF_COUNT_SW_PAGE_FAULTS;
 
-    // L1D Cache Reads
-    pe[4].type = PERF_TYPE_HW_CACHE;
-    pe[4].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
+    // // L1D Cache Reads
+    // pe[4].type = PERF_TYPE_HW_CACHE;
+    // pe[4].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16);
 
-    // L1D Cache Read Misses
-    pe[5].type = PERF_TYPE_HW_CACHE;
-    pe[5].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
+    // // L1D Cache Read Misses
+    // pe[5].type = PERF_TYPE_HW_CACHE;
+    // pe[5].config = PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16);
 
     // // LLC Reads
     // pe[4].type = PERF_TYPE_HW_CACHE;

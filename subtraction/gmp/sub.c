@@ -43,7 +43,7 @@ Note: For pre-processing, we can use the realloc function to sub leading zeros t
 #include <ctype.h>
 #include <cpuid.h>
 #include <sys/resource.h>
-#include "myutils.h"
+#include "timing_utils.h"
 #include "perf_utils.h"
 
 #define ITERATIONS 100000 // Number of iterations for each test
@@ -99,13 +99,150 @@ int main(int argc, char *argv[])
         run_benchmarking_test(test_case, measure_type);
         break;
     case 2:
-        // run_perf_test();
+        run_perf_test();
         break;
     default:
         printf("Invalid type of measure\n");
         exit(EXIT_FAILURE);
     }
     return 0;
+}
+
+void run_perf_test()
+{
+    // printf("Trying to run perf test\n");
+
+    // test case file name
+    char test_filename[100];
+    snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
+
+    // open the test file
+    gzFile test_file = open_gzfile(test_filename, "rb");
+    if (test_file == NULL)
+    {
+        perror("Error opening test file");
+        exit(EXIT_FAILURE);
+    }
+    // skip the first line, header
+    skip_first_line(test_file);
+    // Read random test case number
+    // seed the random number generator
+    srand(time(NULL));
+    int i = rand() % ITERATIONS;
+    // printf("Reading test case %d\n", i);
+    // buffer to read the test case
+    char buffer[CHUNK];
+    // reset the file pointer to the beginning of the file
+    gzrewind(test_file);
+    // skip the first line, header
+    skip_first_line(test_file);
+    // read ith line from the test_file
+    for (int j = 0; j < i; j++)
+    {
+        // flush the buffer
+        memset(buffer, 0, CHUNK);
+        if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
+        {
+            if (gzeof(test_file))
+            {
+                return; // End of file reached
+            }
+            else
+            {
+                perror("Error reading line");
+                gzclose(test_file);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+    // Parse the test case
+    char *a_str = strtok(buffer, ",");
+    char *b_str = strtok(NULL, ",");
+    char *result_str = strtok(NULL, ",");
+
+    if (a_str == NULL || b_str == NULL || result_str == NULL)
+    {
+        fprintf(stderr, "Error parsing line: %s\n", buffer);
+        gzclose(test_file);
+        exit(EXIT_FAILURE);
+    }
+
+    // convert the strings to mpz_t
+    mpz_t a, b, result_gmp;
+    mpz_init(a);
+    mpz_init(b);
+
+    // convert the strings to mpz_t
+    if (mpz_set_str(a, a_str, 16) != 0)
+    {
+        perror("Error: Failed to set mpz_t from string a_str");
+        exit(EXIT_FAILURE);
+    }
+    if (mpz_set_str(b, b_str, 16) != 0)
+    {
+        perror("Error: Failed to set mpz_t from string b_str");
+        exit(EXIT_FAILURE);
+    }
+    // convert the strings to mpz_t
+    if (mpz_set_str(result_gmp, result_str, 16) != 0)
+    {
+        perror("Error: Failed to set mpz_t from string result_str");
+        exit(EXIT_FAILURE);
+    }
+    mpz_sub(result_gmp, a, b);
+
+    initialize_perf();
+
+    // perf overhead
+    start_perf();
+
+    stop_perf();
+    long long values_overhead[MAX_EVENTS];
+    read_perf(values_overhead);
+    // printf("Perf overhead: \n");
+    // write the perf values to file
+    // write_perf(stdout, values_overhead);
+
+    // clear cache before each test case
+    size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
+    size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
+
+    for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
+    {
+        _mm_clflush((char *)a->_mp_d + i);
+    }
+
+    for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
+    {
+        _mm_clflush((char *)b->_mp_d + i);
+    }
+    // Ensure that the cache flush operations are completed
+    _mm_mfence();
+
+    // printf("Starting perf test\n");
+    start_perf();
+    // Start the perf test
+    mpz_sub(result_gmp, a, b);
+    stop_perf();
+    long long values[MAX_EVENTS];
+    read_perf(values);
+
+    // close the test file
+
+    printf("User instructions: %lld\n", values[0] - values_overhead[0]);
+
+    gzclose(test_file);
+
+    // start measuring RDTSC Ticks
+    double t;
+    RECORD_RDTSC(t, mpz_sub(result_gmp, a, b));
+
+    printf("Avg. RDTSC Ticks: %f\n", t);
+
+    // free the mpz_t variables
+    mpz_clear(a);
+    mpz_clear(b);
+    mpz_clear(result_gmp);
 }
 
 /*
@@ -115,32 +252,33 @@ int main(int argc, char *argv[])
     3. there are four test cases: random.csv.gz, equal.csv.gz, greater.csv.gz, smaller.csv.gz
     4. first line contains a header: a, b, result
     5. next line onwards contains the test cases, 100000 test cases
-    6. verify the results of the subtraction of a and b with the result
+    6. verify the results of the addition of a and b with the result
 */
 void run_correctness_test(int test_case)
 {
-    printf("Trying to run correctness test\n");
-    // Create directories for the results
-    create_directory("experiments/results");
+    // printf("Trying to run correctness test\n");
+
+    // open the perf file
+    gzFile timespec_file, rdtsc_file, cputime_file;
 
     char test_filename[100];
 
     switch (test_case)
     {
     case 0:
-        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
         break;
     case 1:
-        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
         break;
     case 2:
-        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
         break;
     case 3:
-        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
         break;
     default:
@@ -148,35 +286,23 @@ void run_correctness_test(int test_case)
         exit(EXIT_FAILURE);
     }
 
-    // Step 1: Open the test file
+    // open the test file
     gzFile test_file = open_gzfile(test_filename, "rb");
-    if (test_file == NULL)
-    {
-        perror("Error opening test file");
-        exit(EXIT_FAILURE);
-    }
 
-    // Skip the first line (header)
+    // skip the first line, header
     skip_first_line(test_file);
 
-    // Step 2: Allocate arrays to store test cases
-    printf("Loading test cases...\n");
-    char **a_strings = (char **)malloc(ITERATIONS * sizeof(char *));
-    char **b_strings = (char **)malloc(ITERATIONS * sizeof(char *));
-    char **expected_results = (char **)malloc(ITERATIONS * sizeof(char *));
-    int actual_iterations = 0;
-
-    // Step 3: Read all test cases into arrays
-    for (int i = 0; i < 1000; i++)
+    // Read ITERATIONS test cases
+    for (int i = 0; i < ITERATIONS; i++)
     {
+        // Read the next line
         char buffer[CHUNK];
-        memset(buffer, 0, CHUNK);
-
+        // Read the next line
         if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
         {
             if (gzeof(test_file))
             {
-                break; // End of file reached
+                break; // EOF
             }
             else
             {
@@ -194,126 +320,49 @@ void run_correctness_test(int test_case)
         if (a_str == NULL || b_str == NULL || result_str == NULL)
         {
             fprintf(stderr, "Error parsing line: %s\n", buffer);
-            continue;
+            gzclose(test_file);
+            exit(EXIT_FAILURE);
         }
 
-        // Store operands and expected result as strings
-        a_strings[i] = strdup(a_str);
-        b_strings[i] = strdup(b_str);
-        expected_results[i] = strdup(result_str);
-        actual_iterations++;
+        mpz_t a, b, result_gmp;
+        mpz_init(a);
+        mpz_init(b);
+
+        // convert the strings to mpz_t
+        if (mpz_set_str(a, a_str, 16) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string a_str");
+            exit(EXIT_FAILURE);
+        }
+        if (mpz_set_str(b, b_str, 16) != 0)
+        {
+            perror("Error: Failed to set mpz_t from string b_str");
+            exit(EXIT_FAILURE);
+        }
+
+        /***** Start of addition *****/
+        mpz_sub(result_gmp, a, b);
+
+        /***** End of addition *****/
+
+        char *sum_str = mpz_get_str(NULL, 16, result_gmp);
+        int sum_size = strlen(sum_str);
+
+        // verify the converted string with result
+        if (!check_result(sum_str, result_str, sum_size))
+        {
+            printf("Test case failed, at iteration %d\n", i);
+            printf("a = %s, b = %s\n Expected result = %s\n", a_str, b_str, result_str);
+            printf("Experimental result = %s\n", sum_str);
+            exit(EXIT_FAILURE);
+        }
     }
 
     gzclose(test_file);
-    printf("Loaded %d test cases\n", actual_iterations);
-
-    // Step 4: Initialize arrays for GMP operations
-    mpz_t *a_values = (mpz_t *)malloc(actual_iterations * sizeof(mpz_t));
-    mpz_t *b_values = (mpz_t *)malloc(actual_iterations * sizeof(mpz_t));
-    mpz_t *results = (mpz_t *)malloc(actual_iterations * sizeof(mpz_t));
-
-    // Initialize GMP values
-    printf("Initializing GMP values...\n");
-    for (int i = 0; i < actual_iterations; i++)
-    {
-        mpz_init(a_values[i]);
-        mpz_init(b_values[i]);
-        mpz_init(results[i]);
-
-        // Convert strings to GMP values
-        if (mpz_set_str(a_values[i], a_strings[i], 16) != 0)
-        {
-            fprintf(stderr, "Error: Failed to set mpz_t from string a_str at iteration %d\n", i);
-            continue;
-        }
-        if (mpz_set_str(b_values[i], b_strings[i], 16) != 0)
-        {
-            fprintf(stderr, "Error: Failed to set mpz_t from string b_str at iteration %d\n", i);
-            continue;
-        }
-    }
-
-    // Step 5: Perform all subtractions
-    printf("Performing subtraction operations...\n");
-    fflush(stdout); // Flush stdout to ensure all output is printed
-    _mm_mfence();   // Ensure all previous operations are completed
-
-    long double t0 = cputime();
-    for (int j = 0; j < 1000; ++j)
-    {
-        for (int i = 0; i < actual_iterations; ++i)
-        {
-            mpz_sub(results[i], a_values[i], b_values[i]);
-        }
-    }
-    long double t1 = cputime();
-    printf("Time taken for %d subtractions: %.2Lf microseconds\n", actual_iterations, t1 - t0);
-
-    // Step 6: Verify results
-    printf("Verifying results...\n");
-    int failures = 0;
-    for (int i = 0; i < actual_iterations; i++)
-    {
-        char *result_str = mpz_get_str(NULL, 16, results[i]);
-        int result_len = strlen(result_str);
-
-        if (!check_result(result_str, expected_results[i], result_len))
-        {
-            printf("Test case failed at iteration %d\n", i);
-            printf("a = %s\nb = %s\nExpected result = %s\n",
-                   a_strings[i], b_strings[i], expected_results[i]);
-            printf("Actual result = %s\n", result_str);
-            failures++;
-        }
-
-        free(result_str); // Free the string allocated by mpz_get_str
-    }
-
-    if (failures == 0)
-    {
-        switch (test_case)
-        {
-        case 0:
-            printf("All random test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        case 1:
-            printf("All equal test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        case 2:
-            printf("All greater test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        case 3:
-            printf("All smaller test cases passed for bit-size %d\n", NUM_BITS);
-            break;
-        }
-    }
-    else
-    {
-        printf("Found %d failures out of %d test cases\n", failures, actual_iterations);
-    }
-
-    // Step 7: Clean up
-    printf("Cleaning up...\n");
-    for (int i = 0; i < actual_iterations; i++)
-    {
-        mpz_clear(a_values[i]);
-        mpz_clear(b_values[i]);
-        mpz_clear(results[i]);
-        free(a_strings[i]);
-        free(b_strings[i]);
-        free(expected_results[i]);
-    }
-    free(a_values);
-    free(b_values);
-    free(results);
-    free(a_strings);
-    free(b_strings);
-    free(expected_results);
-
-    printf("Correctness test completed\n");
 }
+
 /*
-  Does the following for measuring the time taken for subtraction:
+  Does the following for measuring the time taken for addition:
     1. read the test cases from the file
     2. path: ../test/cases/<num_bits>/<test_case>.csv.gz
     3. starts measuring the time wtih one of the three methods: RDTSC, timespec, rusage
@@ -324,29 +373,10 @@ void run_correctness_test(int test_case)
 */
 void run_benchmarking_test(int test_case, int measure_type)
 {
-    printf("Trying to run benchmarking test\n");
-    // Create directories for the results
-    create_directory("experiments/results");
+    // printf("Trying to run benchmarking test\n");
+
     // open the perf file
     gzFile timespec_file, rdtsc_file, cputime_file;
-    switch (measure_type)
-    {
-    case 0: // RDTSC
-        printf("Running the tests with RDTSC measurements\n");
-        create_directory("experiments/results/rdtsc_measurements");
-        break;
-    case 1: // Timespec gettime()
-        printf("Running the tests with timespec measurements\n");
-        create_directory("experiments/results/timespec_measurements");
-        break;
-    case 2: // CPU time, rusage
-        printf("Running the tests with rusage measurements\n");
-        create_directory("experiments/results/cputime_measurements");
-        break;
-    default:
-        printf("Invalid measure type\n");
-        exit(EXIT_FAILURE);
-    }
 
     char rdtsc_filename[100];
     char test_filename[100];
@@ -356,149 +386,23 @@ void run_benchmarking_test(int test_case, int measure_type)
     switch (test_case)
     {
     case 0: // Random test cases
-        printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/random_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
+
         break;
     case 1: // Equal test cases
-        printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/equal_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
+
         break;
     case 2: // Greater test cases
-        printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/greater_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-            break;
-        }
+
         break;
     case 3: // Smaller test cases
-        printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
+        // printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
-        if (measure_type == 0) // RDTSC
-        {
-            snprintf(rdtsc_filename, sizeof(rdtsc_filename), "experiments/results/rdtsc_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            rdtsc_file = open_gzfile(rdtsc_filename, "wb");
-            if (rdtsc_file == NULL)
-            {
-                perror("Error opening rdtsc file");
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (measure_type == 1) // Timespec
-        {
-            snprintf(timespec_filename, sizeof(timespec_filename), "experiments/results/timespec_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            timespec_file = open_gzfile(timespec_filename, "wb");
-            if (timespec_file == NULL)
-            {
-                perror("Error opening timespec file");
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (measure_type == 2) // rusage
-        {
-            snprintf(cputime_filename, sizeof(cputime_filename), "experiments/results/cputime_measurements/smaller_%d_%d.csv.gz", NUM_BITS, CORE_NO);
-            cputime_file = open_gzfile(cputime_filename, "wb");
-            if (cputime_file == NULL)
-            {
-                perror("Error opening cputime file");
-                exit(EXIT_FAILURE);
-            }
-        }
 
         break;
     default:
@@ -516,11 +420,11 @@ void run_benchmarking_test(int test_case, int measure_type)
     unsigned long seed = generate_seed();
     srand(seed);
     int iter_count = 0;
-    printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
+    // printf("Running %d iterations...\n", ITERATIONS / ITERATIONS);
     for (int iter_count = 0; iter_count < (ITERATIONS / ITERATIONS); ++iter_count)
     {
         int i = rand() % ITERATIONS;
-        printf("Iteration %d, reading test case %d\n", iter_count, i);
+        // printf("Iteration %d, reading test case %d\n", iter_count, i);
         // buffer to read the test case
         char buffer[CHUNK];
         // reset the file pointer to the beginning of the file
@@ -576,7 +480,7 @@ void run_benchmarking_test(int test_case, int measure_type)
             exit(EXIT_FAILURE);
         }
 
-        printf("Starting subtraction\n");
+        // printf("Starting addition\n");
 
         double time_taken;
 
@@ -605,17 +509,17 @@ void run_benchmarking_test(int test_case, int measure_type)
         {
         case 0:             // RDTSC
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed using RDTSC...\n");
+            // printf("Calibrating CPU speed using RDTSC...\n");
             fflush(stdout);
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             TIME_RDTSC(time_taken, mpz_sub(result_gmp, a, b));
-            printf("done\n");
-            printf("Calibrated time: %f microseconds\n", time_taken);
+            // printf("done\n");
+            printf("Execution time: %.1f ns\n", time_taken * 1000);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("subtracting %d times\n", niter);
+            // printf("Adding %d times\n", niter);
             fflush(stdout);
 
             t0 = measure_rdtsc_start();
@@ -638,23 +542,23 @@ void run_benchmarking_test(int test_case, int measure_type)
                 f = f * 0.1;
             }
 
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            printf("Throughput: %.*f OP/s\n", decimals, ops_per_sec);
 
             break;
         case 1:             // Timespec
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed using timespec...\n");
+            // printf("Calibrating CPU speed using timespec...\n");
             fflush(stdout);
             // interrupt
             __cpuid(0, cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3]);
 
             TIME_TIMESPEC(time_taken, mpz_sub(result_gmp, a, b));
 
-            printf("done\n");
-            printf("Calibrated time: %f microseconds\n", time_taken);
+            // printf("done\n");
+            printf("Execution time: %.1f ns\n", time_taken * 1000);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("subtracting %d times\n", niter);
+            // printf("Adding %d times\n", niter);
             fflush(stdout);
 
             struct timespec ts_0, ts_1;
@@ -677,11 +581,11 @@ void run_benchmarking_test(int test_case, int measure_type)
                 f = f * 0.1;
             }
 
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            printf("Throughput: %.*f OP/s\n", decimals, ops_per_sec);
             break;
         case 2:             // Rusage
             time_taken = 0; // initialize time taken
-            printf("Calibrating CPU speed using rusage...\n");
+            // printf("Calibrating CPU speed using rusage...\n");
             fflush(stdout);
 
             // interrupt
@@ -690,12 +594,12 @@ void run_benchmarking_test(int test_case, int measure_type)
             // calibrate the time
             TIME_RUSAGE(time_taken, mpz_sub(result_gmp, a, b));
 
-            printf("done\n");
+            // printf("done\n");
 
-            printf("Calibrated time: %f microseconds\n", time_taken);
+            printf("Execution time: %.1f ns\n", time_taken * 1000);
 
             niter = 1 + (unsigned long)(1e7 / time_taken);
-            printf("subtracting %d times\n", niter);
+            // printf("Adding %d times\n", niter);
             fflush(stdout);
 
             t0 = cputime();
@@ -704,7 +608,7 @@ void run_benchmarking_test(int test_case, int measure_type)
                 mpz_sub(result_gmp, a, b);
             }
             t1 = cputime() - t0;
-            printf("done!\n");
+            // printf("done!\n");
 
             // Convert t1 from microseconds to seconds for the ops_per_sec calculation
             ops_per_sec = (1e6 * niter) / t1;
@@ -717,7 +621,7 @@ void run_benchmarking_test(int test_case, int measure_type)
                 f = f * 0.1;
             }
 
-            printf("RESULT: %.*f operations per second\n", decimals, ops_per_sec);
+            printf("Throughput: %.*f operations per second\n", decimals, ops_per_sec);
             break;
         default:
             printf("Invalid measure type\n");
@@ -741,154 +645,3 @@ void run_benchmarking_test(int test_case, int measure_type)
         gzclose(cputime_file);
     }
 }
-
-// void run_perf_events(int test_case)
-// {
-//     printf("Trying to run perf events\n");
-
-//     char test_filename[100];
-//     long long values[MAX_EVENTS];
-
-//     switch (test_case)
-//     {
-//     case 0:
-//         printf("Running random test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/random.csv.gz", NUM_BITS);
-//         break;
-//     case 1:
-//         printf("Running equal test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/equal.csv.gz", NUM_BITS);
-//         break;
-//     case 2:
-//         printf("Running greater test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/greater.csv.gz", NUM_BITS);
-//         break;
-//     case 3:
-//         printf("Running smaller test cases for bit-size %d on core %d\n", NUM_BITS, CORE_NO);
-//         snprintf(test_filename, sizeof(test_filename), "../test/cases/%d/smaller.csv.gz", NUM_BITS);
-//         break;
-//     default:
-//         printf("Invalid test case\n");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // open the test file
-//     gzFile test_file = open_gzfile(test_filename, "rb");
-
-//     // skip the first line, header
-//     skip_first_line(test_file);
-
-//     // initialize the perf events
-//     initialize_perf();
-
-//     // Randomly pick an iteration
-//     int i = rand() % ITERATIONS;
-//     printf("Reading test case %d\n", i);
-//     // buffer to read the test case
-//     char buffer[CHUNK];
-//     // reset the file pointer to the beginning of the file
-//     gzrewind(test_file);
-//     // skip the first line, header
-//     skip_first_line(test_file);
-//     // read ith line from the test_file
-//     for (int j = 0; j < i; j++)
-//     {
-//         // flush the buffer
-//         memset(buffer, 0, CHUNK);
-//         if (gzgets(test_file, buffer, sizeof(buffer)) == NULL)
-//         {
-//             if (gzeof(test_file))
-//             {
-//                 return; // End of file reached
-//             }
-//             else
-//             {
-//                 perror("Error reading line");
-//                 gzclose(test_file);
-//                 exit(EXIT_FAILURE);
-//             }
-//         }
-//     }
-
-//     // Parse the test case
-//     char *a_str = strtok(buffer, ",");
-//     char *b_str = strtok(NULL, ",");
-//     char *result_str = strtok(NULL, ",");
-
-//     if (a_str == NULL || b_str == NULL || result_str == NULL)
-//     {
-//         fprintf(stderr, "Error parsing line: %s\n", buffer);
-//         gzclose(test_file);
-//         exit(EXIT_FAILURE);
-//     }
-
-//     // convert the strings to mpz_t
-//     mpz_t a, b, result_gmp;
-//     mpz_init(a);
-//     mpz_init(b);
-
-//     // convert the strings to mpz_t
-//     if (mpz_set_str(a, a_str, 16) != 0)
-//     {
-//         perror("Error: Failed to set mpz_t from string a_str");
-//         exit(EXIT_FAILURE);
-//     }
-//     if (mpz_set_str(b, b_str, 16) != 0)
-//     {
-//         perror("Error: Failed to set mpz_t from string b_str");
-//         exit(EXIT_FAILURE);
-//     }
-
-//     printf("Starting subtraction\n");
-
-//     // clear cache before each test case
-//     size_t a_size = mpz_size(a) * sizeof(mp_limb_t);
-//     size_t b_size = mpz_size(b) * sizeof(mp_limb_t);
-
-//     for (size_t i = 0; i < a_size; i += 64) // 64 bytes is the typical cache line size
-//     {
-//         _mm_clflush((char *)a->_mp_d + i);
-//     }
-
-//     for (size_t i = 0; i < b_size; i += 64) // 64 bytes is the typical cache line size
-//     {
-//         _mm_clflush((char *)b->_mp_d + i);
-//     }
-//     // Ensure that the cache flush operations are completed
-//     _mm_mfence();
-//     // Ensure the flush is completed
-
-//     // start the perf events
-//     start_perf();
-
-//     /***** Start of subtraction *****/
-//     mpz_sub(result_gmp, a, b);
-//     /***** End of subtraction *****/
-
-//     // Stop performance monitoring
-//     stop_perf();
-
-//     // Read performance counters
-//     read_perf(values);
-
-//     // Write performance counters to a file or stdout
-//     write_perf(stdout, values);
-
-//     switch (test_case)
-//     {
-//     case 0:
-//         printf("Random test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     case 1:
-//         printf("Equal test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     case 2:
-//         printf("Greater test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     case 3:
-//         printf("Smaller test cases passed for bit-size %d\n", NUM_BITS);
-//         break;
-//     }
-//     // close the test file
-//     gzclose(test_file);
-// }

@@ -10,7 +10,7 @@
 #include <asm/unistd.h>
 #include <errno.h>
 
-#define MAX_EVENTS 6
+#define MAX_EVENTS 1
 // #define CORE_NO -1
 
 extern int CORE_NO;

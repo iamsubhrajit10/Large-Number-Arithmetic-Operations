@@ -48,13 +48,6 @@ void init_memory_pool()
         exit(EXIT_FAILURE);
     }
     memory_pool_offset = 0;
-    AVX512_ZEROS = _mm512_setzero_si512();
-    AVX256_ZEROS = _mm256_setzero_si256();
-    AVX128_ZEROS = _mm_setzero_si128();
-
-    AVX512_MASK = _mm512_set1_epi64(0xFFFFFFFFFFFFFFFF);
-    AVX256_MASK = _mm256_set1_epi64x(0xFFFFFFFFFFFFFFFF);
-    AVX128_MASK = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF);
 }
 
 void *memory_pool_alloc(size_t size)

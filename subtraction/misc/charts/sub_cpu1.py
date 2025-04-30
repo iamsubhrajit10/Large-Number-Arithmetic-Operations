@@ -10,22 +10,21 @@ rcParams['font.family'] = 'sans-serif'
 rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', 'sans-serif']
 data = {
     "Bit Size": [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
-    "GMP_SUB Time (ns)": [8.6, 9.8, 12.6, 18.3, 31.1, 61.0, 151.0, 334.6, 664.8, 913.1],
-    "PML_SUB Time (ns)": [2.8, 3.6, 7.0, 8.6, 15.4, 30.7, 70.1, 133.7, 257.5, 507.5],
-    "PML_SUB (Worst Case) Time (ns)": [3.9, 5.3, 8.3, 11.4, 20.2, 44.6, 96.0, 188.2, 364.5, 736.1],
-    "Baseline_SUB Time (ns)": [5.0, 9.8, 17.0, 32.5, 63.5, 125.6, 256.9, 506.6, 1007.6, 2016.5],
-    "Speedup (PML_SUB vs GMP) Time": [3.07, 2.72, 1.80, 2.13, 2.02, 1.99, 2.15, 2.50, 2.58, 1.80],
-    "Speedup (PML_SUB vs Baseline) Time": [1.79, 2.28, 2.93, 3.39, 3.45, 3.51, 3.37, 3.19, 3.21, 3.20],
-    "Speedup (PML_SUB Phase-4 vs GMP) Time": [2.21, 1.85, 1.52, 1.61, 1.54, 1.37, 1.57, 1.78, 1.82, 1.24],
-    "GMP_SUB Ops": [115978795, 102187113, 79311500, 54480050, 32076268, 16394385, 6622956, 2986496, 1505049, 1095606],
-    "PML_SUB Ops": [349305404, 276797587, 149858622, 118186196, 64577524, 32534281, 14504626, 7500546, 3891773, 1974289],
-    "PML_SUB (Worst Case) Ops": [254032141, 199540690, 123645713, 89998541, 49322015, 22651013, 10479692, 5343289, 2751417, 1355281],
-    "Baseline_SUB Ops": [199172848, 103142572, 58465642, 30851921, 15765670, 7965960, 3879579, 1973103, 995678, 497444],
-    "Speedup (PML_SUB vs GMP) Ops": [3.01, 2.71, 1.89, 2.17, 2.01, 1.98, 2.19, 2.51, 2.59, 1.80],
-    "Speedup (PML_SUB vs Baseline) Ops": [1.64, 2.22, 2.81, 3.31, 3.42, 3.50, 3.38, 3.19, 3.20, 3.19],
-    "Speedup (PML_SUB Phase-4 vs GMP) Ops": [2.19, 1.95, 1.56, 1.65, 1.54, 1.38, 1.58, 1.79, 1.83, 1.24]
+    "GMP_SUB Time (ns)": [8.6, 9.8, 12.3, 18.1, 31.2, 60.4, 150.5, 335.0, 665.9, 902.5],
+    "PML_SUB Time (ns)": [2.9, 4.5, 6.3, 8.9, 14.6, 28.0, 65.1, 124.2, 237.8, 470.3],
+    "PML_SUB (Worst Case) Time (ns)": [3.7, 5.7, 8.1, 12.9, 25.3, 55.9, 109.8, 211.5, 413.8, 823.5],
+    "Baseline_SUB Time (ns)": [7.8, 10.8, 19.3, 36.8, 73.4, 148.8, 306.6, 610.2, 1217.8, 2447.3],
+    "Speedup (PML_SUB vs GMP) Time": [2.97, 2.18, 1.95, 2.03, 2.14, 2.16, 2.31, 2.70, 2.80, 1.92],
+    "Speedup (PML_SUB vs Baseline) Time": [2.69, 2.40, 3.06, 4.13, 5.03, 5.31, 4.71, 4.91, 5.12, 5.20],
+    "Speedup (PML_SUB Phase-4 vs GMP) Time": [2.32, 1.72, 1.52, 1.40, 1.23, 1.08, 1.37, 1.58, 1.61, 1.10],
+    "GMP_SUB Ops": [116112338, 102407023, 80950129, 55303909, 32056603, 16521602, 6640534, 2983314, 1501619, 1107828],
+    "PML_SUB Ops": [348436867, 212877730, 148602559, 110238572, 67677991, 35703504, 15280723, 8024103, 4197451, 2124207],
+    "PML_SUB (Worst Case) Ops": [253456702, 167660087, 116833167, 76438742, 39408643, 17642779, 9087181, 4717617, 2415316, 1213213],
+    "Baseline_SUB Ops": [128673330, 91618185, 51774170, 27067545, 13586173, 6708674, 3255660, 1636416, 819801, 407891],
+    "Speedup (PML_SUB vs GMP) Ops": [3.00, 2.08, 1.84, 1.99, 2.11, 2.16, 2.30, 2.69, 2.80, 1.92],
+    "Speedup (PML_SUB vs Baseline) Ops": [2.71, 2.32, 2.87, 4.07, 4.98, 5.32, 4.69, 4.90, 5.12, 5.21],
+    "Speedup (PML_SUB Phase-4 vs GMP) Ops": [2.18, 1.64, 1.44, 1.38, 1.23, 1.07, 1.37, 1.58, 1.61, 1.10]
 }
-
 df = pd.DataFrame(data)
 
 # Enhanced color palette - color-blind friendly but more vibrant
@@ -75,7 +74,7 @@ baseline_line = ax1.plot(df["Bit Size"], df["Baseline_SUB Time (ns)"],
 
 # Instead of arrows, use a speedup callout box at strategic points
 # We'll create callout boxes at select bit sizes to highlight speedups
-selected_indices = [0, 3, 6, 9]  # First, middle, and last points
+selected_indices = [0, 2, 5, 8]  # First, middle, and last points
 
 for i in selected_indices:
     bit_size = df["Bit Size"][i]
@@ -166,38 +165,7 @@ plt.setp(title, bbox=dict(facecolor=bg_color, edgecolor=None, alpha=0.8,
 legend = ax1.legend(loc='upper left', fontsize=12, frameon=True, 
                    edgecolor='gray', fancybox=True, framealpha=0.9)
 
-# Create a table-format string with the speedup data for all bit sizes
-table_text = "Speedup Factors by Bit Size:\n"
-table_text += "┌────────┬───────────┬────────────┬─────────────┐\n"
-table_text += "│Bit Size│ PML vs GMP│ PML vs Base│ Phase-4 vs GMP │\n"
-table_text += "├────────┼───────────┼────────────┼─────────────┤\n"
 
-# Add each row of data
-for i, bit_size in enumerate(df["Bit Size"]):
-    gmp_speedup = df["Speedup (PML_SUB vs GMP) Time"][i]
-    baseline_speedup = df["Speedup (PML_SUB vs Baseline) Time"][i]
-    phase4_speedup = df["Speedup (PML_SUB Phase-4 vs GMP) Time"][i]
-    
-    # Format each row with proper alignment
-    bit_size_str = f"{bit_size:6d}"
-    gmp_speedup_str = f"{gmp_speedup:.2f}×"
-    baseline_speedup_str = f"{baseline_speedup:.2f}×"
-    phase4_speedup_str = f"{phase4_speedup:.2f}×"
-    
-    table_text += f"│ {bit_size_str} │ {gmp_speedup_str:9} │ {baseline_speedup_str:10} │ {phase4_speedup_str:11} │\n"
-
-# Close the table
-table_text += "└────────┴───────────┴────────────┴─────────────┘"
-
-# Add explanation box with the data table
-ax1.text(0.97, 0.05, table_text, 
-         transform=ax1.transAxes, fontsize=9, fontfamily='monospace',
-         bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.5'),
-         ha='right', va='bottom')
-# Add a subtle border to the figure
-for spine in ax1.spines.values():
-    spine.set_edgecolor('lightgray')
-    spine.set_linewidth(1.5)
 
 plt.tight_layout(pad=1)
 plt.savefig("cpu1_execution_time_sub.svg", dpi=300, bbox_inches='tight', facecolor=bg_color)
