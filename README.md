@@ -9,7 +9,7 @@ $test/ ./run.sh
 
 Now, for compile the add and subtract operations:
 ```bash
-gcc <add/sub>.c ../utils/limb_utils.c ../utils/perf_utils.c -o <add/sub> -lz -I../utils -O2 -mavx512f -mavx512vl -funroll-all-loops -fno-inline-functions
+gcc <add/sub>.c ../utils/limb_utils.c ../utils/perf_utils.c -o <add/sub> -lz -I../utils -O1 -mavx512f -mavx512vl
 ```
 Then run the <add/sub> executable:
 ```bash
