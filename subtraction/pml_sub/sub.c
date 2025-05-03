@@ -85,7 +85,7 @@ void run_correctness_test(int);
         result_vec = result_vec_new;                                                                 \
         b_mask = _mm256_cmplt_epu64_mask(result_vec_new, result_vec);                                \
         _mm256_store_epi64((__m256i *)(result), result_vec);                                         \
-        if (unlikely((!_mm512_mask2int(b_mask))))                                                    \
+        if (unlikely((_mm512_mask2int(b_mask))))                                                    \
         {                                                                                            \
             b_mask <<= 1;                                                                            \
             __mmask16 m = _mm256_cmpeq_epu64_mask(result_vec, AVX256_ZEROS);                         \
@@ -120,7 +120,7 @@ void run_correctness_test(int);
         b_mask = _mm512_cmpgt_epu64_mask(result_vec_new, result_vec);                                \
         result_vec = result_vec_new;                                                                 \
         _mm512_store_si512((__m512i *)(result), result_vec);                                         \
-        if (unlikely(!_mm512_mask2int(b_mask)))                                                      \
+        if (unlikely(_mm512_mask2int(b_mask)))                                                      \
         {                                                                                            \
             b_mask <<= 1;                                                                            \
             __mmask16 m = _mm512_cmpeq_epu64_mask(result_vec, AVX512_ZEROS);                         \
